@@ -124,18 +124,17 @@ function kindLabel(type) {
   return type === "Fix" ? "FIX" : "RULE";
 }
 
-function renderScoreRing(score, isFix) {
+function renderScoreRing(score) {
   const val = Math.max(0, Math.min(100, Number(score || 0)));
   const r = 17;
   const circ = 2 * Math.PI * r;
   const dash = ((val / 100) * circ).toFixed(1);
-  const stroke = isFix ? "var(--accent)" : "var(--gene)";
   return `
     <svg class="score-ring" viewBox="0 0 44 44" aria-label="Score ${val}">
-      <circle cx="22" cy="22" r="${r}" fill="none" stroke="var(--border)" stroke-width="4" />
-      <circle cx="22" cy="22" r="${r}" fill="none" stroke="${stroke}" stroke-width="4"
+      <circle cx="22" cy="22" r="${r}" fill="none" stroke="rgba(9, 105, 218, 0.15)" stroke-width="3.5" />
+      <circle cx="22" cy="22" r="${r}" fill="none" stroke="var(--accent)" stroke-width="3.5"
         stroke-linecap="round" stroke-dasharray="${dash} ${circ.toFixed(1)}" transform="rotate(-90 22 22)" />
-      <text x="22" y="25.5" text-anchor="middle" fill="var(--text)" font-size="10.5" font-weight="700" font-family="Consolas, monospace">${Math.round(val)}</text>
+      <text x="22" y="25.5" text-anchor="middle" fill="var(--accent)" font-size="11" font-weight="700" font-family="Consolas, monospace">${Math.round(val)}</text>
     </svg>`;
 }
 
@@ -146,7 +145,6 @@ function renderDetail(item) {
     return;
   }
 
-  const kindCls = item.type === "Fix" ? "kind-capsule" : "kind-gene";
   const signals = (item.signals || []).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
   const strategy = (item.strategy || []).length
     ? `<div class="section-label">Steps</div><ol class="steps">${item.strategy
@@ -202,19 +200,26 @@ function renderDetail(item) {
     }
   }
 
+  const scopeText = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "Local";
+  const repoText = item.repoScope && item.repoScope !== "*" ? item.repoScope : "Global";
   pane.innerHTML = `
     <div class="detail-head">
       <div class="detail-title-row">
-        ${renderScoreRing(item.gdiScore, item.type === "Fix")}
+        ${renderScoreRing(item.gdiScore)}
         <div>
           <h2 class="detail-title">${escapeHtml(item.title)}</h2>
-          <div class="detail-id">
-            <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
-            <span class="badge gdi-badge">Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
-            <span class="badge">${item.successCount || 0} reuses</span>
-            <span class="badge">${escapeHtml(item.repoScope && item.repoScope !== "*" ? item.repoScope : "global (*)")}</span>
-            <span>${escapeHtml(item.id)}</span> · <span>${escapeHtml(item.scope || "local")}</span>
+          <div class="detail-meta-line">
+            <span class="detail-meta-pill">${escapeHtml(item.type === "Fix" ? "Fix" : "Rule")}</span>
+            <span>·</span>
+            <span>Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
+            <span>·</span>
+            <span>${item.successCount || 0} used</span>
+            <span>·</span>
+            <span>${escapeHtml(repoText)}</span>
+            <span>·</span>
+            <span>${scopeText}</span>
           </div>
+          <div class="detail-id-sub">${escapeHtml(item.id)}</div>
         </div>
       </div>
       <div class="actions">${promoteTeamBtn}${copyBtn}${deleteControl}${closeBtn}</div>
@@ -531,7 +536,7 @@ function renderArenaView(listPane, allAssets) {
       const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
       const rankBadge =
         idx === 0
-          ? `<span class="badge" title="Rank #1"><svg class="trophy-icon" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#d29922" fill-opacity="0.25" stroke="#bf8700" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11M8 8.7v2.8M5.8 13.5h4.4" stroke="#bf8700" stroke-width="1.2" stroke-linecap="round"/></svg></span>`
+          ? `<span class="badge gdi-badge" title="Rank #1"><svg class="trophy-icon" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#0969da" fill-opacity="0.2" stroke="#0969da" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11M8 8.7v2.8M5.8 13.5h4.4" stroke="#0969da" stroke-width="1.2" stroke-linecap="round"/></svg></span>`
           : `<span class="badge">#${idx + 1}</span>`;
       return `
       <div class="lb-row ${idx === 0 ? "rank-1" : ""}">
@@ -691,7 +696,7 @@ function render() {
         const repoTag = item.repoScope && item.repoScope !== "*" ? ` · ${escapeHtml(item.repoScope)}` : "";
         const uses = item.successCount || 0;
         const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
-        const trophySvg = `<svg class="trophy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-label="Rank #1"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#d29922" fill-opacity="0.22" stroke="#bf8700" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11" stroke="#bf8700" stroke-width="1.2" stroke-linecap="round"/><path d="M8 8.7v2.8M5.8 13.5h4.4" stroke="#bf8700" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+        const trophySvg = `<svg class="trophy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-label="Rank #1"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#0969da" fill-opacity="0.18" stroke="#0969da" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11" stroke="#0969da" stroke-width="1.2" stroke-linecap="round"/><path d="M8 8.7v2.8M5.8 13.5h4.4" stroke="#0969da" stroke-width="1.3" stroke-linecap="round"/></svg>`;
         const rankCell =
           idx === 0
             ? `<span class="exp-rank is-top" title="Rank #1">${trophySvg}</span>`
