@@ -168,6 +168,7 @@ function renderDetail(item) {
       ? `<button class="btn btn-primary" data-promote-team="${escapeHtml(item.id)}" type="button" title="Sanitize, mark as team, and push to the team Git repository">Share to Team</button>`
       : "";
   const copyBtn = `<button class="btn" data-copy="${escapeHtml(item.id)}" type="button">Copy JSON</button>`;
+  const closeBtn = `<button class="btn btn-close" data-close-detail type="button" title="Close detail drawer">✕</button>`;
 
   const rel = item.relationships || {};
   const relLinks = [];
@@ -216,7 +217,7 @@ function renderDetail(item) {
           </div>
         </div>
       </div>
-      <div class="actions">${promoteTeamBtn}${copyBtn}${deleteControl}</div>
+      <div class="actions">${promoteTeamBtn}${copyBtn}${deleteControl}${closeBtn}</div>
     </div>
     <div class="section-label">Trigger Signals</div>
     <div class="badges">${signals || '<span class="muted">None</span>'}</div>
@@ -231,6 +232,11 @@ function renderDetail(item) {
     <p class="muted">Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0} · Source: ${escapeHtml(item.sourceProject || "bundled")} · Updated: ${escapeHtml(item.updatedAt ? formatLocalTime(item.updatedAt) : "bundled")}</p>
   `;
 
+  pane.querySelector("[data-close-detail]")?.addEventListener("click", () => {
+    selectedId = "";
+    pendingDeleteId = "";
+    render();
+  });
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
   pane.querySelectorAll("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -299,8 +305,8 @@ function renderRelationshipsView(listPane, allAssets) {
     renderDetail(null);
     return;
   }
-  if (!allAssets.some((a) => a.id === selectedId)) {
-    selectedId = allAssets[0].id;
+  if (selectedId && !allAssets.some((a) => a.id === selectedId)) {
+    selectedId = "";
   }
 
   const rules = allAssets.filter((a) => a.type !== "Fix");
@@ -384,11 +390,13 @@ function renderRelationshipsView(listPane, allAssets) {
   );
 
   // Connected set for highlighting around selectedId.
-  const selectedAsset = allAssets.find((a) => a.id === selectedId) || allAssets[0];
-  const connectedIds = new Set([selectedId]);
-  for (const e of edges) {
-    if (e.from === selectedId) connectedIds.add(e.to);
-    if (e.to === selectedId) connectedIds.add(e.from);
+  const selectedAsset = selectedId ? allAssets.find((a) => a.id === selectedId) || null : null;
+  const connectedIds = new Set(selectedId ? [selectedId] : []);
+  if (selectedId) {
+    for (const e of edges) {
+      if (e.from === selectedId) connectedIds.add(e.to);
+      if (e.to === selectedId) connectedIds.add(e.from);
+    }
   }
 
   // Draw lineage edges (solid directed arrows).
@@ -428,9 +436,10 @@ function renderRelationshipsView(listPane, allAssets) {
               const y1 = p.y + nodeH / 2;
               const x2 = fromLeft ? hp.x : hp.x + hubW;
               const y2 = hp.y + hubH / 2;
-              const isActive = a.id === selectedId || (selectedAsset?.signals || []).includes(s);
+              const isActive = Boolean(selectedId) && (a.id === selectedId || (selectedAsset?.signals || []).includes(s));
+              const edgeOpacity = !selectedId ? 0.5 : isActive ? 0.85 : 0.18;
               const cx = (x1 + x2) / 2;
-              return `<path d="M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--accent)" stroke-width="${isActive ? 1.6 : 1}" stroke-dasharray="4 3" stroke-opacity="${isActive ? 0.85 : 0.22}" />`;
+              return `<path d="M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--accent)" stroke-width="${isActive ? 1.6 : 1}" stroke-dasharray="4 3" stroke-opacity="${edgeOpacity}" />`;
             });
         })
         .join("")
@@ -464,7 +473,7 @@ function renderRelationshipsView(listPane, allAssets) {
       const dotColor = isCap ? "var(--accent)" : "var(--gene)";
       const shortTitle = (a.title || a.id).slice(0, 23) + ((a.title || "").length > 23 ? "…" : "");
       return `
-      <g class="graph-node" data-node-id="${escapeHtml(a.id)}" opacity="${related || selected ? 1 : 0.48}">
+      <g class="graph-node" data-node-id="${escapeHtml(a.id)}" opacity="${!selectedId || related || selected ? 1 : 0.45}">
         <rect x="${pos.x}" y="${pos.y}" width="${nodeW}" height="${nodeH}" rx="7" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 1.8 : 1}" />
         <circle cx="${pos.x + 12}" cy="${pos.y + 13}" r="3.5" fill="${dotColor}" />
         <text x="${pos.x + 20}" y="${pos.y + 16}" fill="${dotColor}" font-size="9.5" font-weight="700" font-family="Consolas, monospace">${isCap ? "FIX" : "RULE"} · ${a.gdiScore || "-"} · ${a.successCount || 0}x</text>
@@ -500,7 +509,8 @@ function renderRelationshipsView(listPane, allAssets) {
 
   listPane.querySelectorAll("[data-node-id]").forEach((node) => {
     node.addEventListener("click", () => {
-      selectedId = node.dataset.nodeId;
+      selectedId = selectedId === node.dataset.nodeId ? "" : node.dataset.nodeId;
+      pendingDeleteId = "";
       render();
     });
   });
@@ -596,14 +606,20 @@ function render() {
   el("count-links").textContent = String(linkCount);
   el("count-events").textContent = String(state.counts?.events || 0);
 
+  const itemsForTab = activeTab === "assets" ? getFilteredAssets() : allAssets;
+  if (selectedId && !itemsForTab.some((i) => i.id === selectedId)) {
+    selectedId = "";
+    pendingDeleteId = "";
+  }
+
   el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets");
   el("rel-toolbar").classList.toggle("hidden", activeTab !== "relationships");
   el("events-toolbar").classList.toggle("hidden", activeTab !== "events");
-  const isSinglePane = activeTab === "events" || activeTab === "arena";
-  el("content").classList.toggle("single-pane", isSinglePane);
-  el("content").classList.toggle("graph-pane", activeTab === "relationships");
-  el("pane-splitter")?.classList.toggle("hidden", isSinglePane);
-  el("detail-pane").classList.toggle("hidden", isSinglePane);
+  const hasDetail = (activeTab === "assets" || activeTab === "relationships") && Boolean(selectedId);
+  el("content").classList.toggle("single-pane", !hasDetail);
+  el("content").classList.toggle("graph-pane", activeTab === "relationships" && hasDetail);
+  el("pane-splitter")?.classList.toggle("hidden", !hasDetail);
+  el("detail-pane").classList.toggle("hidden", !hasDetail);
 
   document.querySelectorAll(".tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === activeTab));
   document.querySelectorAll(".chip[data-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.filter === activeFilter));
@@ -651,16 +667,11 @@ function render() {
     return;
   }
 
-  const items = getFilteredAssets();
+  const items = itemsForTab;
   if (!items.length) {
     listPane.innerHTML = `<div class="empty">No experiences match the current filters.</div>`;
     renderDetail(null);
     return;
-  }
-
-  if (!items.some((i) => i.id === selectedId)) {
-    selectedId = items[0].id;
-    pendingDeleteId = "";
   }
 
   listPane.innerHTML = items
@@ -692,13 +703,13 @@ function render() {
 
   listPane.querySelectorAll(".card").forEach((card) => {
     card.addEventListener("click", () => {
-      selectedId = card.dataset.id;
+      selectedId = selectedId === card.dataset.id ? "" : card.dataset.id;
       pendingDeleteId = "";
       render();
     });
   });
 
-  const selected = items.find((i) => i.id === selectedId) || items[0];
+  const selected = selectedId ? items.find((i) => i.id === selectedId) || null : null;
   renderDetail(selected);
 }
 

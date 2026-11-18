@@ -184,6 +184,13 @@ body {
   border-color: var(--danger);
 }
 
+.btn-close {
+  padding: 5px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
 .kpi-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
