@@ -1,4 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { watch } from "node:fs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
@@ -69,6 +70,8 @@ export function createEvoCanvasServer({ evoHome, getCurrentRepo = () => "" }) {
   let viewState = { tab: "assets", filter: "all", assetId: "" };
   let serverInfo = null;
   let serverPromise = null;
+  let fsWatcher = null;
+  let watchTimer = null;
 
   function buildSnapshot() {
     const store = loadStore(evoHome);
@@ -233,6 +236,16 @@ export function createEvoCanvasServer({ evoHome, getCurrentRepo = () => "" }) {
         });
         const { port } = server.address();
         serverInfo = { server, url: `http://127.0.0.1:${port}/` };
+        // Watch evoHome so writes from other parallel Copilot sessions live-refresh the canvas.
+        try {
+          fsWatcher = watch(evoHome, { persistent: false }, (_eventType, filename) => {
+            if (filename && !/\.(?:json|jsonl)$/i.test(String(filename))) return;
+            if (watchTimer) clearTimeout(watchTimer);
+            watchTimer = setTimeout(() => broadcastUpdate("external_change"), 200);
+          });
+        } catch {
+          // Ignore fs.watch failures on unsupported filesystems.
+        }
         return serverInfo;
       })().catch((err) => {
         serverPromise = null;
@@ -263,6 +276,12 @@ export function createEvoCanvasServer({ evoHome, getCurrentRepo = () => "" }) {
   async function closeInstance(ctx) {
     activeInstances.delete(ctx.instanceId);
     if (activeInstances.size === 0 && serverInfo) {
+      if (watchTimer) clearTimeout(watchTimer);
+      watchTimer = null;
+      if (fsWatcher) {
+        fsWatcher.close();
+        fsWatcher = null;
+      }
       for (const res of sseClients) res.end();
       sseClients.clear();
       const { server } = serverInfo;

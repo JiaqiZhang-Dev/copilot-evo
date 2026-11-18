@@ -28,18 +28,50 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
-function mergeById(existing, incoming) {
-  const seen = new Set(existing.map((item) => item.id));
+function stripLocalSyncFields(asset) {
+  if (!asset || typeof asset !== "object") return asset;
+  const { pendingSuccessDelta, pendingFailureDelta, ...rest } = asset;
+  return rest;
+}
+
+function mergeById(existing, incoming, options = {}) {
+  const { updateExisting = false } = options;
+  const map = new Map(existing.map((item, idx) => [item.id, idx]));
   const merged = [...existing];
   let added = 0;
-  for (const item of incoming) {
-    if (item?.id && !seen.has(item.id)) {
-      seen.add(item.id);
+  let updated = 0;
+  for (const rawItem of incoming) {
+    if (!rawItem?.id) continue;
+    const item = stripLocalSyncFields(rawItem);
+    const existingIdx = map.get(item.id);
+    if (existingIdx === undefined) {
+      map.set(item.id, merged.length);
       merged.push(item);
       added++;
+      continue;
+    }
+    if (updateExisting) {
+      const cur = merged[existingIdx];
+      const pendingSucc = cur.pendingSuccessDelta || 0;
+      const pendingFail = cur.pendingFailureDelta || 0;
+      const baseSucc = Math.max(0, (cur.successCount || 0) - pendingSucc);
+      const baseFail = Math.max(0, (cur.failureCount || 0) - pendingFail);
+      const nextSucc = Math.max(item.successCount || 0, baseSucc) + pendingSucc;
+      const nextFail = Math.max(item.failureCount || 0, baseFail) + pendingFail;
+      const incomingNewer =
+        item.updatedAt && (!cur.updatedAt || Date.parse(item.updatedAt) > Date.parse(cur.updatedAt));
+      const nextItem = incomingNewer ? { ...cur, ...item } : { ...cur };
+      nextItem.successCount = nextSucc;
+      nextItem.failureCount = nextFail;
+      if (pendingSucc) nextItem.pendingSuccessDelta = pendingSucc;
+      if (pendingFail) nextItem.pendingFailureDelta = pendingFail;
+      if (JSON.stringify(nextItem) !== JSON.stringify(cur)) {
+        merged[existingIdx] = nextItem;
+        updated++;
+      }
     }
   }
-  return { merged, added };
+  return { merged, added, updated };
 }
 
 function getDefaultSyncRepoSlug() {
@@ -211,9 +243,21 @@ export function computeGdiScore(asset, nowMs = Date.now()) {
 }
 
 export function getAssetRelationships(asset, allAssets) {
-  if (!asset) return { parent: null, gene: null, supersedes: null, children: [], supersededBy: [] };
+  if (!asset) return { parent: null, gene: null, supersedes: null, children: [], supersededBy: [], sharedSignals: [] };
   const byId = new Map(allAssets.map((item) => [item.id, item]));
   const pickSummary = (item) => (item ? { id: item.id, type: item.type, title: item.title, scope: item.scope } : null);
+  const mySignals = new Set((asset.signals || []).map((s) => String(s).toLowerCase()));
+  const sharedSignals = [];
+  if (mySignals.size > 0) {
+    for (const other of allAssets) {
+      if (other.id === asset.id) continue;
+      const overlap = (other.signals || []).filter((s) => mySignals.has(String(s).toLowerCase()));
+      if (overlap.length > 0) {
+        sharedSignals.push({ ...pickSummary(other), overlap });
+      }
+    }
+    sharedSignals.sort((a, b) => b.overlap.length - a.overlap.length);
+  }
   return {
     gene: asset.geneId ? pickSummary(byId.get(asset.geneId)) : null,
     parent: asset.parentId ? pickSummary(byId.get(asset.parentId)) : null,
@@ -224,7 +268,48 @@ export function getAssetRelationships(asset, allAssets) {
     supersededBy: allAssets
       .filter((item) => item.id !== asset.id && item.supersedes === asset.id)
       .map(pickSummary),
+    sharedSignals: sharedSignals.slice(0, 6),
   };
+}
+
+export function recordAssetOutcome(evoHome, assetIds = [], outcome = "success", reason = "auto") {
+  const uniqueIds = Array.from(new Set(assetIds.filter(Boolean)));
+  if (!uniqueIds.length) return [];
+  const genesPath = path.join(evoHome, "genes.json");
+  const capsulesPath = path.join(evoHome, "capsules.json");
+  const genes = readJsonSafe(genesPath, []);
+  const capsules = readJsonSafe(capsulesPath, []);
+  const idSet = new Set(uniqueIds);
+  const updated = [];
+  let genesDirty = false;
+  let capsulesDirty = false;
+
+  const apply = (list, markDirty) => {
+    for (let i = 0; i < list.length; i++) {
+      if (!idSet.has(list[i].id)) continue;
+      const next = { ...list[i] };
+      if (outcome === "failure") {
+        next.failureCount = (next.failureCount || 0) + 1;
+        next.pendingFailureDelta = (next.pendingFailureDelta || 0) + 1;
+      } else {
+        next.successCount = (next.successCount || 0) + 1;
+        next.pendingSuccessDelta = (next.pendingSuccessDelta || 0) + 1;
+      }
+      next.updatedAt = new Date().toISOString();
+      list[i] = next;
+      updated.push(next.id);
+      markDirty();
+    }
+  };
+
+  apply(genes, () => { genesDirty = true; });
+  apply(capsules, () => { capsulesDirty = true; });
+  if (genesDirty) writeJson(genesPath, genes);
+  if (capsulesDirty) writeJson(capsulesPath, capsules);
+  if (updated.length) {
+    appendEvent(evoHome, { event: `auto_${outcome}`, assetIds: updated, reason });
+  }
+  return updated;
 }
 
 export function hashProjectId(workingDirectory) {
@@ -253,9 +338,27 @@ const SIGNAL_PATTERNS = [
 ];
 
 const STRATEGY_CUE_RE = /(?:记住|以后|下次|踩坑|经验|策略|规范|沉淀|固化|避免|总是|不要再|\b(?:always|never|remember|pitfall|workaround|lesson|best practice|convention)\b)/i;
+const NEGATIVE_FEEDBACK_RE = /(?:不对|没用|无效|还是报错|不行|别这么做|错了|过时|\b(?:wrong|didn't work|did not work|doesn't work|still failing|not helpful|outdated|stop doing)\b)/i;
+
+const TRIVIAL_TOOL_FAILURE_RE = {
+  create: /(?:already exists|parent directory .* does not exist|does not exist)/i,
+  edit: /(?:old_str not found|multiple matches found|does not exist|no match found)/i,
+  view: /(?:does not exist|no such file|not found|is a directory)/i,
+  extensions_manage: /(?:not found|unknown extension)/i,
+};
+
+export function isTrivialToolFailure(toolName, errorText) {
+  const re = TRIVIAL_TOOL_FAILURE_RE[String(toolName || "").toLowerCase()];
+  if (!re) return false;
+  return re.test(String(errorText || ""));
+}
 
 export function hasStrategyCue(text) {
   return typeof text === "string" && STRATEGY_CUE_RE.test(text);
+}
+
+export function hasNegativeFeedbackCue(text) {
+  return typeof text === "string" && NEGATIVE_FEEDBACK_RE.test(text);
 }
 
 export function extractSignals(text, extraSignals = [], options = {}) {
@@ -408,12 +511,23 @@ export function solidifyAsset(input, options = {}) {
   const idx = list.findIndex((item) => item.id === cleanAsset.id);
   if (idx >= 0) {
     cleanAsset.successCount = (list[idx].successCount || 0) + 1;
+    cleanAsset.pendingSuccessDelta = (list[idx].pendingSuccessDelta || 0) + 1;
     list[idx] = { ...list[idx], ...cleanAsset };
   } else {
     cleanAsset.successCount = 1;
+    if (scope === "team") cleanAsset.pendingSuccessDelta = 1;
     list.push(cleanAsset);
   }
   writeJson(targetFile, list);
+
+  if (cleanAsset.geneId || cleanAsset.parentId) {
+    recordAssetOutcome(
+      evoHome,
+      [cleanAsset.geneId, cleanAsset.parentId].filter(Boolean),
+      "success",
+      "derived_asset"
+    );
+  }
 
   appendEvent(evoHome, {
     event: "solidify",
@@ -469,8 +583,14 @@ export function manageAsset(action, id, options = {}) {
     const current = { ...targetList[idx] };
     if (action === "pin") current.pinned = true;
     if (action === "unpin") current.pinned = false;
-    if (action === "upvote") current.successCount = (current.successCount || 0) + 1;
-    if (action === "downvote") current.failureCount = (current.failureCount || 0) + 1;
+    if (action === "upvote") {
+      current.successCount = (current.successCount || 0) + 1;
+      current.pendingSuccessDelta = (current.pendingSuccessDelta || 0) + 1;
+    }
+    if (action === "downvote") {
+      current.failureCount = (current.failureCount || 0) + 1;
+      current.pendingFailureDelta = (current.pendingFailureDelta || 0) + 1;
+    }
     current.updatedAt = new Date().toISOString();
     targetList[idx] = current;
     writeJson(targetList === genes ? genesPath : capsulesPath, targetList);
@@ -541,8 +661,8 @@ export function manageAsset(action, id, options = {}) {
 export function exportBundle(evoHome, { scope = "team", outputPath }) {
   const { genes, capsules } = loadStore(evoHome);
   const filterFn = (item) => (scope === "all" ? item.scope !== "starter" : item.scope === scope);
-  const selectedGenes = genes.filter(filterFn).map((g) => sanitizePayload(g));
-  const selectedCapsules = capsules.filter(filterFn).map((c) => sanitizePayload(c));
+  const selectedGenes = genes.filter(filterFn).map((g) => sanitizePayload(stripLocalSyncFields(g)));
+  const selectedCapsules = capsules.filter(filterFn).map((c) => sanitizePayload(stripLocalSyncFields(c)));
 
   const bundle = {
     schema: "copilot-evo/bundle@1",
@@ -584,11 +704,17 @@ export function importBundle(evoHome, { inputPath, bundleData, autoPromote = fal
   if (autoPromote) {
     const genesPath = path.join(evoHome, "genes.json");
     const capsulesPath = path.join(evoHome, "capsules.json");
-    const gRes = mergeById(readJsonSafe(genesPath, []), valid.filter((a) => a.type === "Gene"));
-    const cRes = mergeById(readJsonSafe(capsulesPath, []), valid.filter((a) => a.type === "Capsule"));
+    const gRes = mergeById(readJsonSafe(genesPath, []), valid.filter((a) => a.type === "Gene"), { updateExisting: true });
+    const cRes = mergeById(readJsonSafe(capsulesPath, []), valid.filter((a) => a.type === "Capsule"), { updateExisting: true });
     writeJson(genesPath, gRes.merged);
     writeJson(capsulesPath, cRes.merged);
-    return { ok: true, imported: gRes.added + cRes.added, promoted: true, rejected };
+    return {
+      ok: true,
+      imported: gRes.added + cRes.added,
+      updated: gRes.updated + cRes.updated,
+      promoted: true,
+      rejected,
+    };
   }
 
   const candidatesPath = path.join(evoHome, "candidates.json");
@@ -657,20 +783,56 @@ export async function syncRepoPull(evoHome, { repoPath, repo, autoPromote = true
   return { ...res, repoPath: targetRepo };
 }
 
+function mergeTeamAssetsForPush(remoteList, localTeamList) {
+  const byId = new Map(remoteList.map((item, idx) => [item.id, idx]));
+  const merged = [...remoteList];
+  for (const local of localTeamList) {
+    if (!local?.id) continue;
+    const cleanLocal = sanitizePayload(stripLocalSyncFields(local));
+    const idx = byId.get(local.id);
+    if (idx === undefined) {
+      byId.set(local.id, merged.length);
+      merged.push(cleanLocal);
+      continue;
+    }
+    const remote = merged[idx];
+    const pendingSucc = local.pendingSuccessDelta || 0;
+    const pendingFail = local.pendingFailureDelta || 0;
+    const baseSucc = Math.max(0, (local.successCount || 0) - pendingSucc);
+    const baseFail = Math.max(0, (local.failureCount || 0) - pendingFail);
+    const localNewer =
+      local.updatedAt && (!remote.updatedAt || Date.parse(local.updatedAt) > Date.parse(remote.updatedAt));
+    const next = localNewer ? { ...remote, ...cleanLocal } : { ...remote };
+    next.successCount = Math.max(remote.successCount || 0, baseSucc) + pendingSucc;
+    next.failureCount = Math.max(remote.failureCount || 0, baseFail) + pendingFail;
+    merged[idx] = next;
+  }
+  return merged;
+}
+
 export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = {}) {
   const targetRepo = await ensureSyncRepo(evoHome, { repoPath, repo });
   await runGit(targetRepo, ["pull", "--rebase", "--autostash"]);
 
-  const exported = exportBundle(evoHome, { scope: "team" });
-  if (!exported.ok) return exported;
+  const store = loadStore(evoHome);
+  const localTeamGenes = store.genes.filter((g) => g.scope === "team");
+  const localTeamCapsules = store.capsules.filter((c) => c.scope === "team");
+
+  const leakCheckLocal = fullLeakCheck({
+    genes: localTeamGenes.map(stripLocalSyncFields),
+    capsules: localTeamCapsules.map(stripLocalSyncFields),
+  });
+  if (leakCheckLocal.found) {
+    return { ok: false, error: "Push aborted: sensitive content detected in team assets.", leaks: leakCheckLocal.leaks };
+  }
 
   const teamGenesPath = path.join(targetRepo, "assets", "gep", "team-genes.json");
   const teamCapsulesPath = path.join(targetRepo, "assets", "gep", "team-capsules.json");
   const existingGenes = readJsonSafe(teamGenesPath, []);
   const existingCapsules = readJsonSafe(teamCapsulesPath, []);
 
-  const mergedGenes = mergeById(existingGenes, exported.bundle.genes).merged;
-  const mergedCapsules = mergeById(existingCapsules, exported.bundle.capsules).merged;
+  const mergedGenes = mergeTeamAssetsForPush(existingGenes, localTeamGenes);
+  const mergedCapsules = mergeTeamAssetsForPush(existingCapsules, localTeamCapsules);
 
   const leakCheck = fullLeakCheck({ genes: mergedGenes, capsules: mergedCapsules });
   if (leakCheck.found) {
@@ -680,14 +842,35 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
   writeJson(teamGenesPath, mergedGenes);
   writeJson(teamCapsulesPath, mergedCapsules);
 
+  const syncBackLocalDeltas = (filePath, remoteMerged) => {
+    const remoteById = new Map(remoteMerged.map((a) => [a.id, a]));
+    const localList = readJsonSafe(filePath, []);
+    let changed = false;
+    const nextList = localList.map((item) => {
+      const r = remoteById.get(item.id);
+      if (!r) return item;
+      if (item.pendingSuccessDelta || item.pendingFailureDelta || item.successCount !== r.successCount || item.failureCount !== r.failureCount) {
+        changed = true;
+        const { pendingSuccessDelta, pendingFailureDelta, ...rest } = item;
+        return { ...rest, successCount: r.successCount, failureCount: r.failureCount };
+      }
+      return item;
+    });
+    if (changed) writeJson(filePath, nextList);
+  };
+
   const status = await runGit(targetRepo, ["status", "--porcelain", "assets/gep/team-genes.json", "assets/gep/team-capsules.json"]);
   if (!status) {
+    syncBackLocalDeltas(path.join(evoHome, "genes.json"), mergedGenes);
+    syncBackLocalDeltas(path.join(evoHome, "capsules.json"), mergedCapsules);
     return { ok: true, pushed: false, message: "Team assets are already up to date.", repoPath: targetRepo };
   }
 
   await runGit(targetRepo, ["add", "assets/gep/team-genes.json", "assets/gep/team-capsules.json"]);
   await runGit(targetRepo, ["commit", "-m", commitMessage || "chore(evo): sync sanitized team genes and capsules"]);
   await runGit(targetRepo, ["push"]);
+  syncBackLocalDeltas(path.join(evoHome, "genes.json"), mergedGenes);
+  syncBackLocalDeltas(path.join(evoHome, "capsules.json"), mergedCapsules);
   appendEvent(evoHome, {
     event: "sync_push",
     genesCount: mergedGenes.length,

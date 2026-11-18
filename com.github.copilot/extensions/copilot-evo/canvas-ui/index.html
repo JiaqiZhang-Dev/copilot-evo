@@ -20,6 +20,7 @@
           </div>
         </div>
         <div class="actions">
+          <button id="btn-refresh" class="btn" type="button" title="Reload from disk">Refresh</button>
           <button id="btn-pull" class="btn" type="button">Pull</button>
           <button id="btn-push" class="btn btn-primary" type="button">Push Team</button>
         </div>
@@ -52,6 +53,7 @@
 
       <nav class="tabs" role="tablist">
         <button class="tab active" data-tab="assets" type="button">Assets <span id="count-assets" class="pill">0</span></button>
+        <button class="tab" data-tab="relationships" type="button">Relationships <span id="count-links" class="pill">0</span></button>
         <button class="tab" data-tab="candidates" type="button">Candidates <span id="count-candidates" class="pill">0</span></button>
         <button class="tab" data-tab="events" type="button">Evolution Events <span id="count-events" class="pill">0</span></button>
       </nav>
@@ -77,8 +79,15 @@
       <section id="events-toolbar" class="toolbar hidden">
         <div class="filters">
           <button class="chip active" data-event-filter="all" type="button">All Events</button>
-          <button class="chip" data-event-filter="evolution" type="button">Solidify & Sync</button>
+          <button class="chip" data-event-filter="evolution" type="button">Solidify, Sync & Outcomes</button>
           <button class="chip" data-event-filter="signals" type="button">Captured Failure Signals</button>
+        </div>
+      </section>
+
+      <section id="rel-toolbar" class="toolbar hidden">
+        <div class="filters">
+          <button class="chip active" data-rel-mode="all" type="button">Lineage + Shared Signals</button>
+          <button class="chip" data-rel-mode="lineage" type="button">Explicit Lineage Only</button>
         </div>
       </section>
 

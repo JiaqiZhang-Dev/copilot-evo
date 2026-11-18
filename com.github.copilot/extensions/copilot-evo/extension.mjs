@@ -8,12 +8,15 @@ import {
   exportBundle,
   extractSignals,
   formatAssetPreview,
+  hasNegativeFeedbackCue,
   hasStrategyCue,
   hashProjectId,
   importBundle,
   initStore,
+  isTrivialToolFailure,
   loadStore,
   manageAsset,
+  recordAssetOutcome,
   resolveSyncRepoPath,
   selectAssets,
   solidifyAsset,
@@ -22,7 +25,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.4.0";
+const EXTENSION_VERSION = "0.4.1";
 let lastWorkingDirectory = process.cwd();
 const canvasServer = createEvoCanvasServer({
   evoHome,
@@ -31,6 +34,8 @@ const canvasServer = createEvoCanvasServer({
 const sessionState = {
   protocolInjected: false,
   pendingFailure: null,
+  activeAssets: [],
+  recentFailureFingerprints: new Map(),
   lastSolidifyAt: 0,
   recentFailures: [],
   recoveries: 0,
@@ -41,7 +46,8 @@ const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
   "2. Auto-discover & solidify (English only): When you resolve and verify a non-obvious error/failure, or when the user states a reusable cross-project rule/preference (even if also saved via `store_memory`), proactively call `evo_solidify` without waiting to be asked (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English, translating if the conversation is in another language. Use `scope: \"team\"` when generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
-  "3. Preview & ask before sync: Immediately after `evo_solidify` succeeds for a shareable asset, present the full English asset preview (`id`, `scope`, `title`, `summary`, `signals`, `strategy`/`solution`) to the user, then proactively ask (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
+  "3. Auto-score from loop & user feedback: When recalled Genes/Capsules fail in practice or the user corrects/disagrees with an active guidance, automatically judge and call `evo_manage_asset({ action: \"downvote\", id })` (or supersede it with `evo_solidify` + `supersedes`). Do not ask the user to score manually.",
+  "4. Preview & ask before sync: Immediately after `evo_solidify` succeeds for a shareable asset, present the full English asset preview (`id`, `scope`, `title`, `summary`, `signals`, `strategy`/`solution`) to the user, then proactively ask (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
 ].join("\n");
 
 function formatAssetsContext(assets) {
@@ -66,6 +72,7 @@ const session = await joinSession({
         ? selectAssets({ signals, repo: currentRepo, genes, capsules, limit: config.autoInjectLimit || 3 })
         : [];
       sessionState.protocolInjected = true;
+      sessionState.activeAssets = matched.map((a) => a.id);
       const parts = [ACTIVE_PROTOCOL];
       if (matched.length) parts.push(formatAssetsContext(matched));
       return { additionalContext: parts.join("\n\n") };
@@ -94,7 +101,13 @@ const session = await joinSession({
         sessionState.protocolInjected = true;
         parts.push(ACTIVE_PROTOCOL);
       }
+      if (hasNegativeFeedbackCue(input.prompt) && sessionState.activeAssets.length) {
+        parts.push(
+          `[copilot-evo feedback signal] The user expressed dissatisfaction or correction while active assets (${sessionState.activeAssets.join(", ")}) were in context. If any of those assets misled the approach, call \`evo_manage_asset({ action: "downvote", id })\` or supersede it via \`evo_solidify\`.`
+        );
+      }
       if (matched.length) {
+        sessionState.activeAssets = matched.map((a) => a.id);
         parts.push(formatAssetsContext(matched));
       }
       if (hasStrategyCue(input.prompt)) {
@@ -128,21 +141,33 @@ const session = await joinSession({
     },
 
     onPostToolUseFailure: async (input) => {
-      if (String(input.toolName || "").startsWith("evo_")) return;
-      const cleanError = sanitizePayload(String(input.error || "")).slice(0, 280);
-      const signals = extractSignals(cleanError, [input.toolName], { includePlatform: true });
-      const entry = { toolName: input.toolName, signals, error: cleanError };
-      sessionState.pendingFailure = entry;
-      sessionState.recentFailures.push(entry);
-      if (sessionState.recentFailures.length > 5) sessionState.recentFailures.shift();
+      const toolName = String(input.toolName || "");
+      if (toolName.startsWith("evo_")) return;
+      const rawError = String(input.error || "");
+      if (isTrivialToolFailure(toolName, rawError)) return;
 
-      appendEvent(evoHome, {
-        event: "tool_failure",
-        toolName: input.toolName,
-        signals,
-        project: hashProjectId(input.workingDirectory),
-      });
-      canvasServer.broadcastUpdate("tool_failure");
+      const cleanError = sanitizePayload(rawError).slice(0, 280);
+      const signals = extractSignals(cleanError, [toolName], { includePlatform: true });
+      const fingerprint = `${toolName}:${signals.join(",")}`;
+      const now = Date.now();
+      const lastSeen = sessionState.recentFailureFingerprints.get(fingerprint) || 0;
+      const isDuplicate = now - lastSeen < 10000;
+      sessionState.recentFailureFingerprints.set(fingerprint, now);
+
+      const entry = { toolName, signals, error: cleanError };
+      sessionState.pendingFailure = entry;
+      if (!isDuplicate) {
+        sessionState.recentFailures.push(entry);
+        if (sessionState.recentFailures.length > 5) sessionState.recentFailures.shift();
+
+        appendEvent(evoHome, {
+          event: "tool_failure",
+          toolName,
+          signals,
+          project: hashProjectId(input.workingDirectory),
+        });
+        canvasServer.broadcastUpdate("tool_failure");
+      }
 
       const { genes, capsules } = loadStore(evoHome);
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
@@ -153,6 +178,9 @@ const session = await joinSession({
         capsules,
         limit: 2,
       });
+      if (matched.length) {
+        sessionState.activeAssets = matched.map((a) => a.id);
+      }
       const hint = matched.length
         ? `${formatAssetsContext(matched)}\nOnce resolved and verified, proactively call \`evo_solidify\` and ask whether to sync via \`evo_sync_repo\`.`
         : `[copilot-evo] Failure signals recorded (${signals.join(", ")}). Once resolved and verified, proactively call \`evo_solidify\` if the fix is reusable, then ask whether to sync via \`evo_sync_repo\`.`;
@@ -180,6 +208,10 @@ const session = await joinSession({
       const resolvedSignals = sessionState.pendingFailure.signals;
       sessionState.pendingFailure = null;
       sessionState.recoveries++;
+      if (sessionState.activeAssets.length) {
+        recordAssetOutcome(evoHome, sessionState.activeAssets, "success", "tool_recovery");
+        canvasServer.broadcastUpdate("auto_outcome");
+      }
       return {
         additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable across tasks/projects, load \`evo_solidify\` and \`evo_sync_repo\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` now (use \`scope: "team"\` when generalizable and secret-free), then ask the user whether to sync via \`evo_sync_repo\`.`,
       };
@@ -379,7 +411,7 @@ const session = await joinSession({
       inputSchema: {
         type: "object",
         properties: {
-          tab: { type: "string", enum: ["assets", "candidates", "events"] },
+          tab: { type: "string", enum: ["assets", "relationships", "candidates", "events"] },
           filter: { type: "string", enum: ["all", "team", "local", "starter"] },
           assetId: { type: "string" },
         },
@@ -400,7 +432,7 @@ const session = await joinSession({
             type: "object",
             properties: {
               assetId: { type: "string" },
-              tab: { type: "string", enum: ["assets", "candidates", "events"] },
+              tab: { type: "string", enum: ["assets", "relationships", "candidates", "events"] },
             },
             required: ["assetId"],
           },

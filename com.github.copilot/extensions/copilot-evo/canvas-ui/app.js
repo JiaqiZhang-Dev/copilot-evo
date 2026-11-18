@@ -5,6 +5,7 @@ let activeFilter = "all";
 let activeKind = "all";
 let repoFilter = "all";
 let eventFilter = "all";
+let relMode = "all";
 let searchQuery = "";
 let selectedId = "";
 let pendingDeleteId = "";
@@ -69,6 +70,20 @@ function formatEventMeta(ev) {
     case "promote":
     case "promote_team":
       return { label: "Promoted", cls: "ev-ok", desc: `${ev.assetType || "Asset"}: ${ev.assetId || ""}` };
+    case "auto_success":
+    case "feedback_upvote":
+      return {
+        label: "Auto +Score",
+        cls: "ev-ok",
+        desc: `${(ev.assetIds || [ev.assetId]).filter(Boolean).join(", ")} (${ev.reason || "verified"})`,
+      };
+    case "auto_failure":
+    case "feedback_downvote":
+      return {
+        label: "Auto -Score",
+        cls: "ev-warn",
+        desc: `${(ev.assetIds || [ev.assetId]).filter(Boolean).join(", ")} (${ev.reason || "feedback"})`,
+      };
     case "delete":
       return { label: "Deleted", cls: "", desc: `Removed ${ev.assetId || ""}` };
     case "tool_failure":
@@ -109,12 +124,6 @@ function renderDetail(item, isCandidate = false) {
     !isCandidate && item.scope === "local"
       ? `<button class="btn" data-promote-team="${escapeHtml(item.id)}" type="button">Share to Team</button>`
       : "";
-  const pinBtn = !isCandidate
-    ? `<button class="btn" data-feedback="${item.pinned ? "unpin" : "pin"}" type="button">${item.pinned ? "Unpin" : "Pin"}</button>`
-    : "";
-  const voteBtns = !isCandidate
-    ? `<button class="btn" data-feedback="upvote" type="button">+1</button><button class="btn" data-feedback="downvote" type="button">-1</button>`
-    : "";
   const copyBtn = `<button class="btn" data-copy="${escapeHtml(item.id)}" type="button">Copy JSON</button>`;
 
   const rel = item.relationships || {};
@@ -124,14 +133,21 @@ function renderDetail(item, isCandidate = false) {
   if (rel.supersedes) relLinks.push({ role: "Supersedes", item: rel.supersedes });
   for (const child of rel.children || []) relLinks.push({ role: child.type === "Capsule" ? "Capsule" : "Derived", item: child });
   for (const rep of rel.supersededBy || []) relLinks.push({ role: "Replaced by", item: rep });
-  const lineageHtml = relLinks.length
-    ? `<div class="section-label">Lineage & Relationships</div><div class="link-list">${relLinks
-        .map(
-          (l) =>
-            `<button class="link-pill" data-jump="${escapeHtml(l.item.id)}" type="button">${escapeHtml(l.role)}: ${escapeHtml(l.item.id)}</button>`
-        )
-        .join("")}</div>`
-    : "";
+  for (const shared of rel.sharedSignals || []) {
+    if (!relLinks.some((l) => l.item.id === shared.id)) {
+      relLinks.push({ role: `Shared (${shared.overlap.join(", ")})`, item: shared });
+    }
+  }
+  const lineageHtml = `<div class="section-label">Relationships</div>${
+    relLinks.length
+      ? `<div class="link-list">${relLinks
+          .map(
+            (l) =>
+              `<button class="link-pill" data-jump="${escapeHtml(l.item.id)}" type="button">${escapeHtml(l.role)}: ${escapeHtml(l.item.id)}</button>`
+          )
+          .join("")}</div>`
+      : `<p class="muted">No lineage or shared-signal links yet.</p>`
+  }`;
 
   let deleteControl = "";
   if (item.scope !== "starter") {
@@ -145,7 +161,7 @@ function renderDetail(item, isCandidate = false) {
   pane.innerHTML = `
     <div class="detail-head">
       <div>
-        <h2 class="detail-title">${item.pinned ? "📌 " : ""}${escapeHtml(item.title)}</h2>
+        <h2 class="detail-title">${escapeHtml(item.title)}</h2>
         <div class="detail-id">
           <span class="badge ${kindCls}">${escapeHtml((item.type || "Gene").toUpperCase())}</span>
           <span class="badge gdi-badge">GDI ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
@@ -153,7 +169,7 @@ function renderDetail(item, isCandidate = false) {
           <span>${escapeHtml(item.id)}</span> · <span>${escapeHtml(item.scope || "local")}</span>
         </div>
       </div>
-      <div class="actions">${promoteCandidateBtn}${promoteTeamBtn}${pinBtn}${voteBtns}${copyBtn}${deleteControl}</div>
+      <div class="actions">${promoteCandidateBtn}${promoteTeamBtn}${copyBtn}${deleteControl}</div>
     </div>
     <div class="section-label">Trigger Signals</div>
     <div class="badges">${signals || '<span class="muted">None</span>'}</div>
@@ -164,15 +180,12 @@ function renderDetail(item, isCandidate = false) {
     ${guardrail}
     ${validation}
     ${lineageHtml}
-    <div class="section-label">Provenance</div>
+    <div class="section-label">Provenance (Auto-scored from loop)</div>
     <p class="muted">Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0} · Source: ${escapeHtml(item.sourceProject || "bundled")} · Updated: ${escapeHtml(item.updatedAt || "bundled")}</p>
   `;
 
   pane.querySelector("[data-promote]")?.addEventListener("click", () => mutate("/api/assets/promote", { id: item.id }));
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
-  pane.querySelectorAll("[data-feedback]").forEach((btn) => {
-    btn.addEventListener("click", () => mutate("/api/assets/feedback", { id: item.id, action: btn.dataset.feedback }));
-  });
   pane.querySelectorAll("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", () => {
       activeTab = "assets";
@@ -206,12 +219,137 @@ function renderDetail(item, isCandidate = false) {
   });
 }
 
+function collectGraphData(assets) {
+  const edges = [];
+  const seenShared = new Set();
+  const idSet = new Set(assets.map((a) => a.id));
+
+  for (const a of assets) {
+    if (a.geneId && idSet.has(a.geneId)) {
+      edges.push({ from: a.geneId, to: a.id, kind: "gene", label: "applied by" });
+    }
+    if (a.parentId && idSet.has(a.parentId)) {
+      edges.push({ from: a.parentId, to: a.id, kind: "parent", label: "refined" });
+    }
+    if (a.supersedes && idSet.has(a.supersedes)) {
+      edges.push({ from: a.id, to: a.supersedes, kind: "supersedes", label: "supersedes" });
+    }
+    if (relMode === "all") {
+      for (const s of a.relationships?.sharedSignals || []) {
+        if (!idSet.has(s.id)) continue;
+        const pairKey = [a.id, s.id].sort().join("|");
+        if (seenShared.has(pairKey)) continue;
+        seenShared.add(pairKey);
+        edges.push({ from: a.id, to: s.id, kind: "signal", label: s.overlap.join(", ") });
+      }
+    }
+  }
+  return edges;
+}
+
+function renderRelationshipsView(listPane, allAssets) {
+  if (!allAssets.length) {
+    listPane.innerHTML = `<div class="empty">No assets available to map relationships.</div>`;
+    renderDetail(null);
+    return;
+  }
+  if (!allAssets.some((a) => a.id === selectedId)) {
+    selectedId = allAssets[0].id;
+  }
+
+  const genes = allAssets.filter((a) => a.type !== "Capsule");
+  const capsules = allAssets.filter((a) => a.type === "Capsule");
+  const edges = collectGraphData(allAssets);
+
+  const nodeW = 195;
+  const nodeH = 48;
+  const colX = capsules.length ? [16, 250] : [16];
+  const rows = Math.max(genes.length, capsules.length, 1);
+  const svgH = Math.max(140, rows * 68 + 20);
+  const svgW = capsules.length ? 465 : 240;
+
+  const positions = new Map();
+  genes.forEach((g, idx) => positions.set(g.id, { x: colX[0], y: 14 + idx * 68, asset: g }));
+  capsules.forEach((c, idx) => positions.set(c.id, { x: colX[1], y: 14 + idx * 68, asset: c }));
+
+  const edgeSvg = edges
+    .map((e) => {
+      const p1 = positions.get(e.from);
+      const p2 = positions.get(e.to);
+      if (!p1 || !p2) return "";
+      const x1 = p1.x + (p1.x === p2.x ? nodeW : nodeW);
+      const y1 = p1.y + nodeH / 2;
+      const x2 = p2.x + (p1.x === p2.x ? nodeW : 0);
+      const y2 = p2.y + nodeH / 2;
+      const isActive = e.from === selectedId || e.to === selectedId;
+      const stroke =
+        e.kind === "signal"
+          ? "var(--muted)"
+          : e.kind === "supersedes"
+          ? "var(--warn)"
+          : "var(--accent)";
+      const dash = e.kind === "signal" ? 'stroke-dasharray="4 3"' : "";
+      const opacity = isActive ? "0.95" : "0.4";
+      const pathD =
+        p1.x === p2.x
+          ? `M ${p1.x + nodeW} ${y1} C ${p1.x + nodeW + 36} ${y1}, ${p2.x + nodeW + 36} ${y2}, ${p2.x + nodeW} ${y2}`
+          : `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+      return `<path d="${pathD}" fill="none" stroke="${stroke}" stroke-width="${isActive ? 2 : 1.3}" stroke-opacity="${opacity}" ${dash} />`;
+    })
+    .join("");
+
+  const nodeSvg = allAssets
+    .map((a) => {
+      const pos = positions.get(a.id);
+      if (!pos) return "";
+      const selected = a.id === selectedId;
+      const isCap = a.type === "Capsule";
+      const stroke = selected ? "var(--accent)" : "var(--border)";
+      const fill = selected ? "var(--accent-muted)" : "var(--bg)";
+      const badgeColor = isCap ? "var(--accent)" : "var(--gene)";
+      const shortTitle = (a.title || a.id).slice(0, 22) + ((a.title || "").length > 22 ? "…" : "");
+      return `
+      <g class="graph-node" data-node-id="${escapeHtml(a.id)}">
+        <rect x="${pos.x}" y="${pos.y}" width="${nodeW}" height="${nodeH}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 2 : 1}" />
+        <text x="${pos.x + 10}" y="${pos.y + 18}" fill="${badgeColor}" font-size="10" font-weight="700" font-family="monospace">${isCap ? "CAPSULE" : "GENE"} · GDI ${a.gdiScore || "-"}</text>
+        <text x="${pos.x + 10}" y="${pos.y + 35}" fill="var(--text)" font-size="11.5" font-weight="600">${escapeHtml(shortTitle)}</text>
+      </g>`;
+    })
+    .join("");
+
+  listPane.innerHTML = `
+    <div class="graph-legend">
+      <span>● Green: Gene</span>
+      <span>● Blue: Capsule</span>
+      <span>— Solid: Lineage (geneId / parentId / supersedes)</span>
+      <span>-- Dashed: Shared Signals (${edges.filter((e) => e.kind === "signal").length})</span>
+    </div>
+    <div class="graph-wrap">
+      <svg class="graph-svg" viewBox="0 0 ${svgW} ${svgH}" width="${svgW}" height="${svgH}">
+        ${edgeSvg}
+        ${nodeSvg}
+      </svg>
+    </div>
+  `;
+
+  listPane.querySelectorAll("[data-node-id]").forEach((node) => {
+    node.addEventListener("click", () => {
+      selectedId = node.dataset.nodeId;
+      render();
+    });
+  });
+
+  const selected = allAssets.find((a) => a.id === selectedId) || allAssets[0];
+  renderDetail(selected, false);
+}
+
 function render() {
   if (!state) return;
   const genes = state.genes || [];
   const capsules = state.capsules || [];
   const allAssets = [...genes, ...capsules];
   const totalReuses = allAssets.reduce((sum, a) => sum + (a.successCount || 0), 0);
+  const linkCount = collectGraphData(allAssets).length;
 
   el("repo-status").textContent = state.syncRepoPath
     ? `Sync repo: ${state.syncRepoPath}`
@@ -224,10 +362,12 @@ function render() {
   el("kpi-events").textContent = String(state.counts?.events || 0);
 
   el("count-assets").textContent = String(allAssets.length);
+  el("count-links").textContent = String(linkCount);
   el("count-candidates").textContent = String(state.candidates?.length || 0);
   el("count-events").textContent = String(state.counts?.events || 0);
 
   el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets");
+  el("rel-toolbar").classList.toggle("hidden", activeTab !== "relationships");
   el("events-toolbar").classList.toggle("hidden", activeTab !== "events");
   el("content").classList.toggle("single-pane", activeTab === "events");
   el("detail-pane").classList.toggle("hidden", activeTab === "events");
@@ -236,6 +376,7 @@ function render() {
   document.querySelectorAll(".chip[data-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.filter === activeFilter));
   document.querySelectorAll(".seg[data-kind]").forEach((btn) => btn.classList.toggle("active", btn.dataset.kind === activeKind));
   document.querySelectorAll(".chip[data-event-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.eventFilter === eventFilter));
+  document.querySelectorAll(".chip[data-rel-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.relMode === relMode));
   const repoBtn = el("chip-repo");
   if (repoBtn) {
     repoBtn.classList.toggle("active", repoFilter === "matching");
@@ -243,6 +384,11 @@ function render() {
   }
 
   const listPane = el("list-pane");
+
+  if (activeTab === "relationships") {
+    renderRelationshipsView(listPane, getAllAssets());
+    return;
+  }
 
   if (activeTab === "events") {
     const events = getFilteredEvents();
@@ -396,6 +542,13 @@ async function init() {
     });
   });
 
+  document.querySelectorAll(".chip[data-rel-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      relMode = btn.dataset.relMode;
+      render();
+    });
+  });
+
   el("chip-repo")?.addEventListener("click", () => {
     repoFilter = repoFilter === "matching" ? "all" : "matching";
     render();
@@ -406,13 +559,22 @@ async function init() {
     render();
   });
 
+  el("btn-refresh")?.addEventListener("click", () => loadState(false));
   el("btn-pull").addEventListener("click", () => mutate("/api/sync/pull", {}));
   el("btn-push").addEventListener("click", () => mutate("/api/sync/push", {}));
 
   await loadState(true);
 
   const es = new EventSource("/api/events");
-  es.addEventListener("update", () => loadState(true));
+  es.addEventListener("update", (ev) => {
+    let reason = "";
+    try {
+      reason = JSON.parse(ev.data || "{}").reason || "";
+    } catch {
+      reason = "";
+    }
+    loadState(reason === "open" || reason === "action");
+  });
 }
 
 init();

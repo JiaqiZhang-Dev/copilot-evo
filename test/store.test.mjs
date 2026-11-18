@@ -9,12 +9,15 @@ import {
   exportBundle,
   extractSignals,
   getAssetRelationships,
+  hasNegativeFeedbackCue,
   hasStrategyCue,
   importBundle,
   initStore,
+  isTrivialToolFailure,
   loadStore,
   manageAsset,
   normalizeRepoSlug,
+  recordAssetOutcome,
   selectAssets,
   solidifyAsset,
   syncRepoPull,
@@ -244,6 +247,20 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
     assert.equal(pullRes.imported, 1);
     const storeB = loadStore(homeB);
     assert.ok(storeB.genes.some((g) => g.id === "gene-synced-rule"));
+
+    // Both clones record local outcome deltas and merge without losing counts.
+    recordAssetOutcome(homeA, ["gene-synced-rule"], "success", "cloneA_hit");
+    recordAssetOutcome(homeB, ["gene-synced-rule"], "success", "cloneB_hit");
+    await syncRepoPush(homeA, { repoPath: cloneA });
+    const pushB2 = await syncRepoPush(homeB, { repoPath: cloneB });
+    assert.equal(pushB2.pushed, true);
+
+    await syncRepoPull(homeA, { repoPath: cloneA });
+    const afterA = loadStore(homeA).genes.find((g) => g.id === "gene-synced-rule");
+    const afterB = loadStore(homeB).genes.find((g) => g.id === "gene-synced-rule");
+    assert.equal(afterA.successCount, 3);
+    assert.equal(afterB.successCount, 3);
+    assert.equal(afterA.pendingSuccessDelta, undefined);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -340,6 +357,16 @@ test("GDI rank, pin/vote feedback, and Gene/Capsule lineage work together", () =
     const baseInspect = manageAsset("inspect", "gene-base-strategy", { evoHome: home, bundledDir });
     assert.equal(baseInspect.relationships.children.length, 2);
     assert.equal(baseInspect.relationships.supersededBy[0].id, "gene-v2-strategy");
+    assert.ok(baseInspect.relationships.sharedSignals.length >= 2);
+    assert.equal(baseInspect.asset.successCount, 3);
+
+    const updated = recordAssetOutcome(home, ["capsule-derived-fix"], "success", "test_recovery");
+    assert.deepEqual(updated, ["capsule-derived-fix"]);
+    assert.equal(hasNegativeFeedbackCue("这个方案不对，还是报错"), true);
+    assert.equal(hasNegativeFeedbackCue("Looks good"), false);
+    assert.equal(isTrivialToolFailure("create", "File already exists"), true);
+    assert.equal(isTrivialToolFailure("edit", "No match found: old_str not found"), true);
+    assert.equal(isTrivialToolFailure("powershell", "npm ERR! code E401"), false);
 
     const beforeScore = computeGdiScore(baseInspect.asset);
     const pinned = manageAsset("pin", "capsule-derived-fix", { evoHome: home, bundledDir });
