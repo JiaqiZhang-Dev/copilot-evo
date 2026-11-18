@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { fullLeakCheck, isValidationCommandAllowed, sanitizePayload } from "./sanitize.mjs";
 
@@ -145,11 +145,15 @@ export function readRecentEvents(evoHome, limit = 50) {
 
 export function formatAssetPreview(asset) {
   if (!asset) return "";
+  const repoLabel = asset.repoScope && asset.repoScope !== "*" ? ` repo:${asset.repoScope}` : " repo:*";
   const lines = [
-    `[${asset.type}:${asset.id}] (${asset.scope}) ${asset.title}`,
+    `[${asset.type}:${asset.id}] (${asset.scope}${repoLabel}) ${asset.title}`,
     `Summary: ${asset.summary}`,
     `Signals: ${(asset.signals || []).join(", ") || "none"}`,
   ];
+  if (asset.geneId) lines.push(`Derived from Gene: ${asset.geneId}`);
+  if (asset.parentId) lines.push(`Parent Asset: ${asset.parentId}`);
+  if (asset.supersedes) lines.push(`Supersedes: ${asset.supersedes}`);
   if (asset.solution) lines.push(`Solution: ${asset.solution}`);
   if (asset.strategy?.length) {
     lines.push("Strategy:");
@@ -159,6 +163,68 @@ export function formatAssetPreview(asset) {
     lines.push(`Validation: ${asset.validation.join(", ")}`);
   }
   return lines.join("\n");
+}
+
+export function normalizeRepoSlug(raw) {
+  if (!raw || typeof raw !== "string") return "*";
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "*" || trimmed.toLowerCase() === "global") return "*";
+  const cleaned = trimmed
+    .replace(/^https?:\/\/(?:[^@/\s]+@)?[^/\s]+\//i, "")
+    .replace(/^git@[^:\s]+:/i, "")
+    .replace(/^ssh:\/\/(?:[^@/\s]+@)?[^/\s]+\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/^\/+|\/+$/g, "");
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(cleaned) ? cleaned : "*";
+}
+
+export function detectRepoSlug(workingDirectory) {
+  if (!workingDirectory || !fs.existsSync(workingDirectory)) return "";
+  try {
+    const remote = execFileSync("git", ["-C", workingDirectory, "config", "--get", "remote.origin.url"], {
+      encoding: "utf8",
+      timeout: 2000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const slug = normalizeRepoSlug(remote);
+    return slug === "*" ? "" : slug;
+  } catch {
+    return "";
+  }
+}
+
+export function computeGdiScore(asset, nowMs = Date.now()) {
+  const success = Math.max(0, Number(asset?.successCount || 0));
+  const failure = Math.max(0, Number(asset?.failureCount || 0));
+  const priority = Number(asset?.priority || 0);
+  const pinnedBoost = asset?.pinned ? 5 : 0;
+  const validationBoost = Array.isArray(asset?.validation) && asset.validation.length > 0 ? 0.5 : 0;
+  const reuseScore = Math.min(4, Math.log2(1 + success) * 1.4);
+  const failurePenalty = Math.min(3, failure * 0.8);
+  let freshness = 0.5;
+  if (asset?.updatedAt) {
+    const ageDays = Math.max(0, (nowMs - Date.parse(asset.updatedAt)) / 86400000);
+    if (Number.isFinite(ageDays)) freshness = 1 / (1 + ageDays / 30);
+  }
+  const raw = 1 + priority * 0.15 + reuseScore + validationBoost + freshness + pinnedBoost - failurePenalty;
+  return Math.round(Math.max(0.1, raw) * 10) / 10;
+}
+
+export function getAssetRelationships(asset, allAssets) {
+  if (!asset) return { parent: null, gene: null, supersedes: null, children: [], supersededBy: [] };
+  const byId = new Map(allAssets.map((item) => [item.id, item]));
+  const pickSummary = (item) => (item ? { id: item.id, type: item.type, title: item.title, scope: item.scope } : null);
+  return {
+    gene: asset.geneId ? pickSummary(byId.get(asset.geneId)) : null,
+    parent: asset.parentId ? pickSummary(byId.get(asset.parentId)) : null,
+    supersedes: asset.supersedes ? pickSummary(byId.get(asset.supersedes)) : null,
+    children: allAssets
+      .filter((item) => item.id !== asset.id && (item.parentId === asset.id || item.geneId === asset.id))
+      .map(pickSummary),
+    supersededBy: allAssets
+      .filter((item) => item.id !== asset.id && item.supersedes === asset.id)
+      .map(pickSummary),
+  };
 }
 
 export function hashProjectId(workingDirectory) {
@@ -205,33 +271,53 @@ export function extractSignals(text, extraSignals = [], options = {}) {
   return Array.from(signals);
 }
 
-export function selectAssets({ signals = [], query = "", scope = "", kind = "", genes = [], capsules = [], limit = 3 }) {
+export function selectAssets({
+  signals = [],
+  query = "",
+  scope = "",
+  kind = "",
+  repo = "",
+  includeSuperseded = false,
+  genes = [],
+  capsules = [],
+  limit = 3,
+}) {
   const sigSet = new Set(signals.map((s) => String(s).toLowerCase()));
   const terms = String(query)
     .toLowerCase()
     .split(/\s+/)
     .filter((t) => t.length >= 2);
   const all = [...genes, ...capsules];
+  const supersededIds = new Set(all.map((a) => a.supersedes).filter(Boolean));
+  const normalizedRepo = repo && repo !== "*" ? normalizeRepoSlug(repo) : "";
+  const nowMs = Date.now();
 
   const scored = [];
   for (const asset of all) {
     if (scope && asset.scope !== scope) continue;
     if (kind && asset.type !== kind) continue;
-    let score = 0;
+    if (!includeSuperseded && supersededIds.has(asset.id) && !terms.includes(asset.id.toLowerCase())) continue;
+
+    const assetRepo = normalizeRepoSlug(asset.repoScope || "*");
+    if (assetRepo !== "*" && normalizedRepo && assetRepo.toLowerCase() !== normalizedRepo.toLowerCase()) continue;
+    if (assetRepo !== "*" && !normalizedRepo && !terms.length && sigSet.size > 0) continue;
+
+    let relevance = 0;
     const assetSignals = (asset.signals || []).map((s) => String(s).toLowerCase());
     for (const sig of assetSignals) {
-      if (sigSet.has(sig)) score += 3;
+      if (sigSet.has(sig)) relevance += 3;
     }
     const haystack = `${asset.id || ""} ${asset.title || ""} ${asset.summary || ""} ${assetSignals.join(" ")}`.toLowerCase();
     for (const term of terms) {
-      if (haystack.includes(term)) score += 2;
+      if (haystack.includes(term)) relevance += 2;
     }
     if (sigSet.size === 0 && terms.length === 0) {
-      score = 1;
+      relevance = 1;
     }
-    if (score > 0) {
-      score += Math.min(3, (asset.priority || 0) * 0.1 + (asset.successCount || 0) * 0.2);
-      scored.push({ asset, score });
+    if (relevance > 0) {
+      const repoBoost = assetRepo !== "*" && normalizedRepo && assetRepo.toLowerCase() === normalizedRepo.toLowerCase() ? 1.5 : 0;
+      const gdiScore = computeGdiScore(asset, nowMs);
+      scored.push({ asset, score: relevance + repoBoost + gdiScore * 0.35, gdiScore });
     }
   }
 
@@ -277,6 +363,11 @@ export function solidifyAsset(input, options = {}) {
     }
   }
 
+  const resolvedRepoScope =
+    input.repoScope === "current"
+      ? detectRepoSlug(input.workingDirectory) || "*"
+      : normalizeRepoSlug(input.repoScope || "*");
+
   const rawAsset = {
     id,
     type: kind,
@@ -287,6 +378,10 @@ export function solidifyAsset(input, options = {}) {
     solution: input.solution || "",
     validation,
     scope,
+    repoScope: resolvedRepoScope,
+    ...(input.geneId ? { geneId: slugify(input.geneId) } : {}),
+    ...(input.parentId ? { parentId: slugify(input.parentId) } : {}),
+    ...(input.supersedes ? { supersedes: slugify(input.supersedes) } : {}),
     sourceProject: hashProjectId(input.workingDirectory),
     updatedAt: new Date().toISOString(),
   };
@@ -356,8 +451,31 @@ export function manageAsset(action, id, options = {}) {
   }
 
   if (action === "inspect") {
-    const found = [...genes, ...capsules, ...candidates].find((a) => a.id === id);
-    return found ? { ok: true, asset: found } : { ok: false, error: `Asset not found: ${id}` };
+    const allAssets = [...genes, ...capsules];
+    const found = [...allAssets, ...candidates].find((a) => a.id === id);
+    if (!found) return { ok: false, error: `Asset not found: ${id}` };
+    return {
+      ok: true,
+      asset: found,
+      gdiScore: computeGdiScore(found),
+      relationships: getAssetRelationships(found, allAssets),
+    };
+  }
+
+  if (action === "pin" || action === "unpin" || action === "upvote" || action === "downvote") {
+    const targetList = genes.some((a) => a.id === id) ? genes : capsules;
+    const idx = targetList.findIndex((a) => a.id === id);
+    if (idx < 0) return { ok: false, error: `Asset not found: ${id}` };
+    const current = { ...targetList[idx] };
+    if (action === "pin") current.pinned = true;
+    if (action === "unpin") current.pinned = false;
+    if (action === "upvote") current.successCount = (current.successCount || 0) + 1;
+    if (action === "downvote") current.failureCount = (current.failureCount || 0) + 1;
+    current.updatedAt = new Date().toISOString();
+    targetList[idx] = current;
+    writeJson(targetList === genes ? genesPath : capsulesPath, targetList);
+    appendEvent(evoHome, { event: `feedback_${action}`, assetId: current.id, assetType: current.type });
+    return { ok: true, asset: current, gdiScore: computeGdiScore(current) };
   }
 
   if (action === "promote") {

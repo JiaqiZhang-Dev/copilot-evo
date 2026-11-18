@@ -85,6 +85,19 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     assert.equal(promoteTeam.status, 200);
     const promoteBody = await promoteTeam.json();
     assert.equal(promoteBody.asset.scope, "team");
+
+    const feedbackRes = await fetch(`${baseUrl}/api/assets/feedback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Evo-Token": canvasToken,
+      },
+      body: JSON.stringify({ id: "capsule-local-promote", action: "pin" }),
+    });
+    assert.equal(feedbackRes.status, 200);
+    const feedbackBody = await feedbackRes.json();
+    assert.equal(feedbackBody.asset.pinned, true);
+    assert.ok(feedbackBody.gdiScore > 0);
   } finally {
     await server.closeInstance({ instanceId: "test-panel-1" });
     fs.rmSync(evoHome, { recursive: true, force: true });

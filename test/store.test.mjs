@@ -5,13 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
+  computeGdiScore,
   exportBundle,
   extractSignals,
+  getAssetRelationships,
   hasStrategyCue,
   importBundle,
   initStore,
   loadStore,
   manageAsset,
+  normalizeRepoSlug,
   selectAssets,
   solidifyAsset,
   syncRepoPull,
@@ -243,5 +246,111 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
     assert.ok(storeB.genes.some((g) => g.id === "gene-synced-rule"));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("repoScope filters repo-specific assets and boosts exact repo matches", () => {
+  const home = makeTempDir();
+  const bundledDir = makeTempDir();
+  try {
+    assert.equal(normalizeRepoSlug("https://user:secret@github.com/Azure/typespec-azure.git"), "Azure/typespec-azure");
+    assert.equal(normalizeRepoSlug("git@github.com:JiaqiZhang-Dev/copilot-evo.git"), "JiaqiZhang-Dev/copilot-evo");
+    assert.equal(normalizeRepoSlug("*"), "*");
+
+    solidifyAsset(
+      {
+        kind: "Gene",
+        id: "gene-global",
+        title: "Global rule",
+        summary: "Applies everywhere.",
+        signals: ["build_error"],
+        repoScope: "*",
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+    solidifyAsset(
+      {
+        kind: "Gene",
+        id: "gene-tspec-only",
+        title: "TypeSpec repo rule",
+        summary: "Applies only in typespec-azure.",
+        signals: ["build_error"],
+        repoScope: "Azure/typespec-azure",
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+
+    const { genes, capsules } = loadStore(home);
+    const inOtherRepo = selectAssets({ signals: ["build_error"], repo: "Other/repo", genes, capsules, limit: 5 });
+    assert.deepEqual(inOtherRepo.map((a) => a.id), ["gene-global"]);
+
+    const inTspecRepo = selectAssets({ signals: ["build_error"], repo: "Azure/typespec-azure", genes, capsules, limit: 5 });
+    assert.equal(inTspecRepo[0].id, "gene-tspec-only");
+    assert.ok(inTspecRepo.some((a) => a.id === "gene-global"));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(bundledDir, { recursive: true, force: true });
+  }
+});
+
+test("GDI rank, pin/vote feedback, and Gene/Capsule lineage work together", () => {
+  const home = makeTempDir();
+  const bundledDir = makeTempDir();
+  try {
+    solidifyAsset(
+      {
+        kind: "Gene",
+        id: "gene-base-strategy",
+        title: "Base strategy",
+        summary: "Original approach.",
+        signals: ["npm_error"],
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+    solidifyAsset(
+      {
+        kind: "Capsule",
+        id: "capsule-derived-fix",
+        title: "Derived fix",
+        summary: "Concrete verified fix.",
+        signals: ["npm_error"],
+        geneId: "gene-base-strategy",
+        validation: ["npm test"],
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+    solidifyAsset(
+      {
+        kind: "Gene",
+        id: "gene-v2-strategy",
+        title: "Refined strategy v2",
+        summary: "Supersedes base strategy.",
+        signals: ["npm_error"],
+        parentId: "gene-base-strategy",
+        supersedes: "gene-base-strategy",
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+
+    const baseInspect = manageAsset("inspect", "gene-base-strategy", { evoHome: home, bundledDir });
+    assert.equal(baseInspect.relationships.children.length, 2);
+    assert.equal(baseInspect.relationships.supersededBy[0].id, "gene-v2-strategy");
+
+    const beforeScore = computeGdiScore(baseInspect.asset);
+    const pinned = manageAsset("pin", "capsule-derived-fix", { evoHome: home, bundledDir });
+    assert.ok(pinned.gdiScore > beforeScore);
+
+    const { genes, capsules } = loadStore(home);
+    const active = selectAssets({ signals: ["npm_error"], genes, capsules, limit: 5 });
+    assert.equal(active[0].id, "capsule-derived-fix");
+    assert.ok(!active.some((a) => a.id === "gene-base-strategy"));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(bundledDir, { recursive: true, force: true });
   }
 });

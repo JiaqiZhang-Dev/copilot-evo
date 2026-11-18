@@ -4,6 +4,7 @@ import { sanitizePayload } from "./sanitize.mjs";
 import {
   appendEvent,
   countEvents,
+  detectRepoSlug,
   exportBundle,
   extractSignals,
   formatAssetPreview,
@@ -21,8 +22,12 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.3.1";
-const canvasServer = createEvoCanvasServer({ evoHome });
+const EXTENSION_VERSION = "0.4.0";
+let lastWorkingDirectory = process.cwd();
+const canvasServer = createEvoCanvasServer({
+  evoHome,
+  getCurrentRepo: () => detectRepoSlug(lastWorkingDirectory),
+});
 const sessionState = {
   protocolInjected: false,
   pendingFailure: null,
@@ -53,10 +58,12 @@ const session = await joinSession({
   hooks: {
     onSessionStart: async (input) => {
       initStore({ evoHome });
+      if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
+      const currentRepo = detectRepoSlug(lastWorkingDirectory);
       const { genes, capsules, config } = loadStore(evoHome);
       const signals = extractSignals(input.initialPrompt || "", [], { includePlatform: false });
       const matched = signals.length
-        ? selectAssets({ signals, genes, capsules, limit: config.autoInjectLimit || 3 })
+        ? selectAssets({ signals, repo: currentRepo, genes, capsules, limit: config.autoInjectLimit || 3 })
         : [];
       sessionState.protocolInjected = true;
       const parts = [ACTIVE_PROTOCOL];
@@ -65,6 +72,8 @@ const session = await joinSession({
     },
 
     onUserPromptSubmitted: async (input) => {
+      if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
+      const currentRepo = detectRepoSlug(lastWorkingDirectory);
       const { genes, capsules, config } = loadStore(evoHome);
       const failureSignals = sessionState.recentFailures.flatMap((f) => f.signals);
       const signals = extractSignals(input.prompt, failureSignals, { includePlatform: false });
@@ -73,6 +82,7 @@ const session = await joinSession({
           ? selectAssets({
               signals,
               query: input.prompt,
+              repo: currentRepo,
               genes,
               capsules,
               limit: config.autoInjectLimit || 3,
@@ -135,7 +145,14 @@ const session = await joinSession({
       canvasServer.broadcastUpdate("tool_failure");
 
       const { genes, capsules } = loadStore(evoHome);
-      const matched = selectAssets({ signals, genes, capsules, limit: 2 });
+      if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
+      const matched = selectAssets({
+        signals,
+        repo: detectRepoSlug(lastWorkingDirectory),
+        genes,
+        capsules,
+        limit: 2,
+      });
       const hint = matched.length
         ? `${formatAssetsContext(matched)}\nOnce resolved and verified, proactively call \`evo_solidify\` and ask whether to sync via \`evo_sync_repo\`.`
         : `[copilot-evo] Failure signals recorded (${signals.join(", ")}). Once resolved and verified, proactively call \`evo_solidify\` if the fix is reusable, then ask whether to sync via \`evo_sync_repo\`.`;
@@ -192,17 +209,20 @@ const session = await joinSession({
           signals: { type: "array", items: { type: "string" }, description: "Signal tags such as test_failure, win32, npm_error" },
           scope: { type: "string", enum: ["", "local", "team", "starter"], description: "Optional scope filter" },
           kind: { type: "string", enum: ["", "Gene", "Capsule"], description: "Optional asset type filter" },
+          repo: { type: "string", description: "Optional owner/repo filter; defaults to current workspace repo when detected" },
           limit: { type: "number", description: "Maximum results (default 5)" },
         },
       },
       handler: async (args) => {
         const { genes, capsules } = loadStore(evoHome);
         const signals = extractSignals(args.query || "", args.signals || [], { includePlatform: false });
+        const repo = args.repo || detectRepoSlug(lastWorkingDirectory);
         const results = selectAssets({
           signals,
           query: args.query || "",
           scope: args.scope || "",
           kind: args.kind || "",
+          repo,
           genes,
           capsules,
           limit: args.limit || 5,
@@ -233,12 +253,16 @@ const session = await joinSession({
           solution: { type: "string", description: "Concrete fix summary in English (especially for Capsules)" },
           validation: { type: "array", items: { type: "string" }, description: "Safe verification commands (node/npm/npx/pytest/dotnet/cargo/go test)" },
           scope: { type: "string", enum: ["local", "team"], description: "local stays on this machine; team stages sanitized asset for private repo sync" },
+          repoScope: { type: "string", description: "Repository applicability: '*' for all repos (default), 'current' for the active Git repo, or 'owner/repo'" },
+          geneId: { type: "string", description: "For Capsules: ID of the Gene strategy this fix applied" },
+          parentId: { type: "string", description: "Optional ID of an earlier Gene or Capsule this asset refines" },
+          supersedes: { type: "string", description: "Optional ID of an outdated asset replaced by this one" },
         },
         required: ["kind", "title", "summary", "signals"],
       },
       handler: async (args) => {
         const res = solidifyAsset(
-          { ...args, workingDirectory: process.cwd() },
+          { ...args, workingDirectory: lastWorkingDirectory || process.cwd() },
           { evoHome }
         );
         if (res.ok) {
@@ -265,6 +289,7 @@ const session = await joinSession({
           {
             version: EXTENSION_VERSION,
             evoHome,
+            currentRepo: detectRepoSlug(lastWorkingDirectory) || null,
             counts: {
               genes: genes.length,
               capsules: capsules.length,
@@ -284,18 +309,21 @@ const session = await joinSession({
     },
     {
       name: "evo_manage_asset",
-      description: "Inspect, promote from candidates, or delete a local Gene/Capsule by ID.",
+      description: "Inspect, promote, pin, vote on, or delete a local Gene/Capsule by ID.",
       parameters: {
         type: "object",
         properties: {
-          action: { type: "string", enum: ["inspect", "promote", "delete", "list_candidates"] },
+          action: {
+            type: "string",
+            enum: ["inspect", "promote", "promote_team", "pin", "unpin", "upvote", "downvote", "delete", "list_candidates"],
+          },
           id: { type: "string", description: "Asset ID (required except for list_candidates)" },
         },
         required: ["action"],
       },
       handler: async (args) => {
         const res = manageAsset(args.action, args.id, { evoHome });
-        if (res.ok && (args.action === "promote" || args.action === "delete")) {
+        if (res.ok && args.action !== "inspect" && args.action !== "list_candidates") {
           canvasServer.broadcastUpdate(args.action);
         }
         return JSON.stringify(res, null, 2);

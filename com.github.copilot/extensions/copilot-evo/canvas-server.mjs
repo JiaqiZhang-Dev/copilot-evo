@@ -4,7 +4,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  computeGdiScore,
   countEvents,
+  getAssetRelationships,
   loadStore,
   manageAsset,
   readRecentEvents,
@@ -60,7 +62,7 @@ function safeUiFilePath(pathname) {
   return candidate;
 }
 
-export function createEvoCanvasServer({ evoHome }) {
+export function createEvoCanvasServer({ evoHome, getCurrentRepo = () => "" }) {
   const canvasToken = randomBytes(32).toString("hex");
   const sseClients = new Set();
   const activeInstances = new Set();
@@ -71,12 +73,24 @@ export function createEvoCanvasServer({ evoHome }) {
   function buildSnapshot() {
     const store = loadStore(evoHome);
     const events = readRecentEvents(evoHome, 60);
+    const allAssets = [...store.genes, ...store.capsules];
+    const nowMs = Date.now();
+    const enrich = (item) => ({
+      ...item,
+      repoScope: item.repoScope || "*",
+      gdiScore: computeGdiScore(item, nowMs),
+      relationships: getAssetRelationships(item, allAssets),
+    });
+    const genes = store.genes.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
+    const capsules = store.capsules.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
+
     return {
       evoHome,
+      currentRepo: getCurrentRepo(),
       syncRepoPath: resolveSyncRepoPath(evoHome),
       config: store.config,
-      genes: store.genes,
-      capsules: store.capsules,
+      genes,
+      capsules,
       candidates: store.candidates,
       events,
       counts: {
@@ -157,6 +171,9 @@ export function createEvoCanvasServer({ evoHome }) {
         result = manageAsset("promote", body.id, { evoHome });
       } else if (reqUrl.pathname === "/api/assets/promote-team") {
         result = manageAsset("promote_team", body.id, { evoHome });
+      } else if (reqUrl.pathname === "/api/assets/feedback") {
+        const action = ["pin", "unpin", "upvote", "downvote"].includes(body.action) ? body.action : "";
+        result = action ? manageAsset(action, body.id, { evoHome }) : { ok: false, error: "Invalid feedback action." };
       } else if (reqUrl.pathname === "/api/assets/delete") {
         result = manageAsset("delete", body.id, { evoHome });
       } else if (reqUrl.pathname === "/api/sync/pull") {

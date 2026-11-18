@@ -439,6 +439,34 @@ body {
   color: var(--warn);
 }
 
+.badge.gdi-badge {
+  background: var(--gene-muted);
+  color: var(--gene);
+  font-weight: 600;
+}
+
+.link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.link-pill {
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  font-family: var(--font-mono, Consolas, monospace);
+  cursor: pointer;
+}
+
+.link-pill:hover {
+  background: var(--accent-muted);
+  border-color: var(--accent);
+}
+
 .detail-head {
   display: flex;
   align-items: flex-start;

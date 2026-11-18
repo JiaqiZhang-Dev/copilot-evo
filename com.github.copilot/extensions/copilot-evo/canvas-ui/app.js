@@ -3,6 +3,7 @@ let canvasToken = "";
 let activeTab = "assets";
 let activeFilter = "all";
 let activeKind = "all";
+let repoFilter = "all";
 let eventFilter = "all";
 let searchQuery = "";
 let selectedId = "";
@@ -31,16 +32,21 @@ function escapeHtml(text) {
 
 function getAllAssets() {
   if (!state) return [];
-  return [...(state.genes || []), ...(state.capsules || [])];
+  return [...(state.genes || []), ...(state.capsules || [])].sort((a, b) => (b.gdiScore || 0) - (a.gdiScore || 0));
 }
 
 function getFilteredAssets() {
   const q = searchQuery.trim().toLowerCase();
+  const curRepo = (state?.currentRepo || "").toLowerCase();
   return getAllAssets().filter((item) => {
     if (activeKind !== "all" && item.type !== activeKind) return false;
     if (activeFilter !== "all" && item.scope !== activeFilter) return false;
+    if (repoFilter === "matching") {
+      const r = (item.repoScope || "*").toLowerCase();
+      if (r !== "*" && (!curRepo || r !== curRepo)) return false;
+    }
     if (!q) return true;
-    const text = `${item.id} ${item.title} ${item.summary} ${item.solution || ""} ${(item.signals || []).join(" ")}`.toLowerCase();
+    const text = `${item.id} ${item.title} ${item.summary} ${item.solution || ""} ${item.repoScope || ""} ${(item.signals || []).join(" ")}`.toLowerCase();
     return text.includes(q);
   });
 }
@@ -103,7 +109,29 @@ function renderDetail(item, isCandidate = false) {
     !isCandidate && item.scope === "local"
       ? `<button class="btn" data-promote-team="${escapeHtml(item.id)}" type="button">Share to Team</button>`
       : "";
+  const pinBtn = !isCandidate
+    ? `<button class="btn" data-feedback="${item.pinned ? "unpin" : "pin"}" type="button">${item.pinned ? "Unpin" : "Pin"}</button>`
+    : "";
+  const voteBtns = !isCandidate
+    ? `<button class="btn" data-feedback="upvote" type="button">+1</button><button class="btn" data-feedback="downvote" type="button">-1</button>`
+    : "";
   const copyBtn = `<button class="btn" data-copy="${escapeHtml(item.id)}" type="button">Copy JSON</button>`;
+
+  const rel = item.relationships || {};
+  const relLinks = [];
+  if (rel.gene) relLinks.push({ role: "Gene", item: rel.gene });
+  if (rel.parent) relLinks.push({ role: "Parent", item: rel.parent });
+  if (rel.supersedes) relLinks.push({ role: "Supersedes", item: rel.supersedes });
+  for (const child of rel.children || []) relLinks.push({ role: child.type === "Capsule" ? "Capsule" : "Derived", item: child });
+  for (const rep of rel.supersededBy || []) relLinks.push({ role: "Replaced by", item: rep });
+  const lineageHtml = relLinks.length
+    ? `<div class="section-label">Lineage & Relationships</div><div class="link-list">${relLinks
+        .map(
+          (l) =>
+            `<button class="link-pill" data-jump="${escapeHtml(l.item.id)}" type="button">${escapeHtml(l.role)}: ${escapeHtml(l.item.id)}</button>`
+        )
+        .join("")}</div>`
+    : "";
 
   let deleteControl = "";
   if (item.scope !== "starter") {
@@ -117,13 +145,15 @@ function renderDetail(item, isCandidate = false) {
   pane.innerHTML = `
     <div class="detail-head">
       <div>
-        <h2 class="detail-title">${escapeHtml(item.title)}</h2>
+        <h2 class="detail-title">${item.pinned ? "📌 " : ""}${escapeHtml(item.title)}</h2>
         <div class="detail-id">
           <span class="badge ${kindCls}">${escapeHtml((item.type || "Gene").toUpperCase())}</span>
+          <span class="badge gdi-badge">GDI ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
+          <span class="badge">${escapeHtml(item.repoScope && item.repoScope !== "*" ? item.repoScope : "global (*)")}</span>
           <span>${escapeHtml(item.id)}</span> · <span>${escapeHtml(item.scope || "local")}</span>
         </div>
       </div>
-      <div class="actions">${promoteCandidateBtn}${promoteTeamBtn}${copyBtn}${deleteControl}</div>
+      <div class="actions">${promoteCandidateBtn}${promoteTeamBtn}${pinBtn}${voteBtns}${copyBtn}${deleteControl}</div>
     </div>
     <div class="section-label">Trigger Signals</div>
     <div class="badges">${signals || '<span class="muted">None</span>'}</div>
@@ -133,12 +163,27 @@ function renderDetail(item, isCandidate = false) {
     ${strategy}
     ${guardrail}
     ${validation}
+    ${lineageHtml}
     <div class="section-label">Provenance</div>
-    <p class="muted">Reuses: ${item.successCount || 0} · Source: ${escapeHtml(item.sourceProject || "bundled")} · Updated: ${escapeHtml(item.updatedAt || "bundled")}</p>
+    <p class="muted">Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0} · Source: ${escapeHtml(item.sourceProject || "bundled")} · Updated: ${escapeHtml(item.updatedAt || "bundled")}</p>
   `;
 
   pane.querySelector("[data-promote]")?.addEventListener("click", () => mutate("/api/assets/promote", { id: item.id }));
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
+  pane.querySelectorAll("[data-feedback]").forEach((btn) => {
+    btn.addEventListener("click", () => mutate("/api/assets/feedback", { id: item.id, action: btn.dataset.feedback }));
+  });
+  pane.querySelectorAll("[data-jump]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeTab = "assets";
+      activeFilter = "all";
+      activeKind = "all";
+      repoFilter = "all";
+      selectedId = btn.dataset.jump;
+      pendingDeleteId = "";
+      render();
+    });
+  });
   pane.querySelector("[data-copy]")?.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(item, null, 2));
@@ -191,6 +236,11 @@ function render() {
   document.querySelectorAll(".chip[data-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.filter === activeFilter));
   document.querySelectorAll(".seg[data-kind]").forEach((btn) => btn.classList.toggle("active", btn.dataset.kind === activeKind));
   document.querySelectorAll(".chip[data-event-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.eventFilter === eventFilter));
+  const repoBtn = el("chip-repo");
+  if (repoBtn) {
+    repoBtn.classList.toggle("active", repoFilter === "matching");
+    repoBtn.textContent = state.currentRepo ? `Repo: ${state.currentRepo}` : "Global (*)";
+  }
 
   const listPane = el("list-pane");
 
@@ -238,11 +288,12 @@ function render() {
         <div class="card-head">
           <div class="card-title-wrap">
             <span class="badge ${kindCls}">${escapeHtml((item.type || "Gene").toUpperCase())}</span>
-            <span class="card-title">${escapeHtml(item.title)}</span>
+            <span class="card-title">${item.pinned ? "📌 " : ""}${escapeHtml(item.title)}</span>
           </div>
           <div class="card-badges">
+            ${item.gdiScore ? `<span class="badge gdi-badge">GDI ${item.gdiScore}</span>` : ""}
             <span class="badge ${scopeClass}">${escapeHtml(item.scope || "local")}</span>
-            ${item.successCount ? `<span class="badge">${item.successCount}x</span>` : ""}
+            ${item.repoScope && item.repoScope !== "*" ? `<span class="badge">${escapeHtml(item.repoScope)}</span>` : ""}
           </div>
         </div>
         <div class="card-summary">${escapeHtml(item.summary)}</div>
@@ -298,6 +349,8 @@ async function mutate(endpoint, body) {
       showBanner(`Promoted candidate ${data.asset?.id || ""}.`);
     } else if (endpoint === "/api/assets/promote-team") {
       showBanner(`Marked ${data.asset?.id || "asset"} as team scope. Click Push Team to sync.`);
+    } else if (endpoint === "/api/assets/feedback") {
+      showBanner(`Updated ${data.asset?.id || "asset"} (GDI ${data.gdiScore ?? "-"}).`);
     } else if (endpoint === "/api/assets/delete") {
       showBanner(`Deleted ${data.deletedId || "asset"}.`);
     }
@@ -341,6 +394,11 @@ async function init() {
       eventFilter = btn.dataset.eventFilter;
       render();
     });
+  });
+
+  el("chip-repo")?.addEventListener("click", () => {
+    repoFilter = repoFilter === "matching" ? "all" : "matching";
+    render();
   });
 
   el("search-input").addEventListener("input", (e) => {
