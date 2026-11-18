@@ -20,7 +20,7 @@
     "repoScope": "*",
     "sourceProject": "JiaqiZhang-Dev/copilot-evo",
     "author": "JiaqiZhang-Dev",
-    "updatedAt": "2026-11-18T03:57:38.521Z",
+    "updatedAt": "2026-11-18T09:14:16.017Z",
     "successCount": 2,
     "failureCount": 0
   },
@@ -195,7 +195,7 @@
     "repoScope": "*",
     "sourceProject": "chat",
     "author": "JiaqiZhang-Dev",
-    "updatedAt": "2026-11-18T08:05:08.954Z",
+    "updatedAt": "2026-11-18T09:14:16.017Z",
     "successCount": 2,
     "failureCount": 0
   },
@@ -271,8 +271,33 @@
     "repoScope": "Azure/azure-sdk-tools",
     "sourceProject": "chat",
     "author": "JiaqiZhang-Dev",
-    "updatedAt": "2026-11-18T09:07:26.339Z",
+    "updatedAt": "2026-11-18T09:14:16.017Z",
     "successCount": 3,
     "failureCount": 0
+  },
+  {
+    "id": "tcgc-linter-rules-and-testing",
+    "type": "Rule",
+    "title": "Separate TCGC errors from linter rule warnings",
+    "summary": "Separate TCGC validation errors from suppressible linter warnings, reuse semantic resolvers, and test linter rules with createLinterRuleTester.",
+    "signals": [
+      "tcgc",
+      "linter_rule",
+      "diagnostics",
+      "vitest"
+    ],
+    "strategy": [
+      "Report structural invalidity as TCGC errors and keep valid-but-discouraged compatibility overrides as suppressible linter warnings.",
+      "Reuse TCGC semantic resolvers in the linter rule and register the rule in client-sdk ruleset and validate-rules-defined.test.ts.",
+      "Test rules with createLinterRuleTester without asserting createSdkContext-only errors, since createLinterRuleTester runs the rule alone."
+    ],
+    "solution": "Keep structural errors in TCGC validation, policy warnings in linter rules, test with createLinterRuleTester, and register in client-sdk ruleset.",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "Azure/typespec-azure",
+    "sourceProject": "Azure/typespec-azure",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-18T09:37:28.377Z",
+    "successCount": 1
   }
 ]
