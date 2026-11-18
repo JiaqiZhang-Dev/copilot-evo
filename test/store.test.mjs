@@ -414,9 +414,9 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(isActionToolName("powershell", { command: "gh pr diff 17611" }), false);
     assert.equal(isActionToolName("powershell", { command: "npm test" }), true);
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 0 }), false);
-    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 2 }), true);
-    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 2, solidifiedTurn: 1 }), false);
-    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 2, lastNudgeTurn: 1 }), false);
+    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1 }), true);
+    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1, solidifiedTurn: 1 }), false);
+    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1, lastNudgeTurn: 1 }), false);
     assert.deepEqual(
       collectAssetsToCreditOnStop({ turnActionTools: 0, turnRecalledIds: ["exp-a"] }, {}),
       []

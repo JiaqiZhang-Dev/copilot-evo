@@ -37,7 +37,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.27";
+const EXTENSION_VERSION = "0.10.28";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -418,7 +418,7 @@ const session = await joinSession({
         sessionState.lastNudgeTurn = sessionState.turnIndex;
         return {
           additionalContext:
-            "[copilot-evo semantic check] Multiple changes or action commands ran in this turn. If this work uncovered a genuinely reusable engineering Rule or verified non-obvious Fix (skip routine edits and one-off typos), proactively call `evo_solidify` atomically in English (`scope: \"local\"`).",
+            "[copilot-evo semantic check] An action or edit completed in this turn. If this work uncovered a genuinely reusable engineering Rule or verified non-obvious Fix (skip routine edits and one-off typos), proactively call `evo_solidify` atomically in English (`scope: \"local\"`).",
         };
       }
     },

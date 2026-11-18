@@ -546,7 +546,7 @@ export function shouldNudgePostToolUse(state) {
   if (!state || !state.turnIndex) return false;
   if (state.lastNudgeTurn === state.turnIndex) return false;
   if (state.solidifiedTurn === state.turnIndex) return false;
-  return (state.turnActionTools || 0) >= 2;
+  return (state.turnActionTools || 0) >= 1;
 }
 
 export function collectAssetsToCreditOnStop(state, { stopHookActive = false } = {}) {
