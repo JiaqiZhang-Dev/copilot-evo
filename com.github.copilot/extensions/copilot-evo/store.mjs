@@ -126,6 +126,41 @@ export function countEvents(evoHome) {
   return content ? content.split(/\r?\n/).length : 0;
 }
 
+export function readRecentEvents(evoHome, limit = 50) {
+  const eventsPath = path.join(evoHome, "events.jsonl");
+  if (!fs.existsSync(eventsPath)) return [];
+  const content = fs.readFileSync(eventsPath, "utf8").trim();
+  if (!content) return [];
+  const lines = content.split(/\r?\n/).slice(-limit).reverse();
+  const events = [];
+  for (const line of lines) {
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      // Skip malformed log line.
+    }
+  }
+  return events;
+}
+
+export function formatAssetPreview(asset) {
+  if (!asset) return "";
+  const lines = [
+    `[${asset.type}:${asset.id}] (${asset.scope}) ${asset.title}`,
+    `Summary: ${asset.summary}`,
+    `Signals: ${(asset.signals || []).join(", ") || "none"}`,
+  ];
+  if (asset.solution) lines.push(`Solution: ${asset.solution}`);
+  if (asset.strategy?.length) {
+    lines.push("Strategy:");
+    asset.strategy.forEach((step, idx) => lines.push(`  ${idx + 1}. ${step}`));
+  }
+  if (asset.validation?.length) {
+    lines.push(`Validation: ${asset.validation.join(", ")}`);
+  }
+  return lines.join("\n");
+}
+
 export function hashProjectId(workingDirectory) {
   if (!workingDirectory) return "global";
   const base = path.basename(workingDirectory) || "repo";
@@ -170,7 +205,7 @@ export function extractSignals(text, extraSignals = [], options = {}) {
   return Array.from(signals);
 }
 
-export function selectAssets({ signals = [], query = "", scope = "", genes = [], capsules = [], limit = 3 }) {
+export function selectAssets({ signals = [], query = "", scope = "", kind = "", genes = [], capsules = [], limit = 3 }) {
   const sigSet = new Set(signals.map((s) => String(s).toLowerCase()));
   const terms = String(query)
     .toLowerCase()
@@ -181,6 +216,7 @@ export function selectAssets({ signals = [], query = "", scope = "", genes = [],
   const scored = [];
   for (const asset of all) {
     if (scope && asset.scope !== scope) continue;
+    if (kind && asset.type !== kind) continue;
     let score = 0;
     const assetSignals = (asset.signals || []).map((s) => String(s).toLowerCase());
     for (const sig of assetSignals) {
@@ -296,11 +332,12 @@ export function solidifyAsset(input, options = {}) {
   return {
     ok: true,
     asset: cleanAsset,
+    preview: formatAssetPreview(cleanAsset),
     redacted: leakCheck.found,
     nextAction:
       scope === "team"
-        ? "Ask the user whether to push this team asset to the shared plugin repository using evo_sync_repo(action: 'push')."
-        : "Saved locally. If broadly reusable and secret-free, you may ask the user if they want to promote and sync it to the team repo.",
+        ? "Show the full English asset preview (title, summary, signals, strategy/solution) to the user, then ask whether to push it to the team repository via evo_sync_repo(action: 'push')."
+        : "Saved locally. Show the asset preview to the user; if broadly reusable and secret-free, ask whether to promote and sync it to the team repo.",
   };
 }
 

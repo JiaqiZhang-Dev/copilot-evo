@@ -4,7 +4,8 @@ Self-evolving GEP (Genes, Capsules, EvolutionEvents) memory and cross-project ex
 
 ## Capabilities
 
-- **Proactive Auto-Evolution**: Injects an active GEP protocol on session start, detects failure-to-recovery transitions via `onPostToolUseFailure` / `onPostToolUse` and rule cues in prompts, nudging the agent to automatically call `evo_solidify` and ask whether to sync via `evo_sync_repo`.
+- **Proactive Auto-Evolution**: Injects an active GEP protocol on session start, detects failure-to-recovery transitions via `onPostToolUseFailure` / `onPostToolUse` and rule cues in prompts, nudging the agent to automatically call `evo_solidify` in English, show a full preview, and ask whether to sync via `evo_sync_repo`.
+- **In-Chat & Canvas Preview**: Preview stored Genes/Capsules in chat with `/evo-list`, or open the interactive **Copilot Evo Canvas** side panel (`/evo-canvas`) to search, filter, inspect details, promote candidates, view evolution events, and trigger Pull/Push sync.
 - **Local-First Storage**: Keeps raw session failure logs and unshared assets strictly on your machine under `~/.copilot/evo/` (overridable with `COPILOT_EVO_HOME`).
 - **Pre-Share Privacy & Leak Guardrails**: Automatically strips tokens, private keys, database credentials, internal IPs, emails, and personal home-directory paths, and checks `process.env` secrets before saving `team`-scoped assets or syncing to Git.
 - **Private Git Sync (No PR Required)**: Push sanitized `team` Genes and Capsules directly to `main` via `evo_sync_repo` (auto-clones the configured private repo into `~/.copilot/evo/sync-repo` on first sync if needed), or export/import offline `.evopack.json` bundles.

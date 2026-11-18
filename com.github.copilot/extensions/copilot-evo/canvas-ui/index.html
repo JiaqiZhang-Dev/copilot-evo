@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Copilot Evo</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-badge">GEP</span>
+          <div>
+            <h1>Copilot Evo</h1>
+            <p id="repo-status" class="muted">Loading store...</p>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="btn-pull" class="btn" type="button">Pull</button>
+          <button id="btn-push" class="btn btn-primary" type="button">Push Team</button>
+        </div>
+      </header>
+
+      <div id="banner" class="banner hidden"></div>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="assets" type="button">Assets <span id="count-assets" class="pill">0</span></button>
+        <button class="tab" data-tab="candidates" type="button">Candidates <span id="count-candidates" class="pill">0</span></button>
+        <button class="tab" data-tab="events" type="button">Events <span id="count-events" class="pill">0</span></button>
+      </nav>
+
+      <section id="toolbar" class="toolbar">
+        <input id="search-input" class="search" type="search" placeholder="Search title, summary, or signal..." />
+        <div class="filters">
+          <button class="chip active" data-filter="all" type="button">All</button>
+          <button class="chip" data-filter="team" type="button">Team</button>
+          <button class="chip" data-filter="local" type="button">Local</button>
+          <button class="chip" data-filter="starter" type="button">Starter</button>
+        </div>
+      </section>
+
+      <main class="content">
+        <div id="list-pane" class="list-pane"></div>
+        <aside id="detail-pane" class="detail-pane">
+          <div class="empty">Select a Gene or Capsule to preview its full details.</div>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

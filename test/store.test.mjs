@@ -126,9 +126,10 @@ test("extractSignals and selectAssets rank matching experience highest", () => {
 test("exportBundle and importBundle stage candidates and promote safely", () => {
   const homeA = makeTempDir();
   const homeB = makeTempDir();
+  const bundledDir = makeTempDir();
   const packPath = path.join(homeA, "team.evopack.json");
   try {
-    solidifyAsset(
+    const res = solidifyAsset(
       {
         kind: "Capsule",
         id: "capsule-clean-team",
@@ -138,25 +139,28 @@ test("exportBundle and importBundle stage candidates and promote safely", () => 
         validation: ["node --test"],
         scope: "team",
       },
-      { evoHome: homeA }
+      { evoHome: homeA, bundledDir }
     );
+    assert.match(res.preview, /\[Capsule:capsule-clean-team\]/);
 
     const exp = exportBundle(homeA, { scope: "team", outputPath: packPath });
     assert.equal(exp.ok, true);
     assert.equal(exp.bundle.capsules.length, 1);
 
+    initStore({ evoHome: homeB, bundledDir });
     const imp = importBundle(homeB, { inputPath: packPath, autoPromote: false });
     assert.equal(imp.ok, true);
     assert.equal(imp.imported, 1);
     assert.equal(imp.promoted, false);
 
-    const promo = manageAsset("promote", "capsule-clean-team", { evoHome: homeB });
+    const promo = manageAsset("promote", "capsule-clean-team", { evoHome: homeB, bundledDir });
     assert.equal(promo.ok, true);
     const storeB = loadStore(homeB);
     assert.ok(storeB.capsules.some((c) => c.id === "capsule-clean-team"));
   } finally {
     fs.rmSync(homeA, { recursive: true, force: true });
     fs.rmSync(homeB, { recursive: true, force: true });
+    fs.rmSync(bundledDir, { recursive: true, force: true });
   }
 });
 
@@ -195,6 +199,8 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
   const cloneB = path.join(root, "clone-b");
   const homeA = path.join(root, "evo-a");
   const homeB = path.join(root, "evo-b");
+  const bundledDir = path.join(root, "empty-bundled");
+  fs.mkdirSync(bundledDir, { recursive: true });
 
   try {
     execFileSync("git", ["init", "--bare", "-b", "main", bareDir]);
@@ -222,14 +228,14 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
         signals: ["git_error"],
         scope: "team",
       },
-      { evoHome: homeA }
+      { evoHome: homeA, bundledDir }
     );
 
     const pushRes = await syncRepoPush(homeA, { repoPath: cloneA });
     assert.equal(pushRes.ok, true);
     assert.equal(pushRes.pushed, true);
 
-    initStore({ evoHome: homeB });
+    initStore({ evoHome: homeB, bundledDir });
     const pullRes = await syncRepoPull(homeB, { repoPath: cloneB });
     assert.equal(pullRes.ok, true);
     assert.equal(pullRes.imported, 1);

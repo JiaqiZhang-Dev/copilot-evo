@@ -1,10 +1,12 @@
-import { joinSession } from "@github/copilot-sdk/extension";
+import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/extension";
+import { createEvoCanvasServer } from "./canvas-server.mjs";
 import { sanitizePayload } from "./sanitize.mjs";
 import {
   appendEvent,
   countEvents,
   exportBundle,
   extractSignals,
+  formatAssetPreview,
   hasStrategyCue,
   hashProjectId,
   importBundle,
@@ -19,7 +21,8 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.2.2";
+const EXTENSION_VERSION = "0.3.0";
+const canvasServer = createEvoCanvasServer({ evoHome });
 const sessionState = {
   protocolInjected: false,
   pendingFailure: null,
@@ -33,7 +36,7 @@ const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
   "2. Auto-discover & solidify (English only): When you resolve and verify a non-obvious error/failure, or when the user states a reusable cross-project rule/preference (even if also saved via `store_memory`), proactively call `evo_solidify` without waiting to be asked (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English, translating if the conversation is in another language. Use `scope: \"team\"` when generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
-  "3. Auto-ask before sync: Immediately after `evo_solidify` succeeds for a shareable asset, proactively ask the user (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
+  "3. Preview & ask before sync: Immediately after `evo_solidify` succeeds for a shareable asset, present the full English asset preview (`id`, `scope`, `title`, `summary`, `signals`, `strategy`/`solution`) to the user, then proactively ask (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
 ].join("\n");
 
 function formatAssetsContext(assets) {
@@ -129,6 +132,7 @@ const session = await joinSession({
         signals,
         project: hashProjectId(input.workingDirectory),
       });
+      canvasServer.broadcastUpdate("tool_failure");
 
       const { genes, capsules } = loadStore(evoHome);
       const matched = selectAssets({ signals, genes, capsules, limit: 2 });
@@ -180,13 +184,14 @@ const session = await joinSession({
   tools: [
     {
       name: "evo_search",
-      description: "Search local and team-synced GEP Genes and Capsules by keywords, signals, or scope.",
+      description: "Search or list local and team-synced GEP Genes and Capsules by keywords, signals, kind, or scope.",
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Search keywords or error text" },
+          query: { type: "string", description: "Search keywords or error text (omit or empty to list)" },
           signals: { type: "array", items: { type: "string" }, description: "Signal tags such as test_failure, win32, npm_error" },
           scope: { type: "string", enum: ["", "local", "team", "starter"], description: "Optional scope filter" },
+          kind: { type: "string", enum: ["", "Gene", "Capsule"], description: "Optional asset type filter" },
           limit: { type: "number", description: "Maximum results (default 5)" },
         },
       },
@@ -197,11 +202,20 @@ const session = await joinSession({
           signals,
           query: args.query || "",
           scope: args.scope || "",
+          kind: args.kind || "",
           genes,
           capsules,
           limit: args.limit || 5,
         });
-        return JSON.stringify({ count: results.length, assets: results }, null, 2);
+        return JSON.stringify(
+          {
+            count: results.length,
+            assets: results,
+            previews: results.map((asset) => formatAssetPreview(asset)),
+          },
+          null,
+          2
+        );
       },
     },
     {
@@ -230,6 +244,7 @@ const session = await joinSession({
         if (res.ok) {
           sessionState.solidifiedCount++;
           sessionState.lastSolidifyAt = Date.now();
+          canvasServer.setViewState({ tab: "assets", filter: "all", assetId: res.asset.id });
           try {
             await session.log(`Saved ${res.asset.type} ${res.asset.id} (${res.asset.scope})`);
           } catch {
@@ -279,7 +294,11 @@ const session = await joinSession({
         required: ["action"],
       },
       handler: async (args) => {
-        return JSON.stringify(manageAsset(args.action, args.id, { evoHome }), null, 2);
+        const res = manageAsset(args.action, args.id, { evoHome });
+        if (res.ok && (args.action === "promote" || args.action === "delete")) {
+          canvasServer.broadcastUpdate(args.action);
+        }
+        return JSON.stringify(res, null, 2);
       },
     },
     {
@@ -298,40 +317,77 @@ const session = await joinSession({
         required: ["action"],
       },
       handler: async (args) => {
+        let res;
         if (args.action === "pull") {
-          return JSON.stringify(
-            await syncRepoPull(evoHome, {
-              repoPath: args.repoPath,
-              repo: args.repo,
-              autoPromote: args.autoPromote ?? true,
-            }),
-            null,
-            2
-          );
+          res = await syncRepoPull(evoHome, {
+            repoPath: args.repoPath,
+            repo: args.repo,
+            autoPromote: args.autoPromote ?? true,
+          });
+        } else if (args.action === "push") {
+          res = await syncRepoPush(evoHome, {
+            repoPath: args.repoPath,
+            repo: args.repo,
+            commitMessage: args.commitMessage,
+          });
+        } else if (args.action === "export") {
+          res = exportBundle(evoHome, { scope: "team", outputPath: args.filePath });
+        } else if (args.action === "import") {
+          res = importBundle(evoHome, { inputPath: args.filePath, autoPromote: args.autoPromote ?? false });
+        } else {
+          res = { ok: false, error: `Unsupported action: ${args.action}` };
         }
-        if (args.action === "push") {
-          return JSON.stringify(
-            await syncRepoPush(evoHome, {
-              repoPath: args.repoPath,
-              repo: args.repo,
-              commitMessage: args.commitMessage,
-            }),
-            null,
-            2
-          );
-        }
-        if (args.action === "export") {
-          return JSON.stringify(exportBundle(evoHome, { scope: "team", outputPath: args.filePath }), null, 2);
-        }
-        if (args.action === "import") {
-          return JSON.stringify(
-            importBundle(evoHome, { inputPath: args.filePath, autoPromote: args.autoPromote ?? false }),
-            null,
-            2
-          );
-        }
-        return JSON.stringify({ ok: false, error: `Unsupported action: ${args.action}` });
+        if (res?.ok) canvasServer.broadcastUpdate(`sync_${args.action}`);
+        return JSON.stringify(res, null, 2);
       },
     },
+  ],
+
+  canvases: [
+    createCanvas({
+      id: "evo-dashboard",
+      displayName: "Copilot Evo",
+      description: "Browse, preview, search, promote, delete, and sync copilot-evo Genes, Capsules, candidates, and evolution events.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tab: { type: "string", enum: ["assets", "candidates", "events"] },
+          filter: { type: "string", enum: ["all", "team", "local", "starter"] },
+          assetId: { type: "string" },
+        },
+      },
+      actions: [
+        {
+          name: "refresh",
+          description: "Refresh the Copilot Evo canvas view from the local GEP store.",
+          handler: async () => {
+            canvasServer.broadcastUpdate("manual_refresh");
+            return canvasServer.buildSnapshot().counts;
+          },
+        },
+        {
+          name: "select_asset",
+          description: "Focus and preview a specific Gene or Capsule by ID in the Copilot Evo canvas.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              assetId: { type: "string" },
+              tab: { type: "string", enum: ["assets", "candidates", "events"] },
+            },
+            required: ["assetId"],
+          },
+          handler: async (ctx) => {
+            const id = ctx.input?.assetId;
+            if (!id) throw new CanvasError("invalid_input", "assetId is required.");
+            return canvasServer.setViewState({
+              tab: ctx.input?.tab || "assets",
+              assetId: id,
+            });
+          },
+        },
+      ],
+      open: (ctx) => canvasServer.openInstance(ctx),
+      onClose: (ctx) => canvasServer.closeInstance(ctx),
+    }),
   ],
 });
