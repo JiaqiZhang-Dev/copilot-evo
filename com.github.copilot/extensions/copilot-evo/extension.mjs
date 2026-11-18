@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/extension";
 import { createEvoCanvasServer } from "./canvas-server.mjs";
 import { sanitizePayload } from "./sanitize.mjs";
@@ -21,6 +23,7 @@ import {
   recordAssetOutcome,
   resolveSyncRepoPath,
   selectAssets,
+  setEventSessionContext,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -28,13 +31,41 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.2";
+const EXTENSION_VERSION = "0.10.8";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
+
+function getActiveSessionMeta() {
+  if (!activeSession?.sessionId) return {};
+  let sessionName = "";
+  const wsPath = activeSession.workspacePath;
+  if (wsPath) {
+    try {
+      const yamlPath = path.join(wsPath, "workspace.yaml");
+      if (fs.existsSync(yamlPath)) {
+        const yaml = fs.readFileSync(yamlPath, "utf8");
+        const m = yaml.match(/^name:\s*(.+)$/m);
+        if (m?.[1]) {
+          sessionName = m[1].trim().replace(/^["']|["']$/g, "").slice(0, 48);
+        }
+      }
+    } catch {
+      // Ignore workspace.yaml read failure.
+    }
+  }
+  return {
+    sessionId: activeSession.sessionId,
+    ...(sessionName ? { sessionName } : {}),
+  };
+}
+
+setEventSessionContext(getActiveSessionMeta);
+
 const canvasServer = createEvoCanvasServer({
   evoHome,
   getCurrentRepo: () => detectRepoSlug(lastWorkingDirectory),
   getWorkingDirectory: () => lastWorkingDirectory,
+  getSessionInfo: getActiveSessionMeta,
   onRefineRequest: async ({ asset, feedback }) => {
     if (!activeSession) throw new Error("Active session unavailable.");
     const prompt = [

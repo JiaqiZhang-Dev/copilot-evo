@@ -98,13 +98,15 @@
           <button class="chip active" data-event-filter="all" type="button">All Events</button>
           <button class="chip" data-event-filter="evolution" type="button">Solidify, Sync & Outcomes</button>
           <button class="chip" data-event-filter="signals" type="button">Captured Failure Signals</button>
+          <button id="chip-event-session" class="chip" data-event-session="current" type="button">This Session</button>
         </div>
       </section>
 
       <section id="rel-toolbar" class="toolbar hidden">
         <div class="filters">
-          <button class="chip active" data-rel-mode="all" type="button">Lineage + Shared Signals</button>
-          <button class="chip" data-rel-mode="lineage" type="button">Explicit Lineage Only</button>
+          <button class="chip active" data-rel-mode="all" type="button">Lineage + Signals</button>
+          <button class="chip" data-rel-mode="lineage" type="button">Lineage Only</button>
+          <button id="chip-rel-standalone" class="chip" type="button">Show Standalone</button>
         </div>
       </section>
 

@@ -7,7 +7,10 @@ let repoFilter = "all";
 let contribMode = "author";
 let contribScope = "all";
 let eventFilter = "all";
+let eventSessionFilter = "";
 let relMode = "all";
+let relShowStandalone = false;
+let selectedSignalHub = "";
 let searchQuery = "";
 let selectedId = "";
 let selectedContribKey = "";
@@ -97,10 +100,18 @@ function getFilteredAssets() {
 }
 
 function getFilteredEvents() {
-  const events = state?.events || [];
-  if (eventFilter === "all") return events;
-  if (eventFilter === "signals") return events.filter((ev) => ev.event === "tool_failure");
-  return events.filter((ev) => ev.event !== "tool_failure");
+  let events = state?.events || [];
+  if (eventFilter === "signals") {
+    events = events.filter((ev) => ev.event === "tool_failure");
+  } else if (eventFilter === "evolution") {
+    events = events.filter((ev) => ev.event !== "tool_failure");
+  }
+  const targetSession =
+    eventSessionFilter === "current" ? state?.currentSession?.sessionId || "" : eventSessionFilter;
+  if (targetSession) {
+    events = events.filter((ev) => ev.sessionId === targetSession);
+  }
+  return events;
 }
 
 function formatLocalTime(ts) {
@@ -380,84 +391,95 @@ function collectGraphData(assets) {
   return edges;
 }
 
-function drawRelationshipEdges(stage, edges, showSignals, selectedId, selectedSignals) {
-  if (!stage) return;
-  const svg = stage.querySelector(".rel-edges-svg");
-  if (!svg) return;
-  const stageRect = stage.getBoundingClientRect();
-  if (!stageRect.width || !stageRect.height) return;
+function computeForceLayout(nodes, links, width, height) {
+  const n = nodes.length;
+  const cx = width / 2;
+  const cy = height / 2;
+  const pos = new Map();
+  const disp = new Map();
 
-  svg.setAttribute("viewBox", `0 0 ${stageRect.width} ${stageRect.height}`);
-  const nodeRects = new Map();
-  stage.querySelectorAll("[data-node-id]").forEach((elNode) => {
-    nodeRects.set(elNode.dataset.nodeId, elNode.getBoundingClientRect());
-  });
-  const hubRects = new Map();
-  stage.querySelectorAll("[data-hub-sig]").forEach((elHub) => {
-    hubRects.set(elHub.dataset.hubSig, elHub.getBoundingClientRect());
-  });
-
-  const paths = [];
-  for (const e of edges) {
-    if (e.kind === "signal") continue;
-    const r1 = nodeRects.get(e.from);
-    const r2 = nodeRects.get(e.to);
-    if (!r1 || !r2) continue;
-    const goRight = r2.left >= r1.left;
-    const x1 = (goRight ? r1.right : r1.left) - stageRect.left;
-    const y1 = r1.top + r1.height / 2 - stageRect.top;
-    const x2 = (goRight ? r2.left : r2.right) - stageRect.left;
-    const y2 = r2.top + r2.height / 2 - stageRect.top;
-    const isActive = e.from === selectedId || e.to === selectedId;
-    const color = e.kind === "supersedes" ? "var(--warn)" : "var(--accent)";
-    const cx = (x1 + x2) / 2;
-    const d = `M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
-    paths.push(
-      `<path d="${d}" fill="none" stroke="${color}" stroke-width="${isActive ? 2.2 : 1.5}" stroke-opacity="${!selectedId ? 0.55 : isActive ? 0.95 : 0.2}" marker-end="url(#rel-arrow)" />`
-    );
-  }
-
-  if (showSignals) {
-    stage.querySelectorAll("[data-node-id]").forEach((elNode) => {
-      const id = elNode.dataset.nodeId;
-      const r1 = nodeRects.get(id);
-      if (!r1) return;
-      const sigs = (elNode.dataset.signals || "").split(",").filter(Boolean);
-      for (const sig of sigs) {
-        const rh = hubRects.get(sig);
-        if (!rh) continue;
-        const fromLeft = r1.left < rh.left;
-        const x1 = (fromLeft ? r1.right : r1.left) - stageRect.left;
-        const y1 = r1.top + r1.height / 2 - stageRect.top;
-        const x2 = (fromLeft ? rh.left : rh.right) - stageRect.left;
-        const y2 = rh.top + rh.height / 2 - stageRect.top;
-        const isActive = Boolean(selectedId) && (id === selectedId || selectedSignals.has(sig));
-        const opacity = !selectedId ? 0.42 : isActive ? 0.9 : 0.14;
-        const cx = (x1 + x2) / 2;
-        paths.push(
-          `<path d="M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--accent)" stroke-width="${isActive ? 1.8 : 1.2}" stroke-dasharray="4 3" stroke-opacity="${opacity}" />`
-        );
-      }
+  nodes.forEach((node, i) => {
+    const angle = (i / Math.max(1, n)) * Math.PI * 2 - Math.PI / 2;
+    const radius = node.kind === "signal" ? 42 : Math.min(width, height) * 0.28;
+    pos.set(node.id, {
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
     });
-  }
+    disp.set(node.id, { x: 0, y: 0 });
+  });
 
-  svg.innerHTML = `
-    <defs>
-      <marker id="rel-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-        <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)" />
-      </marker>
-    </defs>
-    ${paths.join("")}
-  `;
+  const padX = 78;
+  const padY = 40;
+  const repulseStrength = 2600;
+
+  for (let iter = 0; iter < 120; iter++) {
+    for (const node of nodes) {
+      disp.get(node.id).x = 0;
+      disp.get(node.id).y = 0;
+    }
+
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const a = nodes[i];
+        const b = nodes[j];
+        const pa = pos.get(a.id);
+        const pb = pos.get(b.id);
+        let dx = pa.x - pb.x;
+        let dy = pa.y - pb.y;
+        let dist = Math.hypot(dx, dy);
+        if (dist < 1) {
+          dx = 1;
+          dy = 0.5;
+          dist = 1.12;
+        }
+        const minGap = a.kind === "signal" || b.kind === "signal" ? 84 : 112;
+        const force = repulseStrength / (dist * dist) + (dist < minGap ? (minGap - dist) * 0.14 : 0);
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        disp.get(a.id).x += fx;
+        disp.get(a.id).y += fy;
+        disp.get(b.id).x -= fx;
+        disp.get(b.id).y -= fy;
+      }
+    }
+
+    for (const link of links) {
+      const pa = pos.get(link.from);
+      const pb = pos.get(link.to);
+      if (!pa || !pb) continue;
+      const dx = pb.x - pa.x;
+      const dy = pb.y - pa.y;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      const target = link.kind === "signal" ? 105 : 122;
+      const attract = (dist - target) * 0.09;
+      const fx = (dx / dist) * attract;
+      const fy = (dy / dist) * attract;
+      disp.get(link.from).x += fx;
+      disp.get(link.from).y += fy;
+      disp.get(link.to).x -= fx;
+      disp.get(link.to).y -= fy;
+    }
+
+    const temp = Math.max(2, 16 * (1 - iter / 120));
+    for (const node of nodes) {
+      const p = pos.get(node.id);
+      const d = disp.get(node.id);
+      d.x += (cx - p.x) * 0.035;
+      d.y += (cy - p.y) * 0.045;
+      const mag = Math.hypot(d.x, d.y);
+      if (mag > 0) {
+        const step = Math.min(mag, temp);
+        p.x += (d.x / mag) * step;
+        p.y += (d.y / mag) * step;
+      }
+      p.x = Math.max(padX, Math.min(width - padX, p.x));
+      p.y = Math.max(padY, Math.min(height - padY - 14, p.y));
+    }
+  }
+  return pos;
 }
 
-let relResizeObserver = null;
-
 function renderRelationshipsView(listPane, allAssets) {
-  if (relResizeObserver) {
-    relResizeObserver.disconnect();
-    relResizeObserver = null;
-  }
   if (!allAssets.length) {
     listPane.innerHTML = `<div class="empty">No experiences available to map relationships.</div>`;
     renderDetail(null);
@@ -480,8 +502,12 @@ function renderRelationshipsView(listPane, allAssets) {
   }
   const sharedHubs = Array.from(signalCounts.entries())
     .filter(([, count]) => count >= 2)
-    .map(([sig, count]) => ({ sig, count }));
+    .map(([sig, count]) => ({ sig, count }))
+    .sort((a, b) => b.count - a.count || a.sig.localeCompare(b.sig));
   const hubSet = new Set(sharedHubs.map((h) => h.sig));
+  if (selectedSignalHub && !hubSet.has(selectedSignalHub)) {
+    selectedSignalHub = "";
+  }
 
   const connectedIdSet = new Set();
   for (const e of edges) {
@@ -496,109 +522,169 @@ function renderRelationshipsView(listPane, allAssets) {
     }
   }
 
-  const connectedAssets = allAssets.filter((a) => connectedIdSet.has(a.id));
-  const standaloneAssets = allAssets.filter((a) => !connectedIdSet.has(a.id));
-  const connectedRules = connectedAssets.filter((a) => a.type !== "Fix");
-  const connectedFixes = connectedAssets.filter((a) => a.type === "Fix");
+  const standaloneCount = allAssets.filter((a) => !connectedIdSet.has(a.id)).length;
+  const standaloneBtn = el("chip-rel-standalone");
+  if (standaloneBtn) {
+    standaloneBtn.textContent = relShowStandalone
+      ? `Hide Standalone (${standaloneCount})`
+      : `Show Standalone (${standaloneCount})`;
+    standaloneBtn.classList.toggle("active", relShowStandalone);
+    standaloneBtn.classList.toggle("hidden", standaloneCount === 0);
+  }
 
-  const selectedAsset = selectedId ? allAssets.find((a) => a.id === selectedId) || null : null;
-  const selectedSignals = new Set((selectedAsset?.signals || []).map((s) => String(s).toLowerCase()));
-  const highlightedIds = new Set(selectedId ? [selectedId] : []);
-  if (selectedId) {
-    for (const e of edges) {
-      if (e.from === selectedId) highlightedIds.add(e.to);
-      if (e.to === selectedId) highlightedIds.add(e.from);
+  const visibleAssets = (relShowStandalone ? allAssets : allAssets.filter((a) => connectedIdSet.has(a.id)))
+    .slice()
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  if (!visibleAssets.length) {
+    listPane.innerHTML = `<div class="rel-empty-graph">${
+      showSignals
+        ? "No connected experiences yet. Turn on Show Standalone to view all nodes."
+        : "No explicit Rule → Fix or refinement lineage yet. Switch to Lineage + Signals or Show Standalone."
+    }</div>`;
+    renderDetail(null);
+    return;
+  }
+
+  const graphNodes = [
+    ...visibleAssets.map((a) => ({ id: a.id, kind: a.type === "Fix" ? "Fix" : "Rule", asset: a })),
+    ...sharedHubs.map((h) => ({ id: `sig:${h.sig}`, kind: "signal", sig: h.sig, count: h.count })),
+  ];
+  const graphLinks = [];
+  const visibleSet = new Set(visibleAssets.map((a) => a.id));
+  for (const e of edges) {
+    if (e.kind !== "signal" && visibleSet.has(e.from) && visibleSet.has(e.to)) {
+      graphLinks.push({ from: e.from, to: e.to, kind: e.kind, label: e.label });
+    }
+  }
+  if (showSignals) {
+    for (const a of visibleAssets) {
+      for (const s of new Set((a.signals || []).map((x) => String(x).toLowerCase()))) {
+        if (hubSet.has(s)) {
+          graphLinks.push({ from: a.id, to: `sig:${s}`, kind: "signal" });
+        }
+      }
     }
   }
 
-  const renderNodeCard = (a, isGraphNode = true) => {
-    const isSelected = a.id === selectedId;
-    const isRelated = highlightedIds.has(a.id);
-    const dimmed = Boolean(selectedId) && isGraphNode && !isRelated;
-    const scoreStr = a.gdiScore !== undefined ? Number(a.gdiScore).toFixed(1) : "-";
-    const scopeStr = a.scope === "team" ? "Team" : a.scope === "starter" ? "Starter" : "Local";
-    const sigAttr = Array.from(new Set((a.signals || []).map((x) => String(x).toLowerCase())))
-      .filter((s) => hubSet.has(s))
-      .join(",");
-    return `
-      <button class="rel-node ${isSelected ? "selected" : ""} ${dimmed ? "dimmed" : ""}" data-node-id="${escapeHtml(a.id)}" data-signals="${escapeHtml(sigAttr)}" type="button">
-        <div class="rel-node-meta">
-          <span class="rel-node-kind">${a.type === "Fix" ? "Fix" : "Rule"}</span>
-          <span>·</span>
-          <span>${scoreStr}</span>
-          <span>·</span>
-          <span>${scopeStr}</span>
-        </div>
-        <div class="rel-node-title">${escapeHtml(a.title)}</div>
-      </button>`;
-  };
+  const width = Math.max(540, (listPane.clientWidth || 580) - 24);
+  const height = Math.max(290, Math.min(400, 230 + graphNodes.length * 14));
+  const positions = computeForceLayout(graphNodes, graphLinks, width, height);
 
-  const hasLeft = connectedRules.length > 0;
-  const hasHubs = showSignals && sharedHubs.length > 0;
-  const hasRight = connectedFixes.length > 0;
-  const cols = [hasLeft ? "minmax(200px, 1.35fr)" : "", hasHubs ? "auto" : "", hasRight ? "minmax(200px, 1.35fr)" : ""]
-    .filter(Boolean)
-    .join(" ");
+  const selectedAsset = selectedId ? allAssets.find((a) => a.id === selectedId) || null : null;
+  const focusKey = selectedId || (selectedSignalHub ? `sig:${selectedSignalHub}` : "");
+  const neighborIds = new Set(focusKey ? [focusKey] : []);
+  if (focusKey) {
+    for (const l of graphLinks) {
+      if (l.from === focusKey) neighborIds.add(l.to);
+      if (l.to === focusKey) neighborIds.add(l.from);
+    }
+  }
 
-  const stageHtml = connectedAssets.length
-    ? `<div id="rel-stage" class="rel-stage">
-         <svg class="rel-edges-svg" aria-hidden="true"></svg>
-         <div class="rel-board" style="grid-template-columns: ${cols || "1fr"};">
-           ${hasLeft ? `<div class="rel-col">${connectedRules.map((a) => renderNodeCard(a, true)).join("")}</div>` : ""}
-           ${
-             hasHubs
-               ? `<div class="rel-hubs">${sharedHubs
-                   .map((h) => {
-                     const active = Boolean(selectedId) && selectedSignals.has(h.sig);
-                     const dimmed = Boolean(selectedId) && !active;
-                     return `<span class="rel-hub ${active ? "active" : ""} ${dimmed ? "dimmed" : ""}" data-hub-sig="${escapeHtml(h.sig)}">#${escapeHtml(h.sig)} <span class="rel-hub-count">${h.count}</span></span>`;
-                   })
-                   .join("")}</div>`
-               : ""
-           }
-           ${hasRight ? `<div class="rel-col">${connectedFixes.map((a) => renderNodeCard(a, true)).join("")}</div>` : ""}
-         </div>
-       </div>`
-    : `<div class="rel-empty-graph">${
-        showSignals
-          ? "No linked experiences or shared signals yet."
-          : "No explicit Rule → Fix or refinement lineage yet. Switch to Lineage + Shared Signals to view signal clusters."
-      }</div>`;
+  const edgesSvg = graphLinks
+    .map((l) => {
+      const p1 = positions.get(l.from);
+      const p2 = positions.get(l.to);
+      if (!p1 || !p2) return "";
+      const active = focusKey && (l.from === focusKey || l.to === focusKey);
+      const opacity = !focusKey ? (l.kind === "signal" ? 0.45 : 0.72) : active ? 0.95 : 0.12;
+      if (l.kind === "signal") {
+        const mx = (p1.x + p2.x) / 2;
+        const my = (p1.y + p2.y) / 2 - 12;
+        return `<path d="M ${p1.x} ${p1.y} Q ${mx} ${my} ${p2.x} ${p2.y}" fill="none" stroke="var(--accent)" stroke-width="${active ? 1.8 : 1.2}" stroke-dasharray="4 3" stroke-opacity="${opacity}" />`;
+      }
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      const pad = 18;
+      const x1 = p1.x + (dx / dist) * pad;
+      const y1 = p1.y + (dy / dist) * pad;
+      const x2 = p2.x - (dx / dist) * pad;
+      const y2 = p2.y - (dy / dist) * pad;
+      const color = l.kind === "supersedes" ? "var(--warn)" : "var(--accent)";
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${active ? 2.2 : 1.6}" stroke-opacity="${opacity}" marker-end="url(#kg-arrow)" />`;
+    })
+    .join("");
 
-  const standaloneHtml = standaloneAssets.length
-    ? `<div class="rel-section-head"><span>Standalone</span><span>${standaloneAssets.length}</span></div>
-       <div class="rel-standalone-grid">${standaloneAssets.map((a) => renderNodeCard(a, false)).join("")}</div>`
-    : "";
+  const hubsSvg = sharedHubs
+    .map((h) => {
+      const nodeId = `sig:${h.sig}`;
+      const p = positions.get(nodeId);
+      if (!p) return "";
+      const active = selectedSignalHub === h.sig || (focusKey && neighborIds.has(nodeId));
+      const dimmed = Boolean(focusKey) && !neighborIds.has(nodeId);
+      const text = `#${h.sig}`;
+      const w = Math.max(66, text.length * 7 + 20);
+      return `
+      <g class="kg-hub" data-hub-sig="${escapeHtml(h.sig)}" opacity="${dimmed ? 0.2 : 1}">
+        <rect x="${p.x - w / 2}" y="${p.y - 12}" width="${w}" height="24" rx="12" fill="${active ? "var(--accent)" : "var(--bg)"}" stroke="var(--accent)" stroke-width="${active ? 1.8 : 1.1}" />
+        <text x="${p.x}" y="${p.y + 4}" text-anchor="middle" fill="${active ? "#ffffff" : "var(--accent)"}" font-size="10.5" font-weight="600" font-family="Consolas, monospace">${escapeHtml(text)}</text>
+        <title>Shared signal #${escapeHtml(h.sig)} (${h.count} experiences)</title>
+      </g>`;
+    })
+    .join("");
+
+  const expNodesSvg = visibleAssets
+    .map((a) => {
+      const p = positions.get(a.id);
+      if (!p) return "";
+      const isFix = a.type === "Fix";
+      const isSelected = a.id === selectedId;
+      const dimmed = Boolean(focusKey) && !neighborIds.has(a.id);
+      const r = Math.round(11 + Math.min(4, Math.max(0, ((a.gdiScore || 50) - 50) / 12)));
+      const label = (a.title || a.id).length > 22 ? `${(a.title || a.id).slice(0, 21)}…` : a.title || a.id;
+      const fill = isFix ? "var(--accent-soft)" : "var(--accent)";
+      return `
+      <g class="kg-node" data-node-id="${escapeHtml(a.id)}" opacity="${dimmed ? 0.2 : 1}">
+        ${isSelected ? `<circle cx="${p.x}" cy="${p.y}" r="${r + 5}" fill="var(--accent-muted)" stroke="var(--accent)" stroke-width="1.5" />` : ""}
+        ${
+          isFix
+            ? `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="var(--bg)" stroke="${fill}" stroke-width="2.5" /><circle cx="${p.x}" cy="${p.y}" r="${Math.max(4, r - 5)}" fill="${fill}" />`
+            : `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${fill}" stroke="#ffffff" stroke-width="1.5" />`
+        }
+        <text x="${p.x}" y="${p.y + 3.5}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="700" font-family="Consolas, monospace">${isFix ? "" : "R"}</text>
+        <text x="${p.x}" y="${p.y + r + 14}" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="${isSelected ? "700" : "600"}">${escapeHtml(label)}</text>
+        <title>${escapeHtml(a.title)} (${a.type} · Score ${a.gdiScore ?? "-"})</title>
+      </g>`;
+    })
+    .join("");
 
   listPane.innerHTML = `
-    <div class="graph-legend">
-      <div class="legend-items">
-        <span><i class="dot dot-rule"></i>Lineage</span>
-        <span><i class="dot dot-signal"></i>Shared Signal (${sharedHubs.length})</span>
+    <div class="kg-stage">
+      <svg class="kg-svg" viewBox="0 0 ${width} ${height}">
+        <defs>
+          <marker id="kg-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)" />
+          </marker>
+        </defs>
+        ${edgesSvg}
+        ${hubsSvg}
+        ${expNodesSvg}
+      </svg>
+      <div class="kg-hint">Click node to inspect · Click #signal to highlight</div>
+      <div class="kg-legend">
+        <span><i class="dot dot-rule"></i>Rule</span>
+        <span><i class="kg-ring-dot"></i>Fix</span>
+        <span><i class="dot dot-signal"></i>#Signal (${sharedHubs.length})</span>
       </div>
-      <span>Click any card to highlight & inspect</span>
     </div>
-    ${stageHtml}
-    ${standaloneHtml}
   `;
 
   listPane.querySelectorAll("[data-node-id]").forEach((node) => {
     node.addEventListener("click", () => {
+      selectedSignalHub = "";
       selectedId = selectedId === node.dataset.nodeId ? "" : node.dataset.nodeId;
       pendingDeleteId = "";
       render();
     });
   });
-
-  const stage = el("rel-stage");
-  if (stage) {
-    const redraw = () => drawRelationshipEdges(stage, edges, showSignals, selectedId, selectedSignals);
-    requestAnimationFrame(redraw);
-    if (typeof ResizeObserver === "function") {
-      relResizeObserver = new ResizeObserver(redraw);
-      relResizeObserver.observe(stage);
-    }
-  }
+  listPane.querySelectorAll("[data-hub-sig]").forEach((hub) => {
+    hub.addEventListener("click", () => {
+      selectedId = "";
+      selectedSignalHub = selectedSignalHub === hub.dataset.hubSig ? "" : hub.dataset.hubSig;
+      render();
+    });
+  });
 
   renderDetail(selectedAsset);
 }
@@ -870,6 +956,13 @@ function render() {
   }
 
   if (activeTab === "events") {
+    const curSid = state.currentSession?.sessionId || "";
+    const curSname = state.currentSession?.sessionName || "";
+    const sessionBtn = el("chip-event-session");
+    if (sessionBtn) {
+      sessionBtn.classList.toggle("active", eventSessionFilter === "current");
+      sessionBtn.textContent = curSname ? `Session: ${curSname}` : curSid ? `Session: ${curSid.slice(0, 8)}` : "This Session";
+    }
     const events = getFilteredEvents();
     listPane.innerHTML = events.length
       ? `<div class="timeline">${events
@@ -877,10 +970,22 @@ function render() {
             const meta = formatEventMeta(ev);
             const isWarn = meta.cls === "ev-warn";
             const sigs = (ev.signals || []).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
+            const shortSid = ev.sessionId ? ev.sessionId.slice(0, 8) : "";
+            const sessionLabel = ev.sessionName
+              ? `${ev.sessionName}${shortSid ? ` · ${shortSid}` : ""}`
+              : shortSid || (ev.project ? ev.project : "");
+            const sessionBadge = ev.sessionId
+              ? `<button class="event-session-pill" data-ev-session="${escapeHtml(ev.sessionId)}" type="button" title="Filter events from session ${escapeHtml(ev.sessionId)}">${escapeHtml(sessionLabel)}</button>`
+              : sessionLabel
+                ? `<span class="badge">${escapeHtml(sessionLabel)}</span>`
+                : "";
             return `
             <div class="event-row ${isWarn ? "is-warn" : ""}">
               <div class="event-top">
-                <span class="badge ${meta.cls}">${escapeHtml(meta.label)}</span>
+                <div class="event-top-left">
+                  <span class="badge ${meta.cls}">${escapeHtml(meta.label)}</span>
+                  ${sessionBadge}
+                </div>
                 <span class="muted" title="${escapeHtml(ev.ts || "")}">${escapeHtml(formatLocalTime(ev.ts))}</span>
               </div>
               <div class="event-detail">${escapeHtml(meta.desc)}</div>
@@ -889,6 +994,13 @@ function render() {
           })
           .join("")}</div>`
       : `<div class="empty">No matching evolution events recorded.</div>`;
+    listPane.querySelectorAll("[data-ev-session]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const sid = btn.dataset.evSession;
+        eventSessionFilter = eventSessionFilter === sid ? "" : sid;
+        render();
+      });
+    });
     return;
   }
 
@@ -1103,11 +1215,22 @@ async function init() {
     });
   });
 
+  el("chip-event-session")?.addEventListener("click", () => {
+    eventSessionFilter = eventSessionFilter === "current" ? "" : "current";
+    render();
+  });
+
   document.querySelectorAll(".chip[data-rel-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
       relMode = btn.dataset.relMode;
+      selectedSignalHub = "";
       render();
     });
+  });
+
+  el("chip-rel-standalone")?.addEventListener("click", () => {
+    relShowStandalone = !relShowStandalone;
+    render();
   });
 
   el("chip-repo")?.addEventListener("click", () => {

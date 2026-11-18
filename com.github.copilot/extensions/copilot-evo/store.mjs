@@ -140,10 +140,30 @@ function saveConfig(evoHome, patch) {
   return next;
 }
 
+let eventSessionContextProvider = null;
+
+export function setEventSessionContext(provider) {
+  eventSessionContextProvider = provider || null;
+}
+
+function getEventSessionContext() {
+  try {
+    const raw = typeof eventSessionContextProvider === "function" ? eventSessionContextProvider() : eventSessionContextProvider;
+    if (!raw || typeof raw !== "object") return {};
+    const out = {};
+    if (raw.sessionId) out.sessionId = String(raw.sessionId).slice(0, 64);
+    if (raw.sessionName) out.sessionName = String(raw.sessionName).slice(0, 60);
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export function appendEvent(evoHome, event) {
   fs.mkdirSync(evoHome, { recursive: true });
   const cleanEvent = sanitizePayload({
     ts: new Date().toISOString(),
+    ...getEventSessionContext(),
     ...event,
   });
   fs.appendFileSync(path.join(evoHome, "events.jsonl"), `${JSON.stringify(cleanEvent)}\n`, "utf8");

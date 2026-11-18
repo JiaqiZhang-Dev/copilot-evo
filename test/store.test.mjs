@@ -22,9 +22,11 @@ import {
   manageAsset,
   maybeAutoPull,
   normalizeRepoSlug,
+  readRecentEvents,
   recordAssetOutcome,
   runAssetValidation,
   selectAssets,
+  setEventSessionContext,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -491,6 +493,16 @@ test("runAssetValidation executes whitelisted command and updates outcome", asyn
     assert.equal(res.passed, true);
     const updated = loadStore(home).fixes.find((f) => f.id === "exp-arena-check");
     assert.equal(updated.successCount, 2);
+
+    setEventSessionContext(() => ({ sessionId: "623e92ec-test-session", sessionName: "Test Session" }));
+    try {
+      recordAssetOutcome(home, ["exp-arena-check"], "success", "session_tag_check");
+      const evs = readRecentEvents(home, 5);
+      assert.equal(evs[0].sessionId, "623e92ec-test-session");
+      assert.equal(evs[0].sessionName, "Test Session");
+    } finally {
+      setEventSessionContext(null);
+    }
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

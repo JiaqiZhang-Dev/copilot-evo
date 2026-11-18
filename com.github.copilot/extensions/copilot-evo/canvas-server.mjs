@@ -68,6 +68,7 @@ export function createEvoCanvasServer({
   evoHome,
   getCurrentRepo = () => "",
   getWorkingDirectory = () => process.cwd(),
+  getSessionInfo = () => ({}),
   onRefineRequest = null,
 }) {
   const canvasToken = randomBytes(32).toString("hex");
@@ -100,6 +101,7 @@ export function createEvoCanvasServer({
     return {
       evoHome,
       currentRepo: getCurrentRepo(),
+      currentSession: getSessionInfo(),
       syncRepoPath: resolveSyncRepoPath(evoHome),
       config: store.config,
       rules,
