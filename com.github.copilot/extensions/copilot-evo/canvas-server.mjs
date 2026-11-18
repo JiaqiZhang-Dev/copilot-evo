@@ -279,7 +279,7 @@ export function createEvoCanvasServer({
     broadcastUpdate("open");
     return {
       title: "Copilot Evo",
-      status: `${loadStore(evoHome).genes.length} Genes · ${loadStore(evoHome).capsules.length} Capsules`,
+      status: `${loadStore(evoHome).genes.length} Rules · ${loadStore(evoHome).capsules.length} Fixes`,
       url: `${entry.url}?open=${randomBytes(6).toString("hex")}`,
     };
   }
