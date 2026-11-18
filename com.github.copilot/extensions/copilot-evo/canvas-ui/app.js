@@ -202,6 +202,20 @@ function renderDetail(item) {
 
   const scopeText = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "Local";
   const repoText = item.repoScope && item.repoScope !== "*" ? item.repoScope : "Global";
+  const refineHtml =
+    item.scope !== "starter"
+      ? `<div class="section-label">Refine with Copilot</div>
+         <div class="refine-bar">
+           <input id="refine-input" class="refine-input" type="text" placeholder="Tell Copilot how to update this experience..." />
+           <button id="btn-refine" class="btn btn-primary" type="button">Refine</button>
+         </div>`
+      : "";
+  const provenanceParts = [
+    item.author ? `Author: ${escapeHtml(item.author)}` : "",
+    `Source: ${escapeHtml(item.sourceProject || "bundled")}`,
+    `Updated: ${escapeHtml(item.updatedAt ? formatLocalTime(item.updatedAt) : "bundled")}`,
+  ].filter(Boolean);
+
   pane.innerHTML = `
     <div class="detail-head">
       <div class="detail-title-row">
@@ -224,6 +238,7 @@ function renderDetail(item) {
       </div>
       <div class="actions">${promoteTeamBtn}${copyBtn}${deleteControl}${closeBtn}</div>
     </div>
+    ${refineHtml}
     <div class="section-label">Trigger Signals</div>
     <div class="badges">${signals || '<span class="muted">None</span>'}</div>
     <div class="section-label">Summary</div>
@@ -234,8 +249,18 @@ function renderDetail(item) {
     ${validation}
     ${lineageHtml}
     <div class="section-label">Provenance (Auto-scored from loop)</div>
-    <p class="muted">Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0} · Source: ${escapeHtml(item.sourceProject || "bundled")} · Updated: ${escapeHtml(item.updatedAt ? formatLocalTime(item.updatedAt) : "bundled")}</p>
+    <p class="muted">${provenanceParts.join(" · ")}</p>
   `;
+
+  const submitRefine = () => {
+    const val = el("refine-input")?.value?.trim();
+    if (!val) return;
+    mutate("/api/assets/refine", { id: item.id, feedback: val });
+  };
+  el("btn-refine")?.addEventListener("click", submitRefine);
+  el("refine-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submitRefine();
+  });
 
   pane.querySelector("[data-close-detail]")?.addEventListener("click", () => {
     selectedId = "";
@@ -790,7 +815,10 @@ async function mutate(endpoint, body) {
         showBanner(`Shared ${data.asset?.id || "experience"} as team experience.`);
       }
     } else if (endpoint === "/api/assets/feedback") {
-      showBanner(`Updated ${data.asset?.id || "asset"} (GDI ${data.gdiScore ?? "-"}).`);
+      showBanner(`Updated ${data.asset?.id || "asset"} (Score ${data.gdiScore ?? "-"}).`);
+    } else if (endpoint === "/api/assets/refine") {
+      showBanner(`Sent refinement request to Copilot for ${data.id}.`);
+      if (el("refine-input")) el("refine-input").value = "";
     } else if (endpoint === "/api/arena/validate") {
       if (data.passed) {
         showBanner(`Validation PASSED for ${data.assetId}.`);

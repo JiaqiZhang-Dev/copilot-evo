@@ -8,7 +8,13 @@ import { initStore, solidifyAsset } from "../com.github.copilot/extensions/copil
 
 test("evo canvas server serves UI, state snapshot, and enforces token on mutations", async () => {
   const evoHome = fs.mkdtempSync(path.join(os.tmpdir(), "copilot-evo-canvas-"));
-  const server = createEvoCanvasServer({ evoHome });
+  const refineCalls = [];
+  const server = createEvoCanvasServer({
+    evoHome,
+    onRefineRequest: async (payload) => {
+      refineCalls.push(payload);
+    },
+  });
 
   try {
     initStore({ evoHome });
@@ -98,6 +104,18 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     const feedbackBody = await feedbackRes.json();
     assert.equal(feedbackBody.asset.pinned, true);
     assert.ok(feedbackBody.gdiScore > 0);
+
+    const refineRes = await fetch(`${baseUrl}/api/assets/refine`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Evo-Token": canvasToken,
+      },
+      body: JSON.stringify({ id: "exp-local-promote", feedback: "Keep scope strict" }),
+    });
+    assert.equal(refineRes.status, 200);
+    assert.equal(refineCalls.length, 1);
+    assert.equal(refineCalls[0].feedback, "Keep scope strict");
   } finally {
     await server.closeInstance({ instanceId: "test-panel-1" });
     fs.rmSync(evoHome, { recursive: true, force: true });

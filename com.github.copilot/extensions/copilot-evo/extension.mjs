@@ -28,12 +28,41 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.9.4";
+const EXTENSION_VERSION = "0.10.0";
 let lastWorkingDirectory = process.cwd();
+let activeSession = null;
 const canvasServer = createEvoCanvasServer({
   evoHome,
   getCurrentRepo: () => detectRepoSlug(lastWorkingDirectory),
   getWorkingDirectory: () => lastWorkingDirectory,
+  onRefineRequest: async ({ asset, feedback }) => {
+    if (!activeSession) throw new Error("Active session unavailable.");
+    const prompt = [
+      `[copilot-evo refine request] Please update experience \`${asset.id}\` (${asset.type}, scope: ${asset.scope || "local"}, repoScope: ${asset.repoScope || "*"}) based on this user feedback:`,
+      `Feedback: ${feedback}`,
+      "",
+      "Current experience JSON:",
+      JSON.stringify(
+        {
+          id: asset.id,
+          kind: asset.type,
+          title: asset.title,
+          summary: asset.summary,
+          signals: asset.signals,
+          strategy: asset.strategy,
+          solution: asset.solution,
+          validation: asset.validation,
+          scope: asset.scope || "local",
+          repoScope: asset.repoScope || "*",
+        },
+        null,
+        2
+      ),
+      "",
+      "Translate any non-English feedback into concise English, call `evo_solidify` with the same `id` and `scope` to update it in place, and show the updated preview.",
+    ].join("\n");
+    await activeSession.send({ prompt });
+  },
 });
 const sessionState = {
   protocolInjected: false,
@@ -464,3 +493,5 @@ const session = await joinSession({
     }),
   ],
 });
+
+activeSession = session;

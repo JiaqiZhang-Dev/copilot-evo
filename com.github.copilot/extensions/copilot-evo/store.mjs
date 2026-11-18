@@ -351,10 +351,46 @@ export function recordAssetOutcome(evoHome, assetIds = [], outcome = "success", 
   return updated;
 }
 
+export function detectSourceLabel(workingDirectory) {
+  if (!workingDirectory) return "chat";
+  const slug = detectRepoSlug(workingDirectory);
+  if (slug) return slug;
+  try {
+    execFileSync("git", ["-C", workingDirectory, "rev-parse", "--is-inside-work-tree"], {
+      encoding: "utf8",
+      timeout: 1500,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return "local-git";
+  } catch {
+    return "chat";
+  }
+}
+
+export function detectAuthorName(workingDirectory) {
+  const envAuthor = (process.env.COPILOT_EVO_AUTHOR || "").trim();
+  if (envAuthor) return envAuthor.slice(0, 40);
+  const tryGitUser = (args) => {
+    try {
+      return execFileSync("git", args, {
+        encoding: "utf8",
+        timeout: 1500,
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+    } catch {
+      return "";
+    }
+  };
+  const name =
+    (workingDirectory && fs.existsSync(workingDirectory)
+      ? tryGitUser(["-C", workingDirectory, "config", "--get", "user.name"])
+      : "") || tryGitUser(["config", "--global", "--get", "user.name"]);
+  if (!name || /@/.test(name)) return "";
+  return name.slice(0, 40);
+}
+
 export function hashProjectId(workingDirectory) {
-  if (!workingDirectory) return "global";
-  const digest = crypto.createHash("sha256").update(workingDirectory).digest("hex").slice(0, 10);
-  return `proj-${digest}`;
+  return detectSourceLabel(workingDirectory);
 }
 
 const SIGNAL_PATTERNS = [
@@ -513,6 +549,8 @@ export function solidifyAsset(input, options = {}) {
       ? detectRepoSlug(input.workingDirectory) || "*"
       : normalizeRepoSlug(input.repoScope || "*");
 
+  const author = (input.author || detectAuthorName(input.workingDirectory) || "").trim();
+
   const rawAsset = {
     id,
     type: kind,
@@ -527,7 +565,8 @@ export function solidifyAsset(input, options = {}) {
     ...(input.ruleId ? { ruleId: slugify(input.ruleId) } : {}),
     ...(input.parentId ? { parentId: slugify(input.parentId) } : {}),
     ...(input.supersedes ? { supersedes: slugify(input.supersedes) } : {}),
-    sourceProject: hashProjectId(input.workingDirectory),
+    sourceProject: detectSourceLabel(input.workingDirectory),
+    ...(author ? { author } : {}),
     updatedAt: new Date().toISOString(),
   };
 
@@ -554,6 +593,10 @@ export function solidifyAsset(input, options = {}) {
   if (idx >= 0) {
     cleanAsset.successCount = (list[idx].successCount || 0) + 1;
     cleanAsset.pendingSuccessDelta = (list[idx].pendingSuccessDelta || 0) + 1;
+    if (list[idx].author && !input.author) cleanAsset.author = list[idx].author;
+    if (list[idx].sourceProject && !list[idx].sourceProject.startsWith("proj-")) {
+      cleanAsset.sourceProject = list[idx].sourceProject;
+    }
     list[idx] = { ...list[idx], ...cleanAsset };
   } else {
     cleanAsset.successCount = 1;

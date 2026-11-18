@@ -1041,6 +1041,29 @@ body {
   margin-top: 2px;
 }
 
+.refine-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.refine-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(9, 105, 218, 0.18);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.refine-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .code-box {
   font-family: var(--font-mono, Consolas, monospace);
   font-size: 12px;

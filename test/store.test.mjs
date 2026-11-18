@@ -7,6 +7,8 @@ import { execFileSync } from "node:child_process";
 import {
   computeGdiBreakdown,
   computeGdiScore,
+  detectAuthorName,
+  detectSourceLabel,
   exportBundle,
   extractSignals,
   getAssetRelationships,
@@ -431,6 +433,8 @@ test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
     assert.equal(rule.ok, true);
     assert.ok(rule.asset.id.startsWith("exp-"));
     assert.equal(rule.asset.type, "Rule");
+    assert.equal(detectSourceLabel(undefined), "chat");
+    assert.ok(typeof detectAuthorName(process.cwd()) === "string");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

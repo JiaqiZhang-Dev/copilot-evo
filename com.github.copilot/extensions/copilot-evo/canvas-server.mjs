@@ -68,6 +68,7 @@ export function createEvoCanvasServer({
   evoHome,
   getCurrentRepo = () => "",
   getWorkingDirectory = () => process.cwd(),
+  onRefineRequest = null,
 }) {
   const canvasToken = randomBytes(32).toString("hex");
   const sseClients = new Set();
@@ -194,6 +195,20 @@ export function createEvoCanvasServer({
       } else if (reqUrl.pathname === "/api/assets/feedback") {
         const action = ["pin", "unpin", "upvote", "downvote"].includes(body.action) ? body.action : "";
         result = action ? manageAsset(action, body.id, { evoHome }) : { ok: false, error: "Invalid feedback action." };
+      } else if (reqUrl.pathname === "/api/assets/refine") {
+        const feedback = String(body.feedback || "").trim();
+        const store = loadStore(evoHome);
+        const asset = [...store.rules, ...store.fixes].find((a) => a.id === body.id);
+        if (!asset) {
+          result = { ok: false, error: `Experience not found: ${body.id}` };
+        } else if (!feedback) {
+          result = { ok: false, error: "Please enter refinement instructions." };
+        } else if (typeof onRefineRequest !== "function") {
+          result = { ok: false, error: "Copilot session bridge is unavailable." };
+        } else {
+          await onRefineRequest({ asset, feedback });
+          result = { ok: true, id: asset.id };
+        }
       } else if (reqUrl.pathname === "/api/arena/validate") {
         result = await runAssetValidation(evoHome, body.id, getWorkingDirectory());
       } else if (reqUrl.pathname === "/api/assets/delete") {
