@@ -673,24 +673,33 @@ function render() {
   }
 
   listPane.innerHTML = items
-    .map((item) => {
+    .map((item, idx) => {
       const isFix = item.type === "Fix";
       const scopeLabel = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "Local";
       const scopeCls = item.scope === "team" ? "row-scope-team" : "row-scope";
       const repoTag = item.repoScope && item.repoScope !== "*" ? ` · ${escapeHtml(item.repoScope)}` : "";
+      const uses = item.successCount || 0;
+      const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
       return `
       <div class="exp-row ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
-        <span class="exp-dot ${isFix ? "is-fix" : "is-rule"}" title="${isFix ? "Fix" : "Rule"}"></span>
+        <span class="exp-rank ${idx === 0 ? "is-top" : ""}" title="Rank #${idx + 1}">${idx + 1}</span>
         <div class="exp-main">
           <div class="exp-title-line">
             <span class="exp-title">${escapeHtml(item.title)}</span>
+            <span class="row-kind ${isFix ? "is-fix" : "is-rule"}">${isFix ? "Fix" : "Rule"}</span>
             <span class="${scopeCls}">${scopeLabel}${repoTag}</span>
           </div>
           <div class="exp-summary">${escapeHtml(item.summary)}</div>
         </div>
         <div class="exp-metrics">
-          <span class="exp-score">${item.gdiScore ?? "-"}</span>
-          <span class="exp-reuses">${item.successCount || 0}×</span>
+          <div class="metric-col" title="Composite quality & reliability score">
+            <span class="exp-score">${scoreVal}</span>
+            <span class="metric-label">score</span>
+          </div>
+          <div class="metric-col" title="Verified reuse count">
+            <span class="exp-reuses">${uses}</span>
+            <span class="metric-label">used</span>
+          </div>
         </div>
       </div>`;
     })
