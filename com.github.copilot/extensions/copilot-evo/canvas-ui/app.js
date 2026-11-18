@@ -8,6 +8,8 @@ let contribMode = "author";
 let contribScope = "all";
 let eventFilter = "all";
 let eventSessionFilter = "";
+let eventSearchQuery = "";
+let eventDisplayLimit = 25;
 let relMode = "all";
 let relShowStandalone = false;
 let selectedSignalHub = "";
@@ -126,6 +128,13 @@ function getFilteredEvents() {
     eventSessionFilter === "current" ? state?.currentSession?.sessionId || "" : eventSessionFilter;
   if (targetSession) {
     events = events.filter((ev) => ev.sessionId === targetSession);
+  }
+  const q = eventSearchQuery.trim().toLowerCase();
+  if (q) {
+    events = events.filter((ev) => {
+      const hay = `${ev.event || ""} ${ev.sessionName || ""} ${ev.sessionId || ""} ${ev.repo || ""} ${ev.project || ""} ${ev.toolName || ""} ${ev.assetId || ""} ${(ev.assetIds || []).join(" ")} ${(ev.assetTitles || []).join(" ")} ${(ev.signals || []).join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
   }
   return events;
 }
@@ -488,11 +497,11 @@ function computeForceLayout(nodes, links, width, height) {
     disp.set(node.id, { x: 0, y: 0 });
   });
 
-  const padX = 78;
-  const padY = 40;
-  const repulseStrength = 2600;
+  const padX = 88;
+  const padY = 44;
+  const repulseStrength = 3400;
 
-  for (let iter = 0; iter < 120; iter++) {
+  for (let iter = 0; iter < 140; iter++) {
     for (const node of nodes) {
       disp.get(node.id).x = 0;
       disp.get(node.id).y = 0;
@@ -512,8 +521,14 @@ function computeForceLayout(nodes, links, width, height) {
           dy = 0.5;
           dist = 1.12;
         }
-        const minGap = a.kind === "signal" || b.kind === "signal" ? 84 : 112;
-        const force = repulseStrength / (dist * dist) + (dist < minGap ? (minGap - dist) * 0.14 : 0);
+        const minGap = a.kind === "signal" || b.kind === "signal" ? 96 : 128;
+        let force = repulseStrength / (dist * dist) + (dist < minGap ? (minGap - dist) * 0.18 : 0);
+        // Extra vertical separation when two nodes share roughly the same x-column so labels don't overlap.
+        if (Math.abs(dx) < 110 && Math.abs(dy) < 52) {
+          const pushY = (52 - Math.abs(dy)) * 0.25 * (dy >= 0 ? 1 : -1);
+          disp.get(a.id).y += pushY;
+          disp.get(b.id).y -= pushY;
+        }
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
         disp.get(a.id).x += fx;
@@ -557,6 +572,67 @@ function computeForceLayout(nodes, links, width, height) {
     }
   }
   return pos;
+}
+
+function renderSignalClusterDetail(signalName, relatedAssets) {
+  const pane = el("detail-pane");
+  if (!signalName || !relatedAssets.length) {
+    renderDetail(null);
+    return;
+  }
+  const avgScore = relatedAssets.reduce((sum, a) => sum + Number(a.gdiScore || 0), 0) / relatedAssets.length;
+  const closeBtn = `<button class="btn btn-close" data-close-signal type="button" title="Clear #${escapeHtml(signalName)} filter">✕</button>`;
+  const rowsHtml = relatedAssets
+    .map((item) => {
+      const repoLabel = item.repoScope && item.repoScope !== "*" ? item.repoScope : "Cross-repo";
+      const scopeText = item.scope === "team" ? "Team" : item.scope === "starter" ? "Built-in" : "Local";
+      return `
+      <button class="contrib-exp-item" data-jump-signal-exp="${escapeHtml(item.id)}" type="button">
+        <span class="contrib-exp-title">${escapeHtml(item.title)}</span>
+        <span class="contrib-exp-meta">${item.type === "Fix" ? "Fix" : "Rule"} · ${escapeHtml(repoLabel)} · ${scopeText} · ${Number(item.gdiScore || 0).toFixed(1)}</span>
+      </button>`;
+    })
+    .join("");
+
+  pane.innerHTML = `
+    <div class="detail-head">
+      <div class="detail-title-row">
+        ${renderScoreRing(avgScore)}
+        <div>
+          <h2 class="detail-title">#${escapeHtml(signalName)}</h2>
+          <div class="detail-meta-line">
+            <span class="detail-meta-pill">Signal Cluster</span>
+            <span>·</span>
+            <span>${relatedAssets.length} related experience(s)</span>
+            <span>·</span>
+            <span>Avg Score ${avgScore.toFixed(1)}</span>
+          </div>
+          <div class="detail-id-sub">Click any experience below to inspect full details</div>
+        </div>
+      </div>
+      <div class="actions">${closeBtn}</div>
+    </div>
+    <div class="section-label">Related Experiences</div>
+    <div class="contrib-exp-list">${rowsHtml}</div>
+  `;
+
+  pane.querySelector("[data-close-signal]")?.addEventListener("click", () => {
+    selectedSignalHub = "";
+    render();
+  });
+  pane.querySelectorAll("[data-jump-signal-exp]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = getAllAssets().find((a) => a.id === btn.dataset.jumpSignalExp);
+      if (!target) return;
+      selectedSignalHub = "";
+      activeTab = !target.scope || target.scope === "local" ? "local" : "assets";
+      activeFilter = "all";
+      activeKind = "all";
+      selectedId = target.id;
+      pendingDeleteId = "";
+      render();
+    });
+  });
 }
 
 function renderRelationshipsView(listPane, allAssets) {
@@ -612,9 +688,21 @@ function renderRelationshipsView(listPane, allAssets) {
     standaloneBtn.classList.toggle("hidden", standaloneCount === 0);
   }
 
-  const visibleAssets = (relShowStandalone ? allAssets : allAssets.filter((a) => connectedIdSet.has(a.id)))
-    .slice()
-    .sort((a, b) => a.id.localeCompare(b.id));
+  const signalClusterAssets = selectedSignalHub
+    ? allAssets
+        .filter((a) => (a.signals || []).some((s) => String(s).toLowerCase() === selectedSignalHub))
+        .sort((a, b) => (b.gdiScore || 0) - (a.gdiScore || 0))
+    : [];
+
+  const visibleAssets = selectedSignalHub
+    ? signalClusterAssets.slice().sort((a, b) => a.id.localeCompare(b.id))
+    : (relShowStandalone ? allAssets : allAssets.filter((a) => connectedIdSet.has(a.id)))
+        .slice()
+        .sort((a, b) => a.id.localeCompare(b.id));
+
+  const visibleHubs = selectedSignalHub
+    ? sharedHubs.filter((h) => h.sig === selectedSignalHub)
+    : sharedHubs;
 
   if (!visibleAssets.length) {
     listPane.innerHTML = `<div class="rel-empty-graph">${
@@ -628,10 +716,11 @@ function renderRelationshipsView(listPane, allAssets) {
 
   const graphNodes = [
     ...visibleAssets.map((a) => ({ id: a.id, kind: a.type === "Fix" ? "Fix" : "Rule", asset: a })),
-    ...sharedHubs.map((h) => ({ id: `sig:${h.sig}`, kind: "signal", sig: h.sig, count: h.count })),
+    ...visibleHubs.map((h) => ({ id: `sig:${h.sig}`, kind: "signal", sig: h.sig, count: h.count })),
   ];
   const graphLinks = [];
   const visibleSet = new Set(visibleAssets.map((a) => a.id));
+  const visibleHubSet = new Set(visibleHubs.map((h) => h.sig));
   for (const e of edges) {
     if (e.kind !== "signal" && visibleSet.has(e.from) && visibleSet.has(e.to)) {
       graphLinks.push({ from: e.from, to: e.to, kind: e.kind, label: e.label });
@@ -640,15 +729,17 @@ function renderRelationshipsView(listPane, allAssets) {
   if (showSignals) {
     for (const a of visibleAssets) {
       for (const s of new Set((a.signals || []).map((x) => String(x).toLowerCase()))) {
-        if (hubSet.has(s)) {
+        if (visibleHubSet.has(s)) {
           graphLinks.push({ from: a.id, to: `sig:${s}`, kind: "signal" });
         }
       }
     }
   }
 
-  const width = Math.max(540, (listPane.clientWidth || 580) - 24);
-  const height = Math.max(290, Math.min(400, 230 + graphNodes.length * 14));
+  const width = Math.max(580, (listPane.clientWidth || 600) - 24);
+  const height = selectedSignalHub
+    ? Math.max(250, Math.min(320, 190 + graphNodes.length * 16))
+    : Math.max(330, Math.min(500, 230 + graphNodes.length * 15));
   const positions = computeForceLayout(graphNodes, graphLinks, width, height);
 
   const selectedAsset = selectedId ? allAssets.find((a) => a.id === selectedId) || null : null;
@@ -686,7 +777,7 @@ function renderRelationshipsView(listPane, allAssets) {
     })
     .join("");
 
-  const hubsSvg = sharedHubs
+  const hubsSvg = visibleHubs
     .map((h) => {
       const nodeId = `sig:${h.sig}`;
       const p = positions.get(nodeId);
@@ -729,7 +820,21 @@ function renderRelationshipsView(listPane, allAssets) {
     })
     .join("");
 
+  const signalBarHtml =
+    showSignals && sharedHubs.length
+      ? `<div class="kg-signal-bar">
+          ${selectedSignalHub ? `<button class="kg-signal-chip" data-hub-clear type="button">All clusters</button>` : ""}
+          ${sharedHubs
+            .map(
+              (h) =>
+                `<button class="kg-signal-chip ${selectedSignalHub === h.sig ? "active" : ""}" data-hub-sig="${escapeHtml(h.sig)}" type="button">#${escapeHtml(h.sig)} <span class="kg-signal-count">${h.count}</span></button>`
+            )
+            .join("")}
+        </div>`
+      : "";
+
   listPane.innerHTML = `
+    ${signalBarHtml}
     <div class="kg-stage">
       <svg class="kg-svg" viewBox="0 0 ${width} ${height}">
         <defs>
@@ -741,7 +846,7 @@ function renderRelationshipsView(listPane, allAssets) {
         ${hubsSvg}
         ${expNodesSvg}
       </svg>
-      <div class="kg-hint">Click node to inspect · Click #signal to highlight</div>
+      <div class="kg-hint">Click node or #signal to inspect related experiences</div>
       <div class="kg-legend">
         <span><i class="dot dot-rule"></i>Rule</span>
         <span><i class="kg-ring-dot"></i>Fix</span>
@@ -752,7 +857,6 @@ function renderRelationshipsView(listPane, allAssets) {
 
   listPane.querySelectorAll("[data-node-id]").forEach((node) => {
     node.addEventListener("click", () => {
-      selectedSignalHub = "";
       selectedId = selectedId === node.dataset.nodeId ? "" : node.dataset.nodeId;
       pendingDeleteId = "";
       render();
@@ -765,8 +869,18 @@ function renderRelationshipsView(listPane, allAssets) {
       render();
     });
   });
+  listPane.querySelector("[data-hub-clear]")?.addEventListener("click", () => {
+    selectedSignalHub = "";
+    render();
+  });
 
-  renderDetail(selectedAsset);
+  if (selectedId && selectedAsset) {
+    renderDetail(selectedAsset);
+  } else if (selectedSignalHub) {
+    renderSignalClusterDetail(selectedSignalHub, signalClusterAssets);
+  } else {
+    renderDetail(null);
+  }
 }
 
 function buildContributorStats(assets, mode = "author", scopeFilter = "all") {
@@ -1022,7 +1136,8 @@ function render() {
   el("rel-toolbar").classList.toggle("hidden", activeTab !== "relationships");
   el("events-toolbar").classList.toggle("hidden", activeTab !== "events");
   const hasDetail =
-    ((activeTab === "assets" || activeTab === "local" || activeTab === "relationships") && Boolean(selectedId)) ||
+    ((activeTab === "assets" || activeTab === "local") && Boolean(selectedId)) ||
+    (activeTab === "relationships" && Boolean(selectedId || selectedSignalHub)) ||
     (activeTab === "contributors" && Boolean(selectedContribKey));
   el("content").classList.toggle("single-pane", !hasDetail);
   el("content").classList.toggle("graph-pane", activeTab === "relationships" && hasDetail);
@@ -1059,9 +1174,11 @@ function render() {
       sessionBtn.textContent = curSname ? `Session: ${curSname}` : curSid ? `Session: ${curSid.slice(0, 8)}` : "This Session";
     }
     const events = getFilteredEvents();
+    const visibleEvents = events.slice(0, eventDisplayLimit);
+    const remainingEvents = Math.max(0, events.length - visibleEvents.length);
     const assetById = new Map(allAssets.map((a) => [a.id, a]));
-    listPane.innerHTML = events.length
-      ? `<div class="timeline">${events
+    listPane.innerHTML = visibleEvents.length
+      ? `<div class="timeline">${visibleEvents
           .map((ev) => {
             const meta = formatEventMeta(ev);
             const isWarn = meta.cls === "ev-warn";
@@ -1100,12 +1217,21 @@ function render() {
               ${sigs ? `<div class="badges">${sigs}</div>` : ""}
             </div>`;
           })
-          .join("")}</div>`
+          .join("")}</div>${
+          remainingEvents > 0
+            ? `<div class="events-more-wrap"><button id="btn-events-more" class="btn btn-quiet" type="button">Show 25 more (${remainingEvents} older)</button></div>`
+            : ""
+        }`
       : `<div class="empty">No matching evolution events recorded.</div>`;
+    el("btn-events-more")?.addEventListener("click", () => {
+      eventDisplayLimit += 25;
+      render();
+    });
     listPane.querySelectorAll("[data-ev-session]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const sid = btn.dataset.evSession;
         eventSessionFilter = eventSessionFilter === sid ? "" : sid;
+        eventDisplayLimit = 25;
         render();
       });
     });
@@ -1384,12 +1510,20 @@ async function init() {
   document.querySelectorAll(".chip[data-event-filter]").forEach((btn) => {
     btn.addEventListener("click", () => {
       eventFilter = btn.dataset.eventFilter;
+      eventDisplayLimit = 25;
       render();
     });
   });
 
   el("chip-event-session")?.addEventListener("click", () => {
     eventSessionFilter = eventSessionFilter === "current" ? "" : "current";
+    eventDisplayLimit = 25;
+    render();
+  });
+
+  el("event-search-input")?.addEventListener("input", (e) => {
+    eventSearchQuery = e.target.value;
+    eventDisplayLimit = 25;
     render();
   });
 
@@ -1445,9 +1579,10 @@ async function init() {
   }
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && (selectedId || selectedContribKey)) {
+    if (e.key === "Escape" && (selectedId || selectedContribKey || selectedSignalHub)) {
       selectedId = "";
       selectedContribKey = "";
+      selectedSignalHub = "";
       pendingDeleteId = "";
       render();
     }

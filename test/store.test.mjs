@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
+  appendEvent,
   collectAssetsToCreditOnStop,
   computeGdiBreakdown,
   computeGdiScore,
@@ -603,6 +604,13 @@ test("runAssetValidation executes whitelisted command and updates outcome", asyn
     } finally {
       setEventSessionContext(null);
     }
+
+    for (let i = 0; i < 6; i++) {
+      appendEvent(home, { event: "recall", seq: i }, { maxEvents: 4, forcePruneCheck: true });
+    }
+    const capped = readRecentEvents(home, 20);
+    assert.equal(capped.length, 4);
+    assert.equal(capped[0].seq, 5);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

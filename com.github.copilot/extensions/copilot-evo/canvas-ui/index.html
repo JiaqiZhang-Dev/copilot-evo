@@ -96,12 +96,17 @@
       </section>
 
       <section id="events-toolbar" class="toolbar hidden">
-        <div class="filters">
-          <button class="chip active" data-event-filter="all" type="button">All Events</button>
-          <button class="chip" data-event-filter="reuses" type="button">Reuses & Recalls</button>
-          <button class="chip" data-event-filter="evolution" type="button">Solidify & Sync</button>
-          <button class="chip" data-event-filter="signals" type="button">Captured Failure Signals</button>
-          <button id="chip-event-session" class="chip" data-event-session="current" type="button">This Session</button>
+        <div class="search-row">
+          <input id="event-search-input" class="search" type="search" placeholder="Search events by session, repo, experience, or signal..." />
+        </div>
+        <div class="filters-bar">
+          <div class="filters">
+            <button class="chip active" data-event-filter="all" type="button">All</button>
+            <button class="chip" data-event-filter="reuses" type="button">Applied</button>
+            <button class="chip" data-event-filter="evolution" type="button">Changes</button>
+            <button class="chip" data-event-filter="signals" type="button">Failures</button>
+          </div>
+          <button id="chip-event-session" class="chip chip-repo" data-event-session="current" type="button">This Session</button>
         </div>
       </section>
 

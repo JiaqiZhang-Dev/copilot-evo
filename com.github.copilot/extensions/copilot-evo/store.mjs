@@ -161,14 +161,30 @@ function getEventSessionContext() {
   }
 }
 
-export function appendEvent(evoHome, event) {
+const MAX_EVENTS_RETENTION = 500;
+const PRUNE_TRIGGER_BYTES = 180 * 1024;
+
+export function appendEvent(evoHome, event, options = {}) {
   fs.mkdirSync(evoHome, { recursive: true });
+  const maxEvents = options.maxEvents || MAX_EVENTS_RETENTION;
   const cleanEvent = sanitizePayload({
     ts: new Date().toISOString(),
     ...getEventSessionContext(),
     ...event,
   });
-  fs.appendFileSync(path.join(evoHome, "events.jsonl"), `${JSON.stringify(cleanEvent)}\n`, "utf8");
+  const eventsPath = path.join(evoHome, "events.jsonl");
+  fs.appendFileSync(eventsPath, `${JSON.stringify(cleanEvent)}\n`, "utf8");
+  try {
+    const stat = fs.statSync(eventsPath);
+    if (stat.size > PRUNE_TRIGGER_BYTES || options.forcePruneCheck) {
+      const lines = fs.readFileSync(eventsPath, "utf8").trim().split(/\r?\n/).filter(Boolean);
+      if (lines.length > maxEvents) {
+        fs.writeFileSync(eventsPath, `${lines.slice(-maxEvents).join("\n")}\n`, "utf8");
+      }
+    }
+  } catch {
+    // Ignore best-effort pruning errors.
+  }
   return cleanEvent;
 }
 

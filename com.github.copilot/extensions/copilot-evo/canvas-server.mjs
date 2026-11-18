@@ -82,7 +82,7 @@ export function createEvoCanvasServer({
 
   function buildSnapshot() {
     const store = loadStore(evoHome);
-    const events = readRecentEvents(evoHome, 60);
+    const events = readRecentEvents(evoHome, 250);
     const allAssets = [...store.rules, ...store.fixes];
     const nowMs = Date.now();
     const enrich = (item) => {

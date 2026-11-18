@@ -973,6 +973,45 @@ body {
   min-height: 290px;
 }
 
+.kg-signal-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.kg-signal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--font-mono, Consolas, monospace);
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.kg-signal-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.kg-signal-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.kg-signal-count {
+  font-size: 10px;
+  opacity: 0.78;
+}
+
 .kg-svg {
   display: block;
   width: 100%;
@@ -1120,6 +1159,12 @@ body {
 .usage-item strong {
   color: var(--accent);
   font-weight: 600;
+}
+
+.events-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 4px;
 }
 
 .graph-legend {
