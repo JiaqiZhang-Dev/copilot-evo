@@ -1,6 +1,6 @@
 {
   "name": "copilot-evo",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
   "description": "Self-evolving GEP plugin for GitHub Copilot App and CLI",

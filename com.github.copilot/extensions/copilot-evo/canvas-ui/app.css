@@ -323,6 +323,10 @@ body {
   grid-template-rows: 1fr;
 }
 
+.content.graph-pane {
+  grid-template-rows: minmax(220px, 54%) 1fr;
+}
+
 .content.single-pane .list-pane {
   border-bottom: none;
 }
@@ -472,28 +476,58 @@ body {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-subtle);
-  padding: 8px;
+  background-color: var(--bg-subtle);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 16px 16px;
+  padding: 6px;
 }
 
 .graph-svg {
   display: block;
-  width: 100%;
-  min-width: 420px;
-  height: auto;
+  margin: 0 auto;
 }
 
 .graph-node {
   cursor: pointer;
+  transition: opacity 0.15s ease;
 }
 
 .graph-legend {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-size: 11px;
   color: var(--muted);
+}
+
+.legend-items {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 4px;
+}
+
+.dot-rule {
+  background: var(--gene);
+}
+
+.dot-fix {
+  background: var(--accent);
+}
+
+.dot-signal {
+  background: var(--muted);
 }
 
 .arena-wrap {
