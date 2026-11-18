@@ -123,6 +123,10 @@ Teammates need **Read** access on the shared sync repo to pull updates and **Wri
 
 ## Commands
 
+<p align="center">
+  <img src="docs/images/commands-autocomplete.png" width="76%" alt="Copilot Evo slash commands autocomplete" />
+</p>
+
 | Command | Action |
 | --- | --- |
 | `/evo-canvas` | Open the **Copilot Evo** side-panel dashboard |
