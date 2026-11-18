@@ -397,7 +397,7 @@ function renderDetail(item) {
     </div>
     ${usageHtml}
     ${lineageHtml}
-    <div class="section-label">Provenance (Auto-scored from loop)</div>
+    <div class="section-label">Provenance</div>
     <p class="muted">${provenanceParts.join(" · ")}</p>
   `;
 
