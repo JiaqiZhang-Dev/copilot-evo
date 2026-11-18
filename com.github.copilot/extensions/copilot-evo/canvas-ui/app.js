@@ -9,8 +9,32 @@ let relMode = "all";
 let searchQuery = "";
 let selectedId = "";
 let pendingDeleteId = "";
+let sharingId = "";
+let justSharedId = "";
+let toastTimer = null;
 
 const el = (id) => document.getElementById(id);
+
+function showToast(title, subtitle = "") {
+  const toast = el("toast");
+  if (!toast) return;
+  if (toastTimer) clearTimeout(toastTimer);
+  toast.className = "toast";
+  toast.innerHTML = `
+    <span class="toast-spark" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <path d="M8 1.5l1.5 4.2 4.2 1.5-4.2 1.5L8 13l-1.5-4.3-4.2-1.5 4.2-1.5L8 1.5Z" fill="currentColor"/>
+      </svg>
+    </span>
+    <div>
+      <div class="toast-title">${escapeHtml(title)}</div>
+      ${subtitle ? `<div class="toast-sub">${escapeHtml(subtitle)}</div>` : ""}
+    </div>
+  `;
+  toastTimer = setTimeout(() => {
+    toast.className = "toast hidden";
+  }, 4200);
+}
 
 function showBanner(message, isError = false) {
   const banner = el("banner");
@@ -161,9 +185,10 @@ function renderDetail(item) {
     ? `<div class="section-label">Validation Commands</div><p class="detail-box code-box">${escapeHtml(item.validation.join("\n"))}</p>`
     : "";
 
+  const isSharing = sharingId === item.id;
   const promoteTeamBtn =
     item.scope === "local"
-      ? `<button class="btn btn-primary" data-promote-team="${escapeHtml(item.id)}" type="button" title="Sanitize, mark as team, and push to the team Git repository">Share to Team</button>`
+      ? `<button class="btn btn-primary" data-promote-team="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Sanitize, mark as team, and push to the team Git repository">${isSharing ? "Sharing..." : "Share to Team"}</button>`
       : "";
   const copyBtn = `<button class="btn" data-copy="${escapeHtml(item.id)}" type="button">Copy JSON</button>`;
   const closeBtn = `<button class="btn btn-close" data-close-detail type="button" title="Close detail drawer">✕</button>`;
@@ -734,12 +759,13 @@ function render() {
           idx === 0
             ? `<span class="exp-rank is-top" title="Rank #1">${trophySvg}</span>`
             : `<span class="exp-rank" title="Rank #${idx + 1}">${idx + 1}</span>`;
+        const isSharing = sharingId === item.id;
         const shareAction =
           !item.scope || item.scope === "local"
-            ? `<button class="row-share" data-quick-share="${escapeHtml(item.id)}" type="button" title="Share to team repository">Share</button>`
+            ? `<button class="row-share" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share to team repository">${isSharing ? "Sharing..." : "Share"}</button>`
             : "";
         return `
-        <div class="exp-row ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
+        <div class="exp-row ${item.id === selectedId ? "selected" : ""} ${item.id === justSharedId ? "just-shared" : ""}" data-id="${escapeHtml(item.id)}">
           ${rankCell}
           <div class="exp-main">
             <div class="exp-title-line">
@@ -790,6 +816,10 @@ async function mutate(endpoint, body) {
   showBanner("");
   const buttons = [el("btn-pull")].filter(Boolean);
   buttons.forEach((b) => (b.disabled = true));
+  if (endpoint === "/api/assets/promote-team" && body?.id) {
+    sharingId = body.id;
+    render();
+  }
   try {
     const res = await fetch(endpoint, {
       method: "POST",
@@ -803,21 +833,31 @@ async function mutate(endpoint, body) {
     if (!data.ok) {
       showBanner(data.error || "Operation failed.", true);
     } else if (endpoint === "/api/sync/pull") {
-      showBanner(`Refreshed (${data.imported || 0} new, ${data.updated || 0} updated from team).`);
+      showToast("Synced with team", `${data.imported || 0} new, ${data.updated || 0} updated experience(s).`);
     } else if (endpoint === "/api/assets/promote") {
       showBanner(`Promoted ${data.asset?.id || "experience"}.`);
     } else if (endpoint === "/api/assets/promote-team") {
+      justSharedId = data.asset?.id || body?.id || "";
+      setTimeout(() => {
+        justSharedId = "";
+      }, 2200);
       if (data.pushed) {
-        showBanner(`Shared ${data.asset?.id || "experience"} to the team repository.`);
+        showToast(
+          "Shared to team!",
+          `Thanks for helping the team evolve — "${data.asset?.title || data.asset?.id}" is now live.`
+        );
       } else if (data.syncError) {
         showBanner(`Marked ${data.asset?.id || "experience"} as team, but Git push failed: ${data.syncError}`, true);
       } else {
-        showBanner(`Shared ${data.asset?.id || "experience"} as team experience.`);
+        showToast(
+          "Marked as team experience!",
+          `Thanks for contributing "${data.asset?.title || data.asset?.id}".`
+        );
       }
     } else if (endpoint === "/api/assets/feedback") {
       showBanner(`Updated ${data.asset?.id || "asset"} (Score ${data.gdiScore ?? "-"}).`);
     } else if (endpoint === "/api/assets/refine") {
-      showBanner(`Sent refinement request to Copilot for ${data.id}.`);
+      showToast("Sent to Copilot", "Refining this experience in chat...");
       if (el("refine-input")) el("refine-input").value = "";
     } else if (endpoint === "/api/arena/validate") {
       if (data.passed) {
@@ -830,10 +870,14 @@ async function mutate(endpoint, body) {
     } else if (endpoint === "/api/assets/delete") {
       showBanner(`Deleted ${data.deletedId || "asset"}.`);
     }
+    sharingId = "";
     await loadState(false);
   } catch (err) {
+    sharingId = "";
     showBanner(err.message, true);
+    render();
   } finally {
+    sharingId = "";
     buttons.forEach((b) => (b.disabled = false));
   }
 }

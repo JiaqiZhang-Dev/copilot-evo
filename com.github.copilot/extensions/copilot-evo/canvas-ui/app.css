@@ -184,6 +184,85 @@ body {
   border-color: var(--border);
 }
 
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 18px;
+  z-index: 40;
+  max-width: min(360px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 11px;
+  background: var(--bg);
+  border: 1px solid rgba(9, 105, 218, 0.28);
+  box-shadow: 0 10px 28px rgba(9, 105, 218, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08);
+  animation: toastIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.toast-spark {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--accent-muted);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  animation: sparkPop 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.toast-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.toast-sub {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.exp-row.just-shared {
+  animation: shareGlow 1.8s ease-out;
+}
+
+.row-share:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sparkPop {
+  0% { transform: scale(0.5) rotate(-20deg); }
+  60% { transform: scale(1.18) rotate(8deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes shareGlow {
+  0% {
+    background: rgba(9, 105, 218, 0.22);
+    box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.25);
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
 .banner {
   margin: 8px 14px 0;
   padding: 8px 10px;
