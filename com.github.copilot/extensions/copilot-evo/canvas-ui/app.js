@@ -227,7 +227,7 @@ function renderDetail(item) {
     : "";
   const promoteTeamBtn =
     item.scope === "local"
-      ? `<button class="btn btn-primary" data-promote-team="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Sanitize, mark as team, and push to the team Git repository">${isSharing ? "Sharing..." : "Share to Team"}</button>`
+      ? `<button class="btn btn-primary" data-promote-team="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Sanitize and share with your team">${isSharing ? "Sharing..." : "Share with Team"}</button>`
       : "";
   const copyBtn = `<button class="btn" data-copy="${escapeHtml(item.id)}" type="button">Copy JSON</button>`;
   const closeBtn = `<button class="btn btn-close" data-close-detail type="button" title="Close detail drawer">✕</button>`;
@@ -1076,7 +1076,7 @@ function render() {
         const isSharing = sharingId === item.id;
         const shareIconSvg = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 10.8V2.6m0 0L5 5.6M8 2.6l3 3M3 10.4v2.1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
         const shareCell = showShareCol
-          ? `<div class="col-action"><button class="row-share-icon" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share to team repository" aria-label="Share to team repository">${shareIconSvg}</button></div>`
+          ? `<div class="col-action"><button class="row-share-icon" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share with your team" aria-label="Share with your team">${shareIconSvg}</button></div>`
           : "";
         return `
         <div class="exp-row ${showShareCol ? "has-share" : ""} ${item.id === selectedId ? "selected" : ""} ${item.id === justSharedId ? "just-shared" : ""}" data-id="${escapeHtml(item.id)}">
@@ -1133,14 +1133,14 @@ async function mutate(endpoint, body) {
   buttons.forEach((b) => (b.disabled = true));
   if (endpoint === "/api/assets/promote-team" && body?.id) {
     sharingId = body.id;
-    setLoadingOverlay(true, "Sharing to team repository...");
+    setLoadingOverlay(true, "Sharing with your team...");
     render();
   } else if (endpoint === "/api/sync/pull") {
-    setLoadingOverlay(true, "Syncing with team...");
+    setLoadingOverlay(true, "Syncing team experiences...");
   } else if (endpoint === "/api/arena/validate") {
     setLoadingOverlay(true, "Running validation...");
   } else if (endpoint === "/api/assets/refine") {
-    setLoadingOverlay(true, "Sending to Copilot...");
+    setLoadingOverlay(true, "Sending feedback to Copilot...");
   }
   try {
     const res = await fetch(endpoint, {
@@ -1165,8 +1165,8 @@ async function mutate(endpoint, body) {
       }, 2200);
       if (data.pushed) {
         showToast(
-          "Shared to team!",
-          `Thanks for helping the team evolve — "${data.asset?.title || data.asset?.id}" is now live.`
+          "Shared with your team!",
+          `Thanks for helping everyone evolve — "${data.asset?.title || data.asset?.id}" is now live.`
         );
       } else if (data.syncError) {
         showBanner(`Marked ${data.asset?.id || "experience"} as team, but Git push failed: ${data.syncError}`, true);
