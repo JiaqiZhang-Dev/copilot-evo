@@ -19,9 +19,11 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
+const EXTENSION_VERSION = "0.2.1";
 const sessionState = {
   protocolInjected: false,
   pendingFailure: null,
+  lastSolidifyAt: 0,
   recentFailures: [],
   recoveries: 0,
   solidifiedCount: 0,
@@ -29,8 +31,9 @@ const sessionState = {
 
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
-  "1. Auto-discover & solidify: When you resolve and verify a non-obvious error/failure, or when the user teaches a reusable cross-project rule or strategy, proactively call `evo_solidify` without waiting to be asked (skip trivial typos or one-off facts). Use `scope: \"team\"` when the asset is generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
-  "2. Auto-ask before sync: Immediately after `evo_solidify` succeeds for a reusable `team` (or shareable) asset, proactively ask the user (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
+  "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
+  "2. Auto-discover & solidify: When you resolve and verify a non-obvious error/failure, or when the user states a reusable cross-project rule/preference (even if also saved via `store_memory`), proactively call `evo_solidify` without waiting to be asked (skip trivial typos). Use `scope: \"team\"` when generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
+  "3. Auto-ask before sync: Immediately after `evo_solidify` succeeds for a shareable asset, proactively ask the user (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
 ].join("\n");
 
 function formatAssetsContext(assets) {
@@ -83,7 +86,7 @@ const session = await joinSession({
       }
       if (hasStrategyCue(input.prompt)) {
         parts.push(
-          "[copilot-evo rule signal] This prompt may establish a reusable rule, pitfall, or workflow preference. If actionable across projects, proactively solidify it via `evo_solidify` and ask the user whether to sync via `evo_sync_repo`."
+          "[copilot-evo rule signal] This prompt states a reusable rule, pitfall, or workflow preference. Load `evo_solidify` and `evo_sync_repo` via `tool_search_tool` if needed, call `evo_solidify` (in addition to `store_memory` if used) to persist it as a Gene, then ask the user whether to sync via `evo_sync_repo`."
         );
       }
       if (!parts.length) return;
@@ -138,6 +141,14 @@ const session = await joinSession({
     onPostToolUse: async (input) => {
       const toolName = String(input.toolName || "");
       if (toolName.startsWith("evo_")) return;
+
+      if (toolName === "store_memory" && Date.now() - sessionState.lastSolidifyAt > 15000) {
+        return {
+          additionalContext:
+            "[copilot-evo] A durable rule was just saved to personal memory (`store_memory`). Now load `evo_solidify` and `evo_sync_repo` via `tool_search_tool` (if not already loaded), call `evo_solidify` to also record this rule as a GEP Gene (use `scope: \"team\"` if generalizable and secret-free), and then ask the user whether to sync it to the team repo via `evo_sync_repo({ action: \"push\" })`.",
+        };
+      }
+
       if (!sessionState.pendingFailure) return;
 
       const isVerificationOrAction =
@@ -149,7 +160,7 @@ const session = await joinSession({
       sessionState.pendingFailure = null;
       sessionState.recoveries++;
       return {
-        additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable across tasks/projects, proactively call \`evo_solidify\` now (use \`scope: "team"\` when generalizable and secret-free), then ask the user whether to sync via \`evo_sync_repo\`.`,
+        additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable across tasks/projects, load \`evo_solidify\` and \`evo_sync_repo\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` now (use \`scope: "team"\` when generalizable and secret-free), then ask the user whether to sync via \`evo_sync_repo\`.`,
       };
     },
 
@@ -218,6 +229,7 @@ const session = await joinSession({
         );
         if (res.ok) {
           sessionState.solidifiedCount++;
+          sessionState.lastSolidifyAt = Date.now();
           try {
             await session.log(`Saved ${res.asset.type} ${res.asset.id} (${res.asset.scope})`);
           } catch {
@@ -236,6 +248,7 @@ const session = await joinSession({
         const syncRepoPath = resolveSyncRepoPath(evoHome);
         return JSON.stringify(
           {
+            version: EXTENSION_VERSION,
             evoHome,
             counts: {
               genes: genes.length,
