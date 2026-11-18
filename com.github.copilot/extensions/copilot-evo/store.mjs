@@ -927,6 +927,99 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
   };
 }
 
+const DEFAULT_AUTO_PULL_INTERVAL_MS = 30 * 60 * 1000;
+
+export function getPendingScoreDeltaTotal(evoHome) {
+  const { genes, capsules } = loadStore(evoHome);
+  let total = 0;
+  for (const item of [...genes, ...capsules]) {
+    if (item.scope !== "team") continue;
+    total += (item.pendingSuccessDelta || 0) + (item.pendingFailureDelta || 0);
+  }
+  return total;
+}
+
+export async function maybeAutoPull(evoHome, { repoPath, intervalMs = DEFAULT_AUTO_PULL_INTERVAL_MS } = {}) {
+  const targetRepo = resolveSyncRepoPath(evoHome, repoPath);
+  if (!targetRepo) return { ok: true, ran: false, reason: "no_local_sync_repo" };
+  const { config } = loadStore(evoHome);
+  const lastAt = config.lastAutoPullAt ? Date.parse(config.lastAutoPullAt) : 0;
+  if (lastAt && Date.now() - lastAt < intervalMs) {
+    return { ok: true, ran: false, reason: "throttled" };
+  }
+  saveConfig(evoHome, { lastAutoPullAt: new Date().toISOString() });
+  const res = await syncRepoPull(evoHome, { repoPath: targetRepo, autoPromote: true });
+  return { ...res, ran: true };
+}
+
+// Pushes only numeric score deltas for already-published team experiences (never new content).
+export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
+  const targetRepo = resolveSyncRepoPath(evoHome, repoPath);
+  if (!targetRepo) return { ok: true, pushed: false, reason: "no_local_sync_repo" };
+
+  const store = loadStore(evoHome);
+  const teamGenesPath = path.join(targetRepo, "assets", "gep", "team-genes.json");
+  const teamCapsulesPath = path.join(targetRepo, "assets", "gep", "team-capsules.json");
+
+  await runGit(targetRepo, ["pull", "--rebase", "--autostash"]);
+  const remoteGenes = readJsonSafe(teamGenesPath, []);
+  const remoteCapsules = readJsonSafe(teamCapsulesPath, []);
+
+  const mergeScoresOnly = (remoteList, localList) => {
+    const localById = new Map(localList.filter((x) => x.scope === "team").map((x) => [x.id, x]));
+    let dirty = false;
+    const nextRemote = remoteList.map((remote) => {
+      const local = localById.get(remote.id);
+      if (!local) return remote;
+      const pendingSucc = local.pendingSuccessDelta || 0;
+      const pendingFail = local.pendingFailureDelta || 0;
+      if (!pendingSucc && !pendingFail) return remote;
+      dirty = true;
+      return {
+        ...remote,
+        successCount: (remote.successCount || 0) + pendingSucc,
+        failureCount: (remote.failureCount || 0) + pendingFail,
+      };
+    });
+    return { nextRemote, dirty };
+  };
+
+  const gMerge = mergeScoresOnly(remoteGenes, store.genes);
+  const cMerge = mergeScoresOnly(remoteCapsules, store.capsules);
+  if (!gMerge.dirty && !cMerge.dirty) {
+    return { ok: true, pushed: false, reason: "no_pending_deltas" };
+  }
+
+  writeJson(teamGenesPath, gMerge.nextRemote);
+  writeJson(teamCapsulesPath, cMerge.nextRemote);
+
+  const status = await runGit(targetRepo, ["status", "--porcelain", "assets/gep/team-genes.json", "assets/gep/team-capsules.json"]);
+  if (status) {
+    await runGit(targetRepo, ["add", "assets/gep/team-genes.json", "assets/gep/team-capsules.json"]);
+    await runGit(targetRepo, ["commit", "-m", "chore(evo): sync experience score deltas"]);
+    await runGit(targetRepo, ["push"]);
+  }
+
+  const clearLocalDeltas = (filePath, remoteMerged) => {
+    const remoteById = new Map(remoteMerged.map((a) => [a.id, a]));
+    const list = readJsonSafe(filePath, []);
+    let changed = false;
+    const nextList = list.map((item) => {
+      const r = remoteById.get(item.id);
+      if (!r || (!item.pendingSuccessDelta && !item.pendingFailureDelta)) return item;
+      changed = true;
+      const { pendingSuccessDelta, pendingFailureDelta, ...rest } = item;
+      return { ...rest, successCount: r.successCount || 0, failureCount: r.failureCount || 0 };
+    });
+    if (changed) writeJson(filePath, nextList);
+  };
+
+  clearLocalDeltas(path.join(evoHome, "genes.json"), gMerge.nextRemote);
+  clearLocalDeltas(path.join(evoHome, "capsules.json"), cMerge.nextRemote);
+  appendEvent(evoHome, { event: "sync_scores", reason: "auto_delta_push" });
+  return { ok: true, pushed: true, repoPath: targetRepo };
+}
+
 function splitArgs(command) {
   const tokens = [];
   let current = "";

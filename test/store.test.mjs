@@ -10,6 +10,7 @@ import {
   exportBundle,
   extractSignals,
   getAssetRelationships,
+  getPendingScoreDeltaTotal,
   hasNegativeFeedbackCue,
   hasStrategyCue,
   importBundle,
@@ -17,6 +18,7 @@ import {
   isTrivialToolFailure,
   loadStore,
   manageAsset,
+  maybeAutoPull,
   normalizeRepoSlug,
   recordAssetOutcome,
   runAssetValidation,
@@ -24,6 +26,7 @@ import {
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
+  syncScoreDeltasOnly,
 } from "../com.github.copilot/extensions/copilot-evo/store.mjs";
 
 function makeTempDir() {
@@ -263,6 +266,32 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
     assert.equal(afterA.successCount, 3);
     assert.equal(afterB.successCount, 3);
     assert.equal(afterA.pendingSuccessDelta, undefined);
+
+    // syncScoreDeltasOnly pushes score deltas for existing remote items without pushing new unconfirmed entries.
+    solidifyAsset(
+      {
+        kind: "Rule",
+        id: "exp-unpushed-draft",
+        title: "Unpushed local rule",
+        summary: "Should stay local and not be pushed by score delta sync.",
+        signals: ["style"],
+        scope: "local",
+      },
+      { evoHome: homeA, bundledDir }
+    );
+    recordAssetOutcome(homeA, ["gene-synced-rule"], "success", "auto_hit");
+    assert.equal(getPendingScoreDeltaTotal(homeA), 1);
+    const deltaPush = await syncScoreDeltasOnly(homeA, { repoPath: cloneA });
+    assert.equal(deltaPush.pushed, true);
+    assert.equal(getPendingScoreDeltaTotal(homeA), 0);
+
+    const autoPull = await maybeAutoPull(homeB, { repoPath: cloneB, intervalMs: 60000 });
+    assert.equal(autoPull.ran, true);
+    const throttledPull = await maybeAutoPull(homeB, { repoPath: cloneB, intervalMs: 60000 });
+    assert.equal(throttledPull.ran, false);
+    const finalB = loadStore(homeB).genes;
+    assert.equal(finalB.find((g) => g.id === "gene-synced-rule").successCount, 4);
+    assert.ok(!finalB.some((g) => g.id === "exp-unpushed-draft"));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

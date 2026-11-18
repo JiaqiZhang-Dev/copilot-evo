@@ -8,6 +8,7 @@ import {
   exportBundle,
   extractSignals,
   formatAssetPreview,
+  getPendingScoreDeltaTotal,
   hasNegativeFeedbackCue,
   hasStrategyCue,
   hashProjectId,
@@ -16,16 +17,18 @@ import {
   isTrivialToolFailure,
   loadStore,
   manageAsset,
+  maybeAutoPull,
   recordAssetOutcome,
   resolveSyncRepoPath,
   selectAssets,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
+  syncScoreDeltasOnly,
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.6.4";
+const EXTENSION_VERSION = "0.7.0";
 let lastWorkingDirectory = process.cwd();
 const canvasServer = createEvoCanvasServer({
   evoHome,
@@ -66,6 +69,13 @@ const session = await joinSession({
     onSessionStart: async (input) => {
       initStore({ evoHome });
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
+      maybeAutoPull(evoHome)
+        .then((res) => {
+          if (res?.ran && (res.imported || res.updated)) {
+            canvasServer.broadcastUpdate("auto_pull");
+          }
+        })
+        .catch(() => {});
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
       const { genes, capsules, config } = loadStore(evoHome);
       const signals = extractSignals(input.initialPrompt || "", [], { includePlatform: false });
@@ -212,6 +222,9 @@ const session = await joinSession({
       if (sessionState.activeAssets.length) {
         recordAssetOutcome(evoHome, sessionState.activeAssets, "success", "tool_recovery");
         canvasServer.broadcastUpdate("auto_outcome");
+        if (getPendingScoreDeltaTotal(evoHome) >= 3) {
+          syncScoreDeltasOnly(evoHome).catch(() => {});
+        }
       }
       return {
         additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable, load \`evo_solidify\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` in English with \`scope: "local"\`, show the preview, and ask the user before promoting to \`team\` or syncing via \`evo_sync_repo\`.`,
@@ -219,6 +232,9 @@ const session = await joinSession({
     },
 
     onSessionEnd: async (input) => {
+      if (getPendingScoreDeltaTotal(evoHome) > 0) {
+        await syncScoreDeltasOnly(evoHome).catch(() => {});
+      }
       if (!sessionState.recentFailures.length && !sessionState.solidifiedCount) return;
       appendEvent(evoHome, {
         event: "session_summary",
@@ -358,6 +374,9 @@ const session = await joinSession({
         const res = manageAsset(args.action, args.id, { evoHome });
         if (res.ok && args.action !== "inspect" && args.action !== "list_candidates") {
           canvasServer.broadcastUpdate(args.action);
+          if ((args.action === "upvote" || args.action === "downvote") && getPendingScoreDeltaTotal(evoHome) >= 3) {
+            syncScoreDeltasOnly(evoHome).catch(() => {});
+          }
         }
         return JSON.stringify(res, null, 2);
       },

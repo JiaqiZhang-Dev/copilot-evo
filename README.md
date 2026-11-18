@@ -9,7 +9,7 @@ Self-evolving **Experience (`EXP`: Rules & Fixes)** memory and team sharing plug
 - **In-Chat & Canvas Preview**: Preview stored experiences in chat with `/evo-list`, or open the **Copilot Evo Canvas** (`/evo-canvas`) with **Experiences**, **Leaderboard**, **Relationships**, and **Events** views plus Pull/Push sync.
 - **Local-First Storage**: Keeps raw session failure logs and unshared experiences on your machine under `~/.copilot/evo/` (overridable with `COPILOT_EVO_HOME`).
 - **Privacy & Leak Guardrails**: Strips tokens, private keys, database credentials, internal IPs, emails, and personal home-directory paths, and checks secret environment variables before saving team experiences or syncing to Git.
-- **Private Git Sync**: Push sanitized team experiences directly to `main` via `evo_sync_repo` (auto-clones the configured private repo into `~/.copilot/evo/sync-repo` on first sync), or export/import offline `.evopack.json` bundles.
+- **Private Git Sync**: New sessions pull shared team experiences and scores in the background, and score deltas on existing team experiences sync automatically without uploading unconfirmed local rules or fixes. New experiences always stay local until you review the preview and confirm sharing.
 
 ## Install as a Copilot Plugin
 

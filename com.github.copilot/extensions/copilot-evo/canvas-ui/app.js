@@ -85,6 +85,8 @@ function formatEventMeta(ev) {
       return { label: "Team Push", cls: "ev-ok", desc: `Synced ${ev.genesCount || 0} Rules · ${ev.capsulesCount || 0} Fixes` };
     case "sync_pull":
       return { label: "Team Pull", cls: "ev-ok", desc: `Imported ${ev.imported || 0} team experience(s)` };
+    case "sync_scores":
+      return { label: "Auto Score Sync", cls: "ev-ok", desc: "Synced team experience score deltas" };
     case "promote":
     case "promote_team":
       return { label: "Promoted", cls: "ev-ok", desc: `${displayTypeWord(ev.assetType)}: ${ev.assetId || ""}` };
@@ -800,7 +802,6 @@ async function init() {
     render();
   });
 
-  el("btn-refresh")?.addEventListener("click", () => loadState(false));
   el("btn-pull").addEventListener("click", () => mutate("/api/sync/pull", {}));
   el("btn-push").addEventListener("click", () => mutate("/api/sync/push", {}));
 
