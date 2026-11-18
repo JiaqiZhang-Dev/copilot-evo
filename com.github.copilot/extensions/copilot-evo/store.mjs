@@ -674,7 +674,12 @@ function tokenizeForSimilarity(text) {
     .replace(/[^a-z0-9_]+/g, " ")
     .split(/\s+/)
     .filter((w) => w.length >= 3 && !STOP_WORDS.has(w))
-    .map((w) => (w.length >= 5 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w));
+    .map((w) => {
+      if (w.length >= 6 && w.endsWith("ing")) return w.slice(0, -3);
+      if (w.length >= 5 && w.endsWith("ed")) return w.slice(0, -2);
+      if (w.length >= 4 && w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
+      return w;
+    });
   return new Set(words);
 }
 
@@ -689,7 +694,7 @@ function jaccardSimilarity(setA, setB) {
 }
 
 export function findSimilarAssets(candidate, existingAssets = [], options = {}) {
-  const threshold = options.threshold ?? 0.52;
+  const threshold = options.threshold ?? 0.46;
   const candType = normalizeAssetKind(candidate?.type || candidate?.kind);
   const candRepo = normalizeRepoSlug(candidate?.repoScope || "*");
   const candTitleTokens = tokenizeForSimilarity(candidate?.title || "");
@@ -714,7 +719,7 @@ export function findSimilarAssets(candidate, existingAssets = [], options = {}) 
     const sigSim = jaccardSimilarity(candSignals, exSignals);
     const score = titleSim * 0.45 + textSim * 0.3 + sigSim * 0.25;
 
-    if (score >= threshold || (titleSim >= 0.6 && sigSim >= 0.33)) {
+    if (score >= threshold || (titleSim >= 0.45 && sigSim >= 0.5)) {
       matches.push({
         id: existing.id,
         title: existing.title,
