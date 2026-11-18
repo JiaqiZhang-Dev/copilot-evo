@@ -183,6 +183,18 @@ export function createEvoCanvasServer({
         result = manageAsset("promote", body.id, { evoHome });
       } else if (reqUrl.pathname === "/api/assets/promote-team") {
         result = manageAsset("promote_team", body.id, { evoHome });
+        if (result?.ok && body.push !== false && resolveSyncRepoPath(evoHome)) {
+          try {
+            const pushRes = await syncRepoPush(evoHome);
+            result = {
+              ...result,
+              pushed: Boolean(pushRes?.pushed),
+              syncError: pushRes?.ok ? "" : pushRes?.error || "Sync failed",
+            };
+          } catch (err) {
+            result = { ...result, pushed: false, syncError: err.message };
+          }
+        }
       } else if (reqUrl.pathname === "/api/assets/feedback") {
         const action = ["pin", "unpin", "upvote", "downvote"].includes(body.action) ? body.action : "";
         result = action ? manageAsset(action, body.id, { evoHome }) : { ok: false, error: "Invalid feedback action." };

@@ -162,7 +162,7 @@ function renderDetail(item) {
 
   const promoteTeamBtn =
     item.scope === "local"
-      ? `<button class="btn" data-promote-team="${escapeHtml(item.id)}" type="button">Share to Team</button>`
+      ? `<button class="btn btn-primary" data-promote-team="${escapeHtml(item.id)}" type="button" title="Sanitize, mark as team, and push to the team Git repository">Share to Team</button>`
       : "";
   const copyBtn = `<button class="btn" data-copy="${escapeHtml(item.id)}" type="button">Copy JSON</button>`;
 
@@ -708,7 +708,7 @@ async function loadState(applyServerView = false) {
 
 async function mutate(endpoint, body) {
   showBanner("");
-  const buttons = [el("btn-pull"), el("btn-push")];
+  const buttons = [el("btn-pull")].filter(Boolean);
   buttons.forEach((b) => (b.disabled = true));
   try {
     const res = await fetch(endpoint, {
@@ -722,14 +722,18 @@ async function mutate(endpoint, body) {
     const data = await res.json();
     if (!data.ok) {
       showBanner(data.error || "Operation failed.", true);
-    } else if (endpoint === "/api/sync/push") {
-      showBanner(data.pushed ? `Pushed ${data.genesCount} Genes and ${data.capsulesCount} Capsules.` : data.message);
     } else if (endpoint === "/api/sync/pull") {
-      showBanner(`Pulled ${data.imported || 0} new team asset(s).`);
+      showBanner(`Pulled ${data.imported || 0} new and ${data.updated || 0} updated team experience(s).`);
     } else if (endpoint === "/api/assets/promote") {
-      showBanner(`Promoted candidate ${data.asset?.id || ""}.`);
+      showBanner(`Promoted ${data.asset?.id || "experience"}.`);
     } else if (endpoint === "/api/assets/promote-team") {
-      showBanner(`Marked ${data.asset?.id || "asset"} as team scope. Click Push Team to sync.`);
+      if (data.pushed) {
+        showBanner(`Shared ${data.asset?.id || "experience"} to the team repository.`);
+      } else if (data.syncError) {
+        showBanner(`Marked ${data.asset?.id || "experience"} as team, but Git push failed: ${data.syncError}`, true);
+      } else {
+        showBanner(`Shared ${data.asset?.id || "experience"} as team experience.`);
+      }
     } else if (endpoint === "/api/assets/feedback") {
       showBanner(`Updated ${data.asset?.id || "asset"} (GDI ${data.gdiScore ?? "-"}).`);
     } else if (endpoint === "/api/arena/validate") {
@@ -802,8 +806,7 @@ async function init() {
     render();
   });
 
-  el("btn-pull").addEventListener("click", () => mutate("/api/sync/pull", {}));
-  el("btn-push").addEventListener("click", () => mutate("/api/sync/push", {}));
+  el("btn-pull")?.addEventListener("click", () => mutate("/api/sync/pull", {}));
 
   await loadState(true);
 

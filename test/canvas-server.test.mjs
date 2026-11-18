@@ -80,7 +80,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
         "Content-Type": "application/json",
         "X-Evo-Token": canvasToken,
       },
-      body: JSON.stringify({ id: "capsule-local-promote" }),
+      body: JSON.stringify({ id: "capsule-local-promote", push: false }),
     });
     assert.equal(promoteTeam.status, 200);
     const promoteBody = await promoteTeam.json();
