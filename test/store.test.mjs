@@ -435,6 +435,19 @@ test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
     assert.equal(rule.asset.type, "Rule");
     assert.equal(detectSourceLabel(undefined), "chat");
     assert.ok(typeof detectAuthorName(process.cwd()) === "string");
+
+    // Updating an experience with an ID longer than 48 chars must update in place, not truncate.
+    const longId = "exp-very-long-experience-identifier-exceeding-forty-eight-chars-1234";
+    solidifyAsset(
+      { kind: "Rule", id: longId, title: "Long ID rule", summary: "Initial summary text.", signals: ["test"], scope: "local" },
+      { evoHome: home, bundledDir }
+    );
+    const updated = solidifyAsset(
+      { kind: "Rule", id: longId, title: "Long ID rule", summary: "Refined summary text.", signals: ["test"], scope: "local" },
+      { evoHome: home, bundledDir }
+    );
+    assert.equal(updated.asset.id, longId);
+    assert.equal(loadStore(home).rules.filter((r) => r.id === longId).length, 1);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

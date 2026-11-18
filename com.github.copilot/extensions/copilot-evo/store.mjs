@@ -507,12 +507,12 @@ export function selectAssets({
   return scored.slice(0, limit).map((item) => item.asset);
 }
 
-function slugify(text) {
+function slugify(text, maxLen = 48) {
   return String(text || "asset")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 48) || "asset";
+    .slice(0, maxLen) || "asset";
 }
 
 const CJK_SCRIPT_RE = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;
@@ -532,7 +532,7 @@ export function solidifyAsset(input, options = {}) {
   const evoHome = initStore(options);
   const kind = normalizeAssetKind(input.kind);
   const scope = input.scope === "team" ? "team" : "local";
-  const id = input.id ? slugify(input.id) : `exp-${slugify(input.title)}-${Date.now().toString(36)}`;
+  const id = input.id ? slugify(input.id, 96) : `exp-${slugify(input.title)}-${Date.now().toString(36)}`;
 
   const validation = Array.isArray(input.validation) ? input.validation.filter(Boolean) : [];
   for (const cmd of validation) {
