@@ -12,6 +12,7 @@ import {
   extractSignals,
   formatAssetPreview,
   getPendingScoreDeltaTotal,
+  hasCorrectionOrPitfallCue,
   hasNegativeFeedbackCue,
   hasStrategyCue,
   hashProjectId,
@@ -32,7 +33,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.21";
+const EXTENSION_VERSION = "0.10.22";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -108,6 +109,7 @@ const canvasServer = createEvoCanvasServer({
 const sessionState = {
   protocolInjected: false,
   pendingFailure: null,
+  pendingCorrection: null,
   activeAssets: [],
   recentFailureFingerprints: new Map(),
   recentRecallAt: new Map(),
@@ -146,7 +148,7 @@ function recordRecallEvent(matched, { trigger, signals = [], toolName = "" } = {
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
-  "2. Auto-discover & solidify atomically locally first (English only): When you resolve and verify a non-obvious error/failure (`kind: \"Fix\"`) or when the user states/verifies reusable conventions (`kind: \"Rule\"`, even if also saved via `store_memory`), proactively call `evo_solidify` with `scope: \"local\"` (skip trivial typos). Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise steps); split distinct concerns (e.g., caching, linter testing, docs/build workflow) into separate `evo_solidify` calls instead of bundling them into one mega-entry. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
+  "2. Auto-discover & solidify atomically locally first (English only): Proactively call `evo_solidify` with `scope: \"local\"` whenever you resolve a non-obvious error (`kind: \"Fix\"`), fix a user-reported mistake or platform/rendering quirk (even when no tool errored), or when the user states/verifies reusable conventions (`kind: \"Rule\"`, even if also saved via `store_memory`). Skip trivial typos. Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise steps); split distinct concerns into separate `evo_solidify` calls instead of bundling them into one mega-entry. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
   "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND, if `evo_solidify` did not already prompt via native UI (`sharedToTeam` is unset), call `ask_user` with choices `[\"Keep local (Recommended)\", \"Share to Team (promote & push)\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
 ].join("\n");
 
@@ -215,6 +217,14 @@ const session = await joinSession({
         parts.push(
           `[copilot-evo feedback signal] The user expressed dissatisfaction or correction while active assets (${sessionState.activeAssets.join(", ")}) were in context. If any of those assets misled the approach, call \`evo_manage_asset({ action: "downvote", id })\` or supersede it via \`evo_solidify\`.`
         );
+      }
+      if (hasCorrectionOrPitfallCue(input.prompt)) {
+        sessionState.pendingCorrection = { ts: Date.now() };
+        parts.push(
+          "[copilot-evo pitfall/correction signal] The user reported an issue, missing behavior, or correction. After resolving and verifying it, proactively load `evo_solidify` via `tool_search_tool` (if needed) and record ONE atomic local `Rule` or `Fix` if this revealed a reusable platform, tool, rendering, or repository pitfall—without waiting for the user to ask."
+        );
+      } else {
+        sessionState.pendingCorrection = null;
       }
       if (matched.length) {
         sessionState.activeAssets = matched.map((a) => a.id);
@@ -314,6 +324,18 @@ const session = await joinSession({
         return {
           additionalContext:
             "[copilot-evo] A durable rule was just saved to personal memory (`store_memory`). Now load `evo_solidify` via `tool_search_tool` (if needed), call `evo_solidify` in English with `scope: \"local\"` to record it locally, show the preview, and ask the user whether to promote to `team` and sync via `evo_sync_repo`.",
+        };
+      }
+
+      if (
+        sessionState.pendingCorrection &&
+        Date.now() - sessionState.pendingCorrection.ts < 10 * 60 * 1000 &&
+        Date.now() - sessionState.lastSolidifyAt > 10000 &&
+        !/^(?:view|glob|grep|list_|get_|read_|tool_search_tool)/i.test(toolName)
+      ) {
+        sessionState.pendingCorrection = null;
+        return {
+          additionalContext: `[copilot-evo auto-capture check] You just completed \`${toolName}\` while resolving a user-reported issue or correction. If this revealed a reusable pitfall or rule (for example, GitHub/Markdown rendering quirks, API/CLI behavior, or repo conventions), proactively call \`evo_solidify\` in English with \`scope: "local"\` now instead of waiting for the user to remind you.`,
         };
       }
 
@@ -428,6 +450,7 @@ const session = await joinSession({
         if (res.ok) {
           sessionState.solidifiedCount++;
           sessionState.lastSolidifyAt = Date.now();
+          sessionState.pendingCorrection = null;
           sessionState.lastSolidifiedLocalId = "";
           if (res.asset.scope === "local") {
             let promptedInUi = false;

@@ -13,6 +13,7 @@ import {
   extractSignals,
   getAssetRelationships,
   getPendingScoreDeltaTotal,
+  hasCorrectionOrPitfallCue,
   hasNegativeFeedbackCue,
   hasStrategyCue,
   importBundle,
@@ -396,6 +397,9 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.deepEqual(updated, ["exp-derived-fix"]);
     assert.equal(hasNegativeFeedbackCue("这个方案不对，还是报错"), true);
     assert.equal(hasNegativeFeedbackCue("Looks good"), false);
+    assert.equal(hasCorrectionOrPitfallCue("the commit can not show in comment"), true);
+    assert.equal(hasCorrectionOrPitfallCue("这里看不到链接"), true);
+    assert.equal(hasCorrectionOrPitfallCue("Looks good, thanks"), false);
     assert.equal(isTrivialToolFailure("create", "File already exists"), true);
     assert.equal(isTrivialToolFailure("edit", "No match found: old_str not found"), true);
     assert.equal(isTrivialToolFailure("powershell", "npm ERR! code E401"), false);

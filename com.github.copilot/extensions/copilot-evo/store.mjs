@@ -458,6 +458,7 @@ const SIGNAL_PATTERNS = [
 
 const STRATEGY_CUE_RE = /(?:记住|以后|下次|踩坑|经验|策略|规范|沉淀|固化|避免|总是|不要再|\b(?:always|never|remember|pitfall|workaround|lesson|best practice|convention)\b)/i;
 const NEGATIVE_FEEDBACK_RE = /(?:不对|没用|无效|还是报错|不行|别这么做|错了|过时|\b(?:wrong|didn't work|did not work|doesn't work|still failing|not helpful|outdated|stop doing)\b)/i;
+const CORRECTION_OR_PITFALL_RE = /(?:不对|没用|无效|还是报错|不行|别这么做|错了|过时|看不到|没显示|显示不出来|不生效|没生效|漏了|打不开|\b(?:wrong|didn't work|did not work|doesn't work|not working|still failing|can\s*not\s+show|cannot\s+show|doesn't\s+show|not\s+showing|didn't\s+render|not\s+rendered|not\s+clickable|doesn't\s+link|broken|missing)\b)/i;
 
 const TRIVIAL_TOOL_FAILURE_RE = {
   create: /(?:already exists|parent directory .* does not exist|does not exist)/i,
@@ -478,6 +479,10 @@ export function hasStrategyCue(text) {
 
 export function hasNegativeFeedbackCue(text) {
   return typeof text === "string" && NEGATIVE_FEEDBACK_RE.test(text);
+}
+
+export function hasCorrectionOrPitfallCue(text) {
+  return typeof text === "string" && CORRECTION_OR_PITFALL_RE.test(text);
 }
 
 export function extractSignals(text, extraSignals = [], options = {}) {
