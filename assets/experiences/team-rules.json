@@ -92,6 +92,34 @@
     "sourceProject": "chat",
     "author": "JiaqiZhang-Dev",
     "updatedAt": "2026-11-18T06:43:22.098Z",
+    "successCount": 1,
+    "failureCount": 0
+  },
+  {
+    "id": "tcgc-development-conventions",
+    "type": "Rule",
+    "title": "Follow TCGC reuse, caching, and testing conventions",
+    "summary": "TCGC development conventions verified during PR #5837: reuse built-in decorator scope, TCGCContext caching, compiler traversal, and dist-backed test/doc workflows with minimal diffs.",
+    "signals": [
+      "tcgc",
+      "decorator",
+      "cache",
+      "linter_rule",
+      "vitest"
+    ],
+    "strategy": [
+      "Store and read scoped decorator data with setScopedDecoratorData and getScopedDecoratorData instead of custom stateMap or scope parsers.",
+      "Keep per-run caches on TCGCContext (checking .has() when undefined is cached) and resolve semantics inside the existing type pass rather than adding extra loops or module-level caches.",
+      "Reuse compiler helpers like walkPropertiesInherited and existing diagnostics/rule judgment rather than extracting single-use wrappers or duplicating validation.",
+      "Run pnpm --filter @azure-tools/typespec-client-generator-core build before Vitest because createTester loads compiled JS from dist/, and run regen-docs after editing decorator or diagnostic docs without hard-wrapping Markdown lines."
+    ],
+    "solution": "Reuse TCGC scoped decorator helpers, TCGCContext caches, existing type passes, compiler traversal utilities, and build dist before running Vitest tester suites.",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "Azure/typespec-azure",
+    "sourceProject": "Azure/typespec-azure",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-18T07:01:04.954Z",
     "successCount": 1
   }
 ]
