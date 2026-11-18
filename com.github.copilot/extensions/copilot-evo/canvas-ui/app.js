@@ -265,7 +265,7 @@ function renderDetail(item) {
   }
 
   const scopeText = item.scope === "team" ? "Team" : item.scope === "starter" ? "Built-in" : "Local";
-  const repoText = item.repoScope && item.repoScope !== "*" ? item.repoScope : "All repos";
+  const repoText = item.repoScope && item.repoScope !== "*" ? item.repoScope : "Cross-repo";
   const refineHtml =
     item.scope !== "starter"
       ? `<div class="section-label">Refine with Copilot</div>
@@ -923,7 +923,7 @@ function render() {
     el("chip-all").classList.toggle("hidden", activeTab === "local");
   }
   if (el("chip-team")) {
-    el("chip-team").textContent = `Team Shared ${teamCount}`;
+    el("chip-team").textContent = `Team ${teamCount}`;
     el("chip-team").classList.toggle("hidden", activeTab === "local");
   }
   if (el("chip-starter")) {
@@ -968,7 +968,7 @@ function render() {
     const matchingOpt = repoSel.querySelector('option[value="matching"]');
     const onlyOpt = repoSel.querySelector('option[value="only"]');
     if (matchingOpt) {
-      matchingOpt.textContent = state.currentRepo ? `${state.currentRepo} + Global` : "Global (*) Only";
+      matchingOpt.textContent = state.currentRepo ? `${state.currentRepo} + Cross-repo` : "Cross-repo Only";
     }
     if (onlyOpt) {
       onlyOpt.textContent = state.currentRepo ? `Only ${state.currentRepo}` : "Repo-specific Only";
@@ -1060,7 +1060,7 @@ function render() {
       .map((item, idx) => {
         const isFix = item.type === "Fix";
         const repoLabel =
-          item.repoScope && item.repoScope !== "*" ? escapeHtml(item.repoScope) : "All repos";
+          item.repoScope && item.repoScope !== "*" ? escapeHtml(item.repoScope) : "Cross-repo";
         const footText =
           item.scope === "team"
             ? item.author
