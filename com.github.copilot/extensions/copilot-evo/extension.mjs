@@ -25,7 +25,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.6.0";
+const EXTENSION_VERSION = "0.6.1";
 let lastWorkingDirectory = process.cwd();
 const canvasServer = createEvoCanvasServer({
   evoHome,
@@ -46,9 +46,8 @@ const sessionState = {
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
-  "2. Auto-discover & solidify (English only): When you resolve and verify a non-obvious error/failure (`kind: \"Fix\"`) or when the user states a reusable cross-project rule/preference (`kind: \"Rule\"`, even if also saved via `store_memory`), proactively call `evo_solidify` without waiting to be asked (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English, translating if the conversation is in another language. Use `scope: \"team\"` when generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
-  "3. Auto-score from loop & user feedback: When recalled Experiences fail in practice or the user corrects/disagrees with an active guidance, automatically judge and call `evo_manage_asset({ action: \"downvote\", id })` (or supersede it with `evo_solidify` + `supersedes`). Do not ask the user to score manually.",
-  "4. Preview & ask before sync: Immediately after `evo_solidify` succeeds for a shareable Experience, present the full English preview (`id`, `scope`, `title`, `summary`, `signals`, `strategy`/`solution`) to the user, then proactively ask (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
+  "2. Auto-discover & solidify locally first (English only): When you resolve and verify a non-obvious error/failure (`kind: \"Fix\"`) or when the user states a reusable rule/preference (`kind: \"Rule\"`, even if also saved via `store_memory`), proactively call `evo_solidify` with `scope: \"local\"` (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
+  "3. Preview & ask before sharing to team: Immediately after `evo_solidify` succeeds, present the full English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) and ask the user (using `ask_user` when available) whether to keep it local or promote it to `team` (`evo_manage_asset({ action: \"promote_team\", id })`) and sync (`evo_sync_repo({ action: \"push\" })`). Never assign `scope: \"team\"` or push without explicit user confirmation.",
 ].join("\n");
 
 function formatAssetsContext(assets) {
@@ -114,7 +113,7 @@ const session = await joinSession({
       }
       if (hasStrategyCue(input.prompt)) {
         parts.push(
-          "[copilot-evo rule signal] This prompt states a reusable rule, pitfall, or workflow preference. Load `evo_solidify` and `evo_sync_repo` via `tool_search_tool` if needed, call `evo_solidify` in English (in addition to `store_memory` if used) to persist it as a Gene, then ask the user whether to sync via `evo_sync_repo`."
+          "[copilot-evo rule signal] This prompt states a reusable rule, pitfall, or workflow preference. Load `evo_solidify` via `tool_search_tool` if needed, call `evo_solidify` in English with `scope: \"local\"`, show the preview, and ask the user before promoting to `team` or syncing."
         );
       }
       if (!parts.length) return;
@@ -184,8 +183,8 @@ const session = await joinSession({
         sessionState.activeAssets = matched.map((a) => a.id);
       }
       const hint = matched.length
-        ? `${formatAssetsContext(matched)}\nOnce resolved and verified, proactively call \`evo_solidify\` and ask whether to sync via \`evo_sync_repo\`.`
-        : `[copilot-evo] Failure signals recorded (${signals.join(", ")}). Once resolved and verified, proactively call \`evo_solidify\` if the fix is reusable, then ask whether to sync via \`evo_sync_repo\`.`;
+        ? `${formatAssetsContext(matched)}\nOnce resolved and verified, proactively call \`evo_solidify\` with \`scope: "local"\`, show the preview, and ask before promoting to \`team\` or syncing.`
+        : `[copilot-evo] Failure signals recorded (${signals.join(", ")}). Once resolved and verified, proactively call \`evo_solidify\` with \`scope: "local"\` if reusable, show the preview, and ask before promoting to \`team\` or syncing.`;
       return { additionalContext: hint };
     },
 
@@ -196,7 +195,7 @@ const session = await joinSession({
       if (toolName === "store_memory" && Date.now() - sessionState.lastSolidifyAt > 15000) {
         return {
           additionalContext:
-            "[copilot-evo] A durable rule was just saved to personal memory (`store_memory`). Now load `evo_solidify` and `evo_sync_repo` via `tool_search_tool` (if not already loaded), call `evo_solidify` in English to also record this rule as a GEP Gene (use `scope: \"team\"` if generalizable and secret-free), and then ask the user whether to sync it to the team repo via `evo_sync_repo({ action: \"push\" })`.",
+            "[copilot-evo] A durable rule was just saved to personal memory (`store_memory`). Now load `evo_solidify` via `tool_search_tool` (if needed), call `evo_solidify` in English with `scope: \"local\"` to record it locally, show the preview, and ask the user whether to promote to `team` and sync via `evo_sync_repo`.",
         };
       }
 
@@ -215,7 +214,7 @@ const session = await joinSession({
         canvasServer.broadcastUpdate("auto_outcome");
       }
       return {
-        additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable across tasks/projects, load \`evo_solidify\` and \`evo_sync_repo\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` now (use \`scope: "team"\` when generalizable and secret-free), then ask the user whether to sync via \`evo_sync_repo\`.`,
+        additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable, load \`evo_solidify\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` in English with \`scope: "local"\`, show the preview, and ask the user before promoting to \`team\` or syncing via \`evo_sync_repo\`.`,
       };
     },
 
@@ -274,7 +273,7 @@ const session = await joinSession({
     },
     {
       name: "evo_solidify",
-      description: "Proactively record a verified reusable Rule (workflow strategy) or Fix (verified bug fix) in English into the Experience store with automatic secret/path sanitization. Call automatically after resolving reusable failures or learning generalizable rules, then show preview and ask whether to sync via evo_sync_repo.",
+      description: "Proactively record a verified reusable Rule (workflow strategy) or Fix (verified bug fix) in English into the Experience store with automatic secret/path sanitization. Default to scope: 'local'; show the preview and ask the user before promoting to 'team' or syncing via evo_sync_repo.",
       parameters: {
         type: "object",
         properties: {

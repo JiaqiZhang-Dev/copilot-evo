@@ -59,17 +59,29 @@ function getFilteredEvents() {
   return events.filter((ev) => ev.event !== "tool_failure");
 }
 
+function formatLocalTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return String(ts);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function displayTypeWord(type) {
+  return type === "Capsule" ? "Fix" : type === "Gene" ? "Rule" : type || "Experience";
+}
+
 function formatEventMeta(ev) {
   switch (ev.event) {
     case "solidify":
-      return { label: "Solidified", cls: "ev-ok", desc: `${ev.assetType || "Asset"}: ${ev.assetId || ""}` };
+      return { label: "Solidified", cls: "ev-ok", desc: `${displayTypeWord(ev.assetType)}: ${ev.assetId || ""}` };
     case "sync_push":
-      return { label: "Team Push", cls: "ev-ok", desc: `Synced ${ev.genesCount || 0} Genes · ${ev.capsulesCount || 0} Capsules` };
+      return { label: "Team Push", cls: "ev-ok", desc: `Synced ${ev.genesCount || 0} Rules · ${ev.capsulesCount || 0} Fixes` };
     case "sync_pull":
-      return { label: "Team Pull", cls: "ev-ok", desc: `Imported ${ev.imported || 0} team asset(s)` };
+      return { label: "Team Pull", cls: "ev-ok", desc: `Imported ${ev.imported || 0} team experience(s)` };
     case "promote":
     case "promote_team":
-      return { label: "Promoted", cls: "ev-ok", desc: `${ev.assetType || "Asset"}: ${ev.assetId || ""}` };
+      return { label: "Promoted", cls: "ev-ok", desc: `${displayTypeWord(ev.assetType)}: ${ev.assetId || ""}` };
     case "auto_success":
     case "feedback_upvote":
       return {
@@ -85,9 +97,9 @@ function formatEventMeta(ev) {
         desc: `${(ev.assetIds || [ev.assetId]).filter(Boolean).join(", ")} (${ev.reason || "feedback"})`,
       };
     case "validation_pass":
-      return { label: "Arena Pass", cls: "ev-ok", desc: `Validation passed for ${ev.assetId || ""}` };
+      return { label: "Validation Pass", cls: "ev-ok", desc: `Validation passed for ${ev.assetId || ""}` };
     case "validation_fail":
-      return { label: "Arena Fail", cls: "ev-warn", desc: `Validation failed for ${ev.assetId || ""}` };
+      return { label: "Validation Fail", cls: "ev-warn", desc: `Validation failed for ${ev.assetId || ""}` };
     case "delete":
       return { label: "Deleted", cls: "", desc: `Removed ${ev.assetId || ""}` };
     case "tool_failure":
@@ -186,7 +198,7 @@ function renderDetail(item) {
     ${validation}
     ${lineageHtml}
     <div class="section-label">Provenance (Auto-scored from loop)</div>
-    <p class="muted">Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0} · Source: ${escapeHtml(item.sourceProject || "bundled")} · Updated: ${escapeHtml(item.updatedAt || "bundled")}</p>
+    <p class="muted">Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0} · Source: ${escapeHtml(item.sourceProject || "bundled")} · Updated: ${escapeHtml(item.updatedAt ? formatLocalTime(item.updatedAt) : "bundled")}</p>
   `;
 
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
@@ -472,7 +484,7 @@ function render() {
             <div class="event-row">
               <div class="event-top">
                 <span class="badge ${meta.cls}">${escapeHtml(meta.label)}</span>
-                <span class="muted">${escapeHtml(ev.ts || "")}</span>
+                <span class="muted" title="${escapeHtml(ev.ts || "")}">${escapeHtml(formatLocalTime(ev.ts))}</span>
               </div>
               <div class="event-detail">${escapeHtml(meta.desc)}</div>
               ${sigs ? `<div class="badges">${sigs}</div>` : ""}

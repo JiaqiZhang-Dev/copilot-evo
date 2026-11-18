@@ -586,8 +586,8 @@ export function solidifyAsset(input, options = {}) {
     redacted: leakCheck.found,
     nextAction:
       scope === "team"
-        ? "Show the full English asset preview (title, summary, signals, strategy/solution) to the user, then ask whether to push it to the team repository via evo_sync_repo(action: 'push')."
-        : "Saved locally. Show the asset preview to the user; if broadly reusable and secret-free, ask whether to promote and sync it to the team repo.",
+        ? "Show the full English preview to the user and ask whether to push via evo_sync_repo(action: 'push')."
+        : "Saved locally. Show the full English preview to the user and ask whether to keep it local or promote to team (evo_manage_asset promote_team) and push (evo_sync_repo push).",
   };
 }
 
