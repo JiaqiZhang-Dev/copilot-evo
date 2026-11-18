@@ -21,7 +21,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.3.0";
+const EXTENSION_VERSION = "0.3.1";
 const canvasServer = createEvoCanvasServer({ evoHome });
 const sessionState = {
   protocolInjected: false,

@@ -3,16 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Copilot Evo</title>
+    <title>Copilot Evo · GEP</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
     <div class="shell">
       <header class="topbar">
         <div class="brand">
-          <span class="brand-badge">GEP</span>
-          <div>
-            <h1>Copilot Evo</h1>
+          <div class="brand-badge" aria-hidden="true">🧬</div>
+          <div class="brand-meta">
+            <div class="brand-row">
+              <h1>Copilot Evo</h1>
+              <span class="proto-pill">GEP</span>
+            </div>
             <p id="repo-status" class="muted">Loading store...</p>
           </div>
         </div>
@@ -22,28 +25,66 @@
         </div>
       </header>
 
+      <section class="kpi-strip" aria-label="Evolution summary">
+        <div class="kpi-card">
+          <span class="kpi-label">Cataloged Assets</span>
+          <strong id="kpi-total" class="kpi-value">0</strong>
+          <span id="kpi-breakdown" class="kpi-sub">0 Genes · 0 Capsules</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Team Shared</span>
+          <strong id="kpi-team" class="kpi-value">0</strong>
+          <span id="kpi-sub-team" class="kpi-sub">Sanitized for sync</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Reused Hits</span>
+          <strong id="kpi-reuses" class="kpi-value">0</strong>
+          <span class="kpi-sub">Total activations</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Audit Events</span>
+          <strong id="kpi-events" class="kpi-value">0</strong>
+          <span class="kpi-sub">Local only</span>
+        </div>
+      </section>
+
       <div id="banner" class="banner hidden"></div>
 
       <nav class="tabs" role="tablist">
         <button class="tab active" data-tab="assets" type="button">Assets <span id="count-assets" class="pill">0</span></button>
         <button class="tab" data-tab="candidates" type="button">Candidates <span id="count-candidates" class="pill">0</span></button>
-        <button class="tab" data-tab="events" type="button">Events <span id="count-events" class="pill">0</span></button>
+        <button class="tab" data-tab="events" type="button">Evolution Events <span id="count-events" class="pill">0</span></button>
       </nav>
 
-      <section id="toolbar" class="toolbar">
-        <input id="search-input" class="search" type="search" placeholder="Search title, summary, or signal..." />
+      <section id="assets-toolbar" class="toolbar">
+        <div class="search-row">
+          <input id="search-input" class="search" type="search" placeholder="Search Genes & Capsules by title, summary, or signal..." />
+          <div class="kind-switch" role="group" aria-label="Asset type">
+            <button class="seg active" data-kind="all" type="button">All</button>
+            <button class="seg" data-kind="Gene" type="button">Genes</button>
+            <button class="seg" data-kind="Capsule" type="button">Capsules</button>
+          </div>
+        </div>
         <div class="filters">
-          <button class="chip active" data-filter="all" type="button">All</button>
+          <button class="chip active" data-filter="all" type="button">All Scopes</button>
           <button class="chip" data-filter="team" type="button">Team</button>
           <button class="chip" data-filter="local" type="button">Local</button>
           <button class="chip" data-filter="starter" type="button">Starter</button>
         </div>
       </section>
 
-      <main class="content">
+      <section id="events-toolbar" class="toolbar hidden">
+        <div class="filters">
+          <button class="chip active" data-event-filter="all" type="button">All Events</button>
+          <button class="chip" data-event-filter="evolution" type="button">Solidify & Sync</button>
+          <button class="chip" data-event-filter="signals" type="button">Captured Failure Signals</button>
+        </div>
+      </section>
+
+      <main id="content" class="content">
         <div id="list-pane" class="list-pane"></div>
         <aside id="detail-pane" class="detail-pane">
-          <div class="empty">Select a Gene or Capsule to preview its full details.</div>
+          <div class="empty">Select a Gene or Capsule to inspect its signals, steps, and validation evidence.</div>
         </aside>
       </main>
     </div>

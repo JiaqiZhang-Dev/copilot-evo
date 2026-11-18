@@ -155,6 +155,8 @@ export function createEvoCanvasServer({ evoHome }) {
       let result;
       if (reqUrl.pathname === "/api/assets/promote") {
         result = manageAsset("promote", body.id, { evoHome });
+      } else if (reqUrl.pathname === "/api/assets/promote-team") {
+        result = manageAsset("promote_team", body.id, { evoHome });
       } else if (reqUrl.pathname === "/api/assets/delete") {
         result = manageAsset("delete", body.id, { evoHome });
       } else if (reqUrl.pathname === "/api/sync/pull") {

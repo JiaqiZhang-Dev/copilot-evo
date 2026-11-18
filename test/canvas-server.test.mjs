@@ -62,6 +62,29 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     assert.equal(authDelete.status, 200);
     const delBody = await authDelete.json();
     assert.equal(delBody.ok, true);
+
+    solidifyAsset(
+      {
+        kind: "Capsule",
+        id: "capsule-local-promote",
+        title: "Local capsule to promote",
+        summary: "Verify promote-team upgrades clean local assets.",
+        signals: ["test_failure"],
+        scope: "local",
+      },
+      { evoHome }
+    );
+    const promoteTeam = await fetch(`${baseUrl}/api/assets/promote-team`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Evo-Token": canvasToken,
+      },
+      body: JSON.stringify({ id: "capsule-local-promote" }),
+    });
+    assert.equal(promoteTeam.status, 200);
+    const promoteBody = await promoteTeam.json();
+    assert.equal(promoteBody.asset.scope, "team");
   } finally {
     await server.closeInstance({ instanceId: "test-panel-1" });
     fs.rmSync(evoHome, { recursive: true, force: true });

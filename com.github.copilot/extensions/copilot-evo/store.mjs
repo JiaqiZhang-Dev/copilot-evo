@@ -381,6 +381,26 @@ export function manageAsset(action, id, options = {}) {
     return { ok: true, asset: candidate };
   }
 
+  if (action === "promote_team") {
+    const targetList = genes.some((a) => a.id === id) ? genes : capsules;
+    const idx = targetList.findIndex((a) => a.id === id);
+    if (idx < 0) return { ok: false, error: `Asset not found: ${id}` };
+    const candidate = { ...targetList[idx], scope: "team", updatedAt: new Date().toISOString() };
+    const leaks = fullLeakCheck(candidate);
+    if (leaks.found) {
+      return {
+        ok: false,
+        error: "Cannot promote to team: sensitive pattern or environment secret detected.",
+        leaks: leaks.leaks,
+      };
+    }
+    const clean = sanitizePayload(candidate);
+    targetList[idx] = clean;
+    writeJson(targetList === genes ? genesPath : capsulesPath, targetList);
+    appendEvent(evoHome, { event: "promote_team", assetId: clean.id, assetType: clean.type });
+    return { ok: true, asset: clean };
+  }
+
   if (action === "delete") {
     const nextGenes = genes.filter((a) => a.id !== id);
     const nextCapsules = capsules.filter((a) => a.id !== id);
