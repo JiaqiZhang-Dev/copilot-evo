@@ -9,6 +9,8 @@ let relMode = "all";
 let searchQuery = "";
 let selectedId = "";
 let pendingDeleteId = "";
+let arenaLeftId = "";
+let arenaRightId = "";
 
 const el = (id) => document.getElementById(id);
 
@@ -84,6 +86,10 @@ function formatEventMeta(ev) {
         cls: "ev-warn",
         desc: `${(ev.assetIds || [ev.assetId]).filter(Boolean).join(", ")} (${ev.reason || "feedback"})`,
       };
+    case "validation_pass":
+      return { label: "Arena Pass", cls: "ev-ok", desc: `Validation passed for ${ev.assetId || ""}` };
+    case "validation_fail":
+      return { label: "Arena Fail", cls: "ev-warn", desc: `Validation failed for ${ev.assetId || ""}` };
     case "delete":
       return { label: "Deleted", cls: "", desc: `Removed ${ev.assetId || ""}` };
     case "tool_failure":
@@ -343,6 +349,136 @@ function renderRelationshipsView(listPane, allAssets) {
   renderDetail(selected, false);
 }
 
+function renderArenaView(listPane, allAssets) {
+  if (!allAssets.length) {
+    listPane.innerHTML = `<div class="empty">No Genes or Capsules available for evaluation yet.</div>`;
+    return;
+  }
+
+  if (!allAssets.some((a) => a.id === arenaLeftId)) arenaLeftId = allAssets[0].id;
+  if (!allAssets.some((a) => a.id === arenaRightId) || arenaRightId === arenaLeftId) {
+    const alt = allAssets.find((a) => a.id !== arenaLeftId);
+    arenaRightId = alt ? alt.id : allAssets[0].id;
+  }
+
+  const left = allAssets.find((a) => a.id === arenaLeftId) || allAssets[0];
+  const right = allAssets.find((a) => a.id === arenaRightId) || allAssets[0];
+  const leftWinner = (left.gdiScore || 0) >= (right.gdiScore || 0);
+
+  const renderDuelCard = (item, isWinner) => {
+    const b = item.gdiBreakdown || {};
+    const dims = [
+      ["Quality (35%)", b.quality || 0],
+      ["Reliability (30%)", b.reliability || 0],
+      ["Lineage (20%)", b.lineage || 0],
+      ["Freshness (15%)", b.freshness || 0],
+    ];
+    return `
+      <div class="duel-card ${isWinner && left.id !== right.id ? "winner" : ""}">
+        <div class="card-head" style="margin-bottom:6px">
+          <span class="card-title">${escapeHtml(item.title)}</span>
+          <span class="badge gdi-badge">${isWinner && left.id !== right.id ? "Winner · " : ""}GDI ${item.gdiScore || 0}</span>
+        </div>
+        <div class="muted" style="margin-bottom:8px">Win rate: ${b.winRate ?? 100}% · Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0}</div>
+        ${dims
+          .map(
+            ([label, val]) => `
+          <div class="dim-row">
+            <span class="muted">${label}</span>
+            <div class="bar-track"><div class="bar-fill ${item.type !== "Capsule" ? "gene" : ""}" style="width:${val}%"></div></div>
+            <span class="code-box">${val}</span>
+          </div>`
+          )
+          .join("")}
+      </div>`;
+  };
+
+  const optionsHtml = (selected) =>
+    allAssets
+      .map(
+        (a) =>
+          `<option value="${escapeHtml(a.id)}" ${a.id === selected ? "selected" : ""}>[${a.type}] ${escapeHtml(a.title)} (${a.gdiScore})</option>`
+      )
+      .join("");
+
+  const leaderboardHtml = allAssets
+    .map((item, idx) => {
+      const b = item.gdiBreakdown || {};
+      const kindCls = item.type === "Capsule" ? "kind-capsule" : "kind-gene";
+      const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
+      return `
+      <div class="lb-row">
+        <div class="lb-top">
+          <div class="card-title-wrap">
+            <span class="badge">#${idx + 1}</span>
+            <span class="tier-badge tier-${escapeHtml(b.tier || "B")}">${escapeHtml(b.tier || "B")}</span>
+            <span class="badge ${kindCls}">${escapeHtml((item.type || "Gene").toUpperCase())}</span>
+            <span class="card-title">${escapeHtml(item.title)}</span>
+          </div>
+          <div class="actions">
+            <span class="badge gdi-badge">GDI ${item.gdiScore || 0}</span>
+            <span class="badge">${b.winRate ?? 100}% win</span>
+            ${hasVal ? `<button class="btn" data-validate="${escapeHtml(item.id)}" type="button">Run Validation</button>` : ""}
+            <button class="btn" data-inspect="${escapeHtml(item.id)}" type="button">Inspect</button>
+          </div>
+        </div>
+        <div class="lb-dims">
+          <div class="mini-dim">Quality <strong>${b.quality || 0}</strong><div class="bar-track"><div class="bar-fill gene" style="width:${b.quality || 0}%"></div></div></div>
+          <div class="mini-dim">Reliability <strong>${b.reliability || 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${b.reliability || 0}%"></div></div></div>
+          <div class="mini-dim">Lineage <strong>${b.lineage || 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${b.lineage || 0}%"></div></div></div>
+          <div class="mini-dim">Freshness <strong>${b.freshness || 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${b.freshness || 0}%"></div></div></div>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  listPane.innerHTML = `
+    <div class="arena-wrap">
+      <div class="arena-section">
+        <div class="arena-header">
+          <h3>Head-to-Head Evaluation</h3>
+          <span class="muted">Compare strategies across 4 GDI dimensions</span>
+        </div>
+        <div class="match-pickers">
+          <select id="arena-left" class="select-box">${optionsHtml(left.id)}</select>
+          <span class="vs-pill">VS</span>
+          <select id="arena-right" class="select-box">${optionsHtml(right.id)}</select>
+        </div>
+        <div class="duel-grid">
+          ${renderDuelCard(left, leftWinner)}
+          ${renderDuelCard(right, !leftWinner)}
+        </div>
+      </div>
+      <div class="arena-section">
+        <div class="arena-header">
+          <h3>GDI Competitive Leaderboard</h3>
+          <span class="muted">${allAssets.length} entries · Top tier ${escapeHtml(allAssets[0]?.gdiBreakdown?.tier || "-")}</span>
+        </div>
+        ${leaderboardHtml}
+      </div>
+    </div>
+  `;
+
+  el("arena-left")?.addEventListener("change", (e) => {
+    arenaLeftId = e.target.value;
+    render();
+  });
+  el("arena-right")?.addEventListener("change", (e) => {
+    arenaRightId = e.target.value;
+    render();
+  });
+  listPane.querySelectorAll("[data-inspect]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeTab = "assets";
+      selectedId = btn.dataset.inspect;
+      render();
+    });
+  });
+  listPane.querySelectorAll("[data-validate]").forEach((btn) => {
+    btn.addEventListener("click", () => mutate("/api/arena/validate", { id: btn.dataset.validate }));
+  });
+}
+
 function render() {
   if (!state) return;
   const genes = state.genes || [];
@@ -362,6 +498,7 @@ function render() {
   el("kpi-events").textContent = String(state.counts?.events || 0);
 
   el("count-assets").textContent = String(allAssets.length);
+  el("count-arena").textContent = String(allAssets.length);
   el("count-links").textContent = String(linkCount);
   el("count-candidates").textContent = String(state.candidates?.length || 0);
   el("count-events").textContent = String(state.counts?.events || 0);
@@ -369,8 +506,9 @@ function render() {
   el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets");
   el("rel-toolbar").classList.toggle("hidden", activeTab !== "relationships");
   el("events-toolbar").classList.toggle("hidden", activeTab !== "events");
-  el("content").classList.toggle("single-pane", activeTab === "events");
-  el("detail-pane").classList.toggle("hidden", activeTab === "events");
+  const isSinglePane = activeTab === "events" || activeTab === "arena";
+  el("content").classList.toggle("single-pane", isSinglePane);
+  el("detail-pane").classList.toggle("hidden", isSinglePane);
 
   document.querySelectorAll(".tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === activeTab));
   document.querySelectorAll(".chip[data-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.filter === activeFilter));
@@ -384,6 +522,11 @@ function render() {
   }
 
   const listPane = el("list-pane");
+
+  if (activeTab === "arena") {
+    renderArenaView(listPane, getAllAssets());
+    return;
+  }
 
   if (activeTab === "relationships") {
     renderRelationshipsView(listPane, getAllAssets());
@@ -497,6 +640,8 @@ async function mutate(endpoint, body) {
       showBanner(`Marked ${data.asset?.id || "asset"} as team scope. Click Push Team to sync.`);
     } else if (endpoint === "/api/assets/feedback") {
       showBanner(`Updated ${data.asset?.id || "asset"} (GDI ${data.gdiScore ?? "-"}).`);
+    } else if (endpoint === "/api/arena/validate") {
+      showBanner(`Validation ${data.passed ? "PASSED" : "FAILED"} for ${data.assetId}.`, !data.passed);
     } else if (endpoint === "/api/assets/delete") {
       showBanner(`Deleted ${data.deletedId || "asset"}.`);
     }

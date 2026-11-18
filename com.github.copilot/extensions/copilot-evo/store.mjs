@@ -225,21 +225,57 @@ export function detectRepoSlug(workingDirectory) {
   }
 }
 
-export function computeGdiScore(asset, nowMs = Date.now()) {
+export function computeGdiBreakdown(asset, allAssets = [], nowMs = Date.now()) {
   const success = Math.max(0, Number(asset?.successCount || 0));
   const failure = Math.max(0, Number(asset?.failureCount || 0));
-  const priority = Number(asset?.priority || 0);
-  const pinnedBoost = asset?.pinned ? 5 : 0;
-  const validationBoost = Array.isArray(asset?.validation) && asset.validation.length > 0 ? 0.5 : 0;
-  const reuseScore = Math.min(4, Math.log2(1 + success) * 1.4);
-  const failurePenalty = Math.min(3, failure * 0.8);
-  let freshness = 0.5;
+  const totalRuns = success + failure;
+  const winRate = totalRuns > 0 ? Math.round((success / totalRuns) * 100) : 100;
+
+  // 1. Intrinsic Quality (35%): completeness, actionable steps, signals, validation.
+  let quality = 25;
+  if (String(asset?.title || "").trim().length >= 8) quality += 15;
+  if (String(asset?.summary || "").trim().length >= 20) quality += 15;
+  if (Array.isArray(asset?.signals) && asset.signals.length >= 2) quality += 15;
+  if ((Array.isArray(asset?.strategy) && asset.strategy.length >= 2) || String(asset?.solution || "").trim().length >= 15) {
+    quality += 15;
+  }
+  if (Array.isArray(asset?.validation) && asset.validation.length > 0) quality += 15;
+  quality = Math.min(100, quality);
+
+  // 2. Usage & Reliability (30%): reuses, win rate, and priority.
+  const reusePart = Math.min(60, Math.log2(1 + success) * 20);
+  const winPart = totalRuns > 0 ? (success / totalRuns) * 35 : 20;
+  const priorityPart = Math.min(10, Math.max(0, Number(asset?.priority || 0)));
+  const penalty = Math.min(35, failure * 12);
+  const reliability = Math.max(5, Math.min(100, Math.round(reusePart + winPart + priorityPart - penalty)));
+
+  // 3. Lineage & Evolution Signal (20%): links + team promotion + derivations.
+  let lineage = asset?.scope === "team" ? 40 : asset?.scope === "starter" ? 30 : 20;
+  if (asset?.geneId || asset?.parentId || asset?.supersedes) lineage += 25;
+  const hasChildren = allAssets.some((a) => a.id !== asset?.id && (a.geneId === asset?.id || a.parentId === asset?.id));
+  if (hasChildren) lineage += 25;
+  if (asset?.pinned) lineage += 10;
+  lineage = Math.min(100, lineage);
+
+  // 4. Freshness (15%): recency of update/use.
+  let freshness = 55;
   if (asset?.updatedAt) {
     const ageDays = Math.max(0, (nowMs - Date.parse(asset.updatedAt)) / 86400000);
-    if (Number.isFinite(ageDays)) freshness = 1 / (1 + ageDays / 30);
+    if (Number.isFinite(ageDays)) freshness = Math.round(100 / (1 + ageDays / 14));
   }
-  const raw = 1 + priority * 0.15 + reuseScore + validationBoost + freshness + pinnedBoost - failurePenalty;
-  return Math.round(Math.max(0.1, raw) * 10) / 10;
+
+  const weighted = quality * 0.35 + reliability * 0.3 + lineage * 0.2 + freshness * 0.15 + (asset?.pinned ? 15 : 0);
+  const score = Math.round(Math.max(1, Math.min(100, weighted)) * 10) / 10;
+  const tier = score >= 80 ? "S" : score >= 65 ? "A" : score >= 45 ? "B" : "C";
+
+  return { score, tier, quality, reliability, lineage, freshness, winRate };
+}
+
+export function computeGdiScore(asset, allAssets = [], nowMs = Date.now()) {
+  if (typeof allAssets === "number") {
+    return computeGdiBreakdown(asset, [], allAssets).score;
+  }
+  return computeGdiBreakdown(asset, allAssets, nowMs).score;
 }
 
 export function getAssetRelationships(asset, allAssets) {
@@ -314,9 +350,8 @@ export function recordAssetOutcome(evoHome, assetIds = [], outcome = "success", 
 
 export function hashProjectId(workingDirectory) {
   if (!workingDirectory) return "global";
-  const base = path.basename(workingDirectory) || "repo";
-  const digest = crypto.createHash("sha256").update(workingDirectory).digest("hex").slice(0, 8);
-  return `${base}-${digest}`;
+  const digest = crypto.createHash("sha256").update(workingDirectory).digest("hex").slice(0, 10);
+  return `proj-${digest}`;
 }
 
 const SIGNAL_PATTERNS = [
@@ -419,8 +454,8 @@ export function selectAssets({
     }
     if (relevance > 0) {
       const repoBoost = assetRepo !== "*" && normalizedRepo && assetRepo.toLowerCase() === normalizedRepo.toLowerCase() ? 1.5 : 0;
-      const gdiScore = computeGdiScore(asset, nowMs);
-      scored.push({ asset, score: relevance + repoBoost + gdiScore * 0.35, gdiScore });
+      const gdiScore = computeGdiScore(asset, all, nowMs);
+      scored.push({ asset, score: relevance + repoBoost + gdiScore * 0.05, gdiScore });
     }
   }
 
@@ -626,9 +661,10 @@ export function manageAsset(action, id, options = {}) {
     const candidate = { ...targetList[idx], scope: "team", updatedAt: new Date().toISOString() };
     const leaks = fullLeakCheck(candidate);
     if (leaks.found) {
+      const details = leaks.leaks.map((l) => `${l.type}${l.envKey ? `(${l.envKey})` : ""}`).join(", ");
       return {
         ok: false,
-        error: "Cannot promote to team: sensitive pattern or environment secret detected.",
+        error: `Cannot promote to team: sensitive pattern detected (${details}).`,
         leaks: leaks.leaks,
       };
     }
@@ -883,4 +919,73 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
     capsulesCount: mergedCapsules.length,
     repoPath: targetRepo,
   };
+}
+
+function splitArgs(command) {
+  const tokens = [];
+  let current = "";
+  let quote = "";
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+    if (quote) {
+      if (ch === quote) quote = "";
+      else current += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (/\s/.test(ch)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+export async function runAssetValidation(evoHome, id, workingDirectory) {
+  const { genes, capsules } = loadStore(evoHome);
+  const asset = [...genes, ...capsules].find((a) => a.id === id);
+  if (!asset) return { ok: false, error: `Asset not found: ${id}` };
+  const commands = Array.isArray(asset.validation) ? asset.validation.filter(Boolean) : [];
+  if (!commands.length) {
+    return { ok: false, error: `Asset ${id} has no declared validation commands.` };
+  }
+  const cwd = workingDirectory && fs.existsSync(workingDirectory) ? workingDirectory : process.cwd();
+  const results = [];
+  let allPassed = true;
+
+  for (const cmd of commands) {
+    if (!isValidationCommandAllowed(cmd)) {
+      return { ok: false, error: `Validation command blocked by safety policy: ${cmd}` };
+    }
+    const parts = splitArgs(cmd);
+    const exe = parts[0];
+    const args = parts.slice(1);
+    const bin = process.platform === "win32" && /^(?:npm|npx)$/i.test(exe) ? `${exe}.cmd` : exe;
+    const useShell = process.platform === "win32" && /\.cmd$/i.test(bin);
+    const res = await new Promise((resolveRun) => {
+      execFile(bin, args, { cwd, timeout: 60000, shell: useShell }, (err, stdout, stderr) => {
+        resolveRun({
+          command: cmd,
+          passed: !err,
+          output: sanitizePayload(`${stdout || ""}\n${stderr || ""}`.trim()).slice(0, 600),
+        });
+      });
+    });
+    results.push(res);
+    if (!res.passed) allPassed = false;
+  }
+
+  recordAssetOutcome(evoHome, [id], allPassed ? "success" : "failure", "arena_validation");
+  appendEvent(evoHome, {
+    event: allPassed ? "validation_pass" : "validation_fail",
+    assetId: id,
+    assetType: asset.type,
+    commands: commands.length,
+  });
+
+  return { ok: true, passed: allPassed, assetId: id, results };
 }

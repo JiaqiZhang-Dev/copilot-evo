@@ -61,10 +61,20 @@ const ENV_SCAN_SKIP_KEYS = new Set([
   "TEMP", "TMP", "APPDATA", "LOCALAPPDATA", "PROGRAMFILES", "PROGRAMDATA",
   "OS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER",
   "GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR", "GITHUB_REPOSITORY_OWNER",
+  "GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME",
 ]);
 
+const SECRET_ENV_KEY_RE = /(?:TOKEN|SECRET|KEY|PASSWORD|PASSWD|AUTH|CREDENTIAL|PAT|COOKIE|CERT|PRIVATE|DSN|CONNECTION_STRING|WEBHOOK|SIGNING)/i;
+
 function isNonSecretEnvKey(key) {
-  return ENV_SCAN_SKIP_KEYS.has(key) || key.startsWith("npm_");
+  return (
+    ENV_SCAN_SKIP_KEYS.has(key) ||
+    key.startsWith("npm_") ||
+    key.startsWith("GIT_CONFIG_") ||
+    key.startsWith("VSCODE_") ||
+    key.startsWith("COPILOT_") ||
+    key.startsWith("ELECTRON_")
+  );
 }
 
 const REDACTED = "[REDACTED]";
@@ -127,6 +137,9 @@ export function detectEnvValueLeaks(input, env = process.env) {
     if (!val || val.length < 8) continue;
     if (isNonSecretEnvKey(key)) continue;
     if (/^(\/|[A-Za-z]:\\|[a-z][a-z0-9+.-]*:\/\/)/i.test(val)) continue;
+    const isLikelySecretKey = SECRET_ENV_KEY_RE.test(key);
+    const isLongOpaqueSecret = val.length >= 20 && !/\s/.test(val);
+    if (!isLikelySecretKey && !isLongOpaqueSecret) continue;
     if (content.includes(val)) {
       leaks.push({
         type: "env_value_leak",

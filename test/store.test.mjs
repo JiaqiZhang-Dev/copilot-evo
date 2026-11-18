@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
+  computeGdiBreakdown,
   computeGdiScore,
   exportBundle,
   extractSignals,
@@ -18,6 +19,7 @@ import {
   manageAsset,
   normalizeRepoSlug,
   recordAssetOutcome,
+  runAssetValidation,
   selectAssets,
   solidifyAsset,
   syncRepoPull,
@@ -372,10 +374,41 @@ test("GDI rank, pin/vote feedback, and Gene/Capsule lineage work together", () =
     const pinned = manageAsset("pin", "capsule-derived-fix", { evoHome: home, bundledDir });
     assert.ok(pinned.gdiScore > beforeScore);
 
+    const breakdown = computeGdiBreakdown(pinned.asset, loadStore(home).genes.concat(loadStore(home).capsules));
+    assert.ok(["S", "A", "B", "C"].includes(breakdown.tier));
+    assert.equal(breakdown.winRate, 100);
+
     const { genes, capsules } = loadStore(home);
     const active = selectAssets({ signals: ["npm_error"], genes, capsules, limit: 5 });
     assert.equal(active[0].id, "capsule-derived-fix");
     assert.ok(!active.some((a) => a.id === "gene-base-strategy"));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(bundledDir, { recursive: true, force: true });
+  }
+});
+
+test("runAssetValidation executes whitelisted command and updates outcome", async () => {
+  const home = makeTempDir();
+  const bundledDir = makeTempDir();
+  try {
+    solidifyAsset(
+      {
+        kind: "Capsule",
+        id: "capsule-arena-check",
+        title: "Arena validation check",
+        summary: "Verify safe node command runs in Arena bench.",
+        signals: ["test_failure"],
+        validation: ['node -e "process.exit(0)"'],
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+    const res = await runAssetValidation(home, "capsule-arena-check", process.cwd());
+    assert.equal(res.ok, true);
+    assert.equal(res.passed, true);
+    const updated = loadStore(home).capsules.find((c) => c.id === "capsule-arena-check");
+    assert.equal(updated.successCount, 2);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

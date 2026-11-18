@@ -25,11 +25,12 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.4.1";
+const EXTENSION_VERSION = "0.5.0";
 let lastWorkingDirectory = process.cwd();
 const canvasServer = createEvoCanvasServer({
   evoHome,
   getCurrentRepo: () => detectRepoSlug(lastWorkingDirectory),
+  getWorkingDirectory: () => lastWorkingDirectory,
 });
 const sessionState = {
   protocolInjected: false,
@@ -411,7 +412,7 @@ const session = await joinSession({
       inputSchema: {
         type: "object",
         properties: {
-          tab: { type: "string", enum: ["assets", "relationships", "candidates", "events"] },
+          tab: { type: "string", enum: ["assets", "arena", "relationships", "candidates", "events"] },
           filter: { type: "string", enum: ["all", "team", "local", "starter"] },
           assetId: { type: "string" },
         },
@@ -432,7 +433,7 @@ const session = await joinSession({
             type: "object",
             properties: {
               assetId: { type: "string" },
-              tab: { type: "string", enum: ["assets", "relationships", "candidates", "events"] },
+              tab: { type: "string", enum: ["assets", "arena", "relationships", "candidates", "events"] },
             },
             required: ["assetId"],
           },

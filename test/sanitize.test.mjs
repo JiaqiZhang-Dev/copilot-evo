@@ -41,8 +41,11 @@ test("sanitizePayload redacts nested objects without mutating input", () => {
 });
 
 test("fullLeakCheck catches internal IPs and process.env secret leaks", () => {
-  const fakeEnv = { MY_CUSTOM_SECRET: "ultra-secret-value-98765" };
-  const payload = { summary: "Connect to 192.168.1.50 using ultra-secret-value-98765" };
+  const fakeEnv = {
+    MY_CUSTOM_SECRET: "ultra-secret-value-98765",
+    GIT_CONFIG_VALUE_0: "explicit",
+  };
+  const payload = { summary: "Connect to 192.168.1.50 using ultra-secret-value-98765 explicitly" };
   const scan = scanForLeaks(payload);
   assert.equal(scan.found, true);
   assert.ok(scan.leaks.some((l) => l.type === "internal_ip"));
@@ -50,6 +53,9 @@ test("fullLeakCheck catches internal IPs and process.env secret leaks", () => {
   const envLeaks = detectEnvValueLeaks(payload, fakeEnv);
   assert.equal(envLeaks.length, 1);
   assert.equal(envLeaks[0].envKey, "MY_CUSTOM_SECRET");
+
+  const cleanPayload = { summary: "Avoid unnecessary refactoring unless explicitly requested." };
+  assert.equal(detectEnvValueLeaks(cleanPayload, fakeEnv).length, 0);
 
   const full = fullLeakCheck(payload, fakeEnv);
   assert.equal(full.found, true);

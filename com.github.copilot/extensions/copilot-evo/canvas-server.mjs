@@ -5,13 +5,14 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  computeGdiScore,
+  computeGdiBreakdown,
   countEvents,
   getAssetRelationships,
   loadStore,
   manageAsset,
   readRecentEvents,
   resolveSyncRepoPath,
+  runAssetValidation,
   syncRepoPull,
   syncRepoPush,
 } from "./store.mjs";
@@ -63,7 +64,11 @@ function safeUiFilePath(pathname) {
   return candidate;
 }
 
-export function createEvoCanvasServer({ evoHome, getCurrentRepo = () => "" }) {
+export function createEvoCanvasServer({
+  evoHome,
+  getCurrentRepo = () => "",
+  getWorkingDirectory = () => process.cwd(),
+}) {
   const canvasToken = randomBytes(32).toString("hex");
   const sseClients = new Set();
   const activeInstances = new Set();
@@ -78,12 +83,16 @@ export function createEvoCanvasServer({ evoHome, getCurrentRepo = () => "" }) {
     const events = readRecentEvents(evoHome, 60);
     const allAssets = [...store.genes, ...store.capsules];
     const nowMs = Date.now();
-    const enrich = (item) => ({
-      ...item,
-      repoScope: item.repoScope || "*",
-      gdiScore: computeGdiScore(item, nowMs),
-      relationships: getAssetRelationships(item, allAssets),
-    });
+    const enrich = (item) => {
+      const gdi = computeGdiBreakdown(item, allAssets, nowMs);
+      return {
+        ...item,
+        repoScope: item.repoScope || "*",
+        gdiScore: gdi.score,
+        gdiBreakdown: gdi,
+        relationships: getAssetRelationships(item, allAssets),
+      };
+    };
     const genes = store.genes.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
     const capsules = store.capsules.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
 
@@ -177,6 +186,8 @@ export function createEvoCanvasServer({ evoHome, getCurrentRepo = () => "" }) {
       } else if (reqUrl.pathname === "/api/assets/feedback") {
         const action = ["pin", "unpin", "upvote", "downvote"].includes(body.action) ? body.action : "";
         result = action ? manageAsset(action, body.id, { evoHome }) : { ok: false, error: "Invalid feedback action." };
+      } else if (reqUrl.pathname === "/api/arena/validate") {
+        result = await runAssetValidation(evoHome, body.id, getWorkingDirectory());
       } else if (reqUrl.pathname === "/api/assets/delete") {
         result = manageAsset("delete", body.id, { evoHome });
       } else if (reqUrl.pathname === "/api/sync/pull") {
