@@ -45,6 +45,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     assert.match(html, /chip-repo-only/);
     assert.match(html, /loading-overlay/);
     assert.doesNotMatch(html, /data-tab="arena"/);
+    assert.doesNotMatch(html, /id="rel-toolbar"/);
 
     const stateRes = await fetch(`${baseUrl}/api/state`);
     assert.equal(stateRes.status, 200);

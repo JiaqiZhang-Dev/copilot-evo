@@ -10,8 +10,6 @@ let eventFilter = "all";
 let eventSessionFilter = "";
 let eventSearchQuery = "";
 let eventDisplayLimit = 25;
-let relMode = "all";
-let relShowStandalone = false;
 let selectedSignalHub = "";
 let searchQuery = "";
 let selectedId = "";
@@ -104,7 +102,8 @@ function getFilteredAssets() {
       if (activeFilter !== "all" && scope !== activeFilter) return false;
     }
     if (repoOnlyFilter && !isRepoSpecificMatch(item, curRepo)) return false;
-    if (activeKind !== "all" && item.type !== activeKind) return false;
+    const itemType = item.type === "Fix" ? "Fix" : "Rule";
+    if (activeKind !== "all" && itemType !== activeKind) return false;
     if (!q) return true;
     const text = `${item.id} ${item.title} ${item.summary} ${item.solution || ""} ${item.repoScope || ""} ${(item.signals || []).join(" ")}`.toLowerCase();
     return text.includes(q);
@@ -467,14 +466,12 @@ function collectGraphData(assets) {
     if (a.supersedes && idSet.has(a.supersedes)) {
       edges.push({ from: a.id, to: a.supersedes, kind: "supersedes", label: "supersedes" });
     }
-    if (relMode === "all") {
-      for (const s of a.relationships?.sharedSignals || []) {
-        if (!idSet.has(s.id)) continue;
-        const pairKey = [a.id, s.id].sort().join("|");
-        if (seenShared.has(pairKey)) continue;
-        seenShared.add(pairKey);
-        edges.push({ from: a.id, to: s.id, kind: "signal", label: s.overlap.join(", ") });
-      }
+    for (const s of a.relationships?.sharedSignals || []) {
+      if (!idSet.has(s.id)) continue;
+      const pairKey = [a.id, s.id].sort().join("|");
+      if (seenShared.has(pairKey)) continue;
+      seenShared.add(pairKey);
+      edges.push({ from: a.id, to: s.id, kind: "signal", label: s.overlap.join(", ") });
     }
   }
   return edges;
@@ -646,14 +643,12 @@ function renderRelationshipsView(listPane, allAssets) {
   }
 
   const edges = collectGraphData(allAssets);
-  const showSignals = relMode === "all";
+  const showSignals = true;
 
   const signalCounts = new Map();
-  if (showSignals) {
-    for (const a of allAssets) {
-      for (const s of new Set((a.signals || []).map((x) => String(x).toLowerCase()))) {
-        signalCounts.set(s, (signalCounts.get(s) || 0) + 1);
-      }
+  for (const a of allAssets) {
+    for (const s of new Set((a.signals || []).map((x) => String(x).toLowerCase()))) {
+      signalCounts.set(s, (signalCounts.get(s) || 0) + 1);
     }
   }
   const sharedHubs = Array.from(signalCounts.entries())
@@ -670,22 +665,10 @@ function renderRelationshipsView(listPane, allAssets) {
     connectedIdSet.add(e.from);
     connectedIdSet.add(e.to);
   }
-  if (showSignals) {
-    for (const a of allAssets) {
-      if ((a.signals || []).some((s) => hubSet.has(String(s).toLowerCase()))) {
-        connectedIdSet.add(a.id);
-      }
+  for (const a of allAssets) {
+    if ((a.signals || []).some((s) => hubSet.has(String(s).toLowerCase()))) {
+      connectedIdSet.add(a.id);
     }
-  }
-
-  const standaloneCount = allAssets.filter((a) => !connectedIdSet.has(a.id)).length;
-  const standaloneBtn = el("chip-rel-standalone");
-  if (standaloneBtn) {
-    standaloneBtn.textContent = relShowStandalone
-      ? `Hide Standalone (${standaloneCount})`
-      : `Show Standalone (${standaloneCount})`;
-    standaloneBtn.classList.toggle("active", relShowStandalone);
-    standaloneBtn.classList.toggle("hidden", standaloneCount === 0);
   }
 
   const signalClusterAssets = selectedSignalHub
@@ -696,7 +679,8 @@ function renderRelationshipsView(listPane, allAssets) {
 
   const visibleAssets = selectedSignalHub
     ? signalClusterAssets.slice().sort((a, b) => a.id.localeCompare(b.id))
-    : (relShowStandalone ? allAssets : allAssets.filter((a) => connectedIdSet.has(a.id)))
+    : allAssets
+        .filter((a) => connectedIdSet.has(a.id))
         .slice()
         .sort((a, b) => a.id.localeCompare(b.id));
 
@@ -1097,7 +1081,15 @@ function render() {
   const tabAssets = allAssets.filter((a) =>
     activeTab === "local" ? !a.scope || a.scope === "local" : a.scope && a.scope !== "local"
   );
-  const repoOnlyCount = tabAssets.filter((a) => isRepoSpecificMatch(a, curRepo)).length;
+  const tabRuleCount = tabAssets.filter((a) => (a.type === "Fix" ? "Fix" : "Rule") === "Rule").length;
+  const tabFixCount = tabAssets.filter((a) => a.type === "Fix").length;
+  const kindScopedAssets =
+    activeKind === "all"
+      ? tabAssets
+      : tabAssets.filter((a) => (a.type === "Fix" ? "Fix" : "Rule") === activeKind);
+  const kindTeamCount = kindScopedAssets.filter((a) => a.scope === "team").length;
+  const kindStarterCount = kindScopedAssets.filter((a) => a.scope === "starter").length;
+  const repoOnlyCount = kindScopedAssets.filter((a) => isRepoSpecificMatch(a, curRepo)).length;
 
   el("count-assets").textContent = String(sharedCount);
   if (el("count-local")) el("count-local").textContent = String(localCount);
@@ -1105,14 +1097,21 @@ function render() {
   el("count-links").textContent = String(linkCount);
   el("count-events").textContent = String(state.counts?.events || 0);
 
+  document.querySelectorAll(".seg[data-kind]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.kind === activeKind);
+    if (btn.dataset.kind === "all") btn.textContent = `All`;
+    else if (btn.dataset.kind === "Rule") btn.textContent = `Rules ${tabRuleCount}`;
+    else if (btn.dataset.kind === "Fix") btn.textContent = `Fixes ${tabFixCount}`;
+  });
+
   if (el("chip-all")) {
-    el("chip-all").textContent = `All ${sharedCount}`;
+    el("chip-all").textContent = `All ${kindScopedAssets.length}`;
   }
   if (el("chip-team")) {
-    el("chip-team").textContent = `Team ${teamCount}`;
+    el("chip-team").textContent = `Team ${kindTeamCount}`;
   }
   if (el("chip-starter")) {
-    el("chip-starter").textContent = `Built-in ${starterCount}`;
+    el("chip-starter").textContent = `Built-in ${kindStarterCount}`;
   }
   const repoOnlyBtn = el("chip-repo-only");
   if (repoOnlyBtn) {
@@ -1133,7 +1132,6 @@ function render() {
 
   el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets" && activeTab !== "local");
   el("contributors-toolbar")?.classList.toggle("hidden", activeTab !== "contributors");
-  el("rel-toolbar").classList.toggle("hidden", activeTab !== "relationships");
   el("events-toolbar").classList.toggle("hidden", activeTab !== "events");
   const hasDetail =
     ((activeTab === "assets" || activeTab === "local") && Boolean(selectedId)) ||
@@ -1150,7 +1148,6 @@ function render() {
   document.querySelectorAll(".seg[data-contrib-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribMode === contribMode));
   document.querySelectorAll(".chip[data-contrib-scope]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribScope === contribScope));
   document.querySelectorAll(".chip[data-event-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.eventFilter === eventFilter));
-  document.querySelectorAll(".chip[data-rel-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.relMode === relMode));
   el("scope-filters")?.classList.toggle("hidden", activeTab !== "assets");
 
   const listPane = el("list-pane");
@@ -1524,19 +1521,6 @@ async function init() {
   el("event-search-input")?.addEventListener("input", (e) => {
     eventSearchQuery = e.target.value;
     eventDisplayLimit = 25;
-    render();
-  });
-
-  document.querySelectorAll(".chip[data-rel-mode]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      relMode = btn.dataset.relMode;
-      selectedSignalHub = "";
-      render();
-    });
-  });
-
-  el("chip-rel-standalone")?.addEventListener("click", () => {
-    relShowStandalone = !relShowStandalone;
     render();
   });
 
