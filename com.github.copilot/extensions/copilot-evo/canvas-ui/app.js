@@ -4,16 +4,27 @@ let activeTab = "assets";
 let activeFilter = "all";
 let activeKind = "all";
 let repoFilter = "all";
+let contribMode = "author";
+let contribScope = "all";
 let eventFilter = "all";
 let relMode = "all";
 let searchQuery = "";
 let selectedId = "";
+let selectedContribKey = "";
 let pendingDeleteId = "";
 let sharingId = "";
 let justSharedId = "";
 let toastTimer = null;
 
 const el = (id) => document.getElementById(id);
+
+function setLoadingOverlay(visible, text = "Working...") {
+  const overlay = el("loading-overlay");
+  const label = el("loading-text");
+  if (!overlay) return;
+  if (label) label.textContent = text;
+  overlay.classList.toggle("hidden", !visible);
+}
 
 function showToast(title, subtitle = "") {
   const toast = el("toast");
@@ -22,7 +33,7 @@ function showToast(title, subtitle = "") {
   toast.className = "toast";
   toast.innerHTML = `
     <span class="toast-spark" aria-hidden="true">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
         <path d="M8 1.5l1.5 4.2 4.2 1.5-4.2 1.5L8 13l-1.5-4.3-4.2-1.5 4.2-1.5L8 1.5Z" fill="currentColor"/>
       </svg>
     </span>
@@ -31,9 +42,12 @@ function showToast(title, subtitle = "") {
       ${subtitle ? `<div class="toast-sub">${escapeHtml(subtitle)}</div>` : ""}
     </div>
   `;
+  toast.onclick = () => {
+    toast.className = "toast hidden";
+  };
   toastTimer = setTimeout(() => {
     toast.className = "toast hidden";
-  }, 4200);
+  }, 3600);
 }
 
 function showBanner(message, isError = false) {
@@ -186,6 +200,10 @@ function renderDetail(item) {
     : "";
 
   const isSharing = sharingId === item.id;
+  const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
+  const validateBtn = hasVal
+    ? `<button class="btn" data-validate="${escapeHtml(item.id)}" type="button">Run Validation</button>`
+    : "";
   const promoteTeamBtn =
     item.scope === "local"
       ? `<button class="btn btn-primary" data-promote-team="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Sanitize, mark as team, and push to the team Git repository">${isSharing ? "Sharing..." : "Share to Team"}</button>`
@@ -261,7 +279,7 @@ function renderDetail(item) {
           <div class="detail-id-sub">${escapeHtml(item.id)}</div>
         </div>
       </div>
-      <div class="actions">${promoteTeamBtn}${copyBtn}${deleteControl}${closeBtn}</div>
+      <div class="actions">${promoteTeamBtn}${validateBtn}${copyBtn}${deleteControl}${closeBtn}</div>
     </div>
     ${refineHtml}
     <div class="section-label">Trigger Signals</div>
@@ -272,6 +290,13 @@ function renderDetail(item) {
     ${strategy}
     ${guardrail}
     ${validation}
+    <div class="section-label">Score Breakdown · Tier ${escapeHtml(item.gdiBreakdown?.tier || "B")} · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Win Rate</div>
+    <div class="detail-breakdown">
+      <div class="mini-dim">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.quality ?? 0}%"></div></div></div>
+      <div class="mini-dim">Reliability <strong>${item.gdiBreakdown?.reliability ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.reliability ?? 0}%"></div></div></div>
+      <div class="mini-dim">Lineage <strong>${item.gdiBreakdown?.lineage ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.lineage ?? 0}%"></div></div></div>
+      <div class="mini-dim">Freshness <strong>${item.gdiBreakdown?.freshness ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.freshness ?? 0}%"></div></div></div>
+    </div>
     ${lineageHtml}
     <div class="section-label">Provenance (Auto-scored from loop)</div>
     <p class="muted">${provenanceParts.join(" · ")}</p>
@@ -292,6 +317,7 @@ function renderDetail(item) {
     pendingDeleteId = "";
     render();
   });
+  pane.querySelector("[data-validate]")?.addEventListener("click", () => mutate("/api/arena/validate", { id: item.id }));
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
   pane.querySelectorAll("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -573,70 +599,187 @@ function renderRelationshipsView(listPane, allAssets) {
   renderDetail(selectedAsset);
 }
 
-function renderArenaView(listPane, allAssets) {
-  if (!allAssets.length) {
-    listPane.innerHTML = `<div class="empty">No Experiences available to rank yet.</div>`;
+function buildContributorStats(assets, mode = "author", scopeFilter = "all") {
+  const scoped = assets.filter((item) => {
+    if (scopeFilter === "team") return item.scope === "team";
+    if (scopeFilter === "local") return !item.scope || item.scope === "local";
+    return item.scope !== "starter";
+  });
+
+  const groups = new Map();
+  for (const item of scoped) {
+    const key =
+      mode === "source"
+        ? item.sourceProject || "unknown"
+        : item.author || item.sourceProject || "Unknown";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, items]) => {
+      const sorted = [...items].sort((a, b) => (b.gdiScore || 0) - (a.gdiScore || 0));
+      const n = sorted.length;
+      const sum = (fn) => sorted.reduce((acc, x) => acc + fn(x), 0);
+      const avgScore = sum((x) => Number(x.gdiScore || 0)) / n;
+      const bestScore = Number(sorted[0]?.gdiScore || 0);
+      const avgQuality = Math.round(sum((x) => Number(x.gdiBreakdown?.quality || 0)) / n);
+      const avgReliability = Math.round(sum((x) => Number(x.gdiBreakdown?.reliability || 0)) / n);
+      const avgLineage = Math.round(sum((x) => Number(x.gdiBreakdown?.lineage || 0)) / n);
+      const avgFreshness = Math.round(sum((x) => Number(x.gdiBreakdown?.freshness || 0)) / n);
+      const totalReuses = sum((x) => Number(x.successCount || 0));
+      const totalFailures = sum((x) => Number(x.failureCount || 0));
+      const totalRuns = totalReuses + totalFailures;
+      const winRate = totalRuns > 0 ? Math.round((totalReuses / totalRuns) * 100) : 100;
+      const teamCount = sorted.filter((x) => x.scope === "team").length;
+
+      return {
+        key,
+        items: sorted,
+        topItem: sorted[0],
+        count: n,
+        teamCount,
+        avgScore,
+        bestScore,
+        avgQuality,
+        avgReliability,
+        avgLineage,
+        avgFreshness,
+        totalReuses,
+        winRate,
+      };
+    })
+    .sort((a, b) => {
+      const avgDiff = b.avgScore - a.avgScore;
+      if (Math.abs(avgDiff) > 0.05) return avgDiff;
+      const bestDiff = b.bestScore - a.bestScore;
+      if (Math.abs(bestDiff) > 0.05) return bestDiff;
+      const winDiff = b.winRate - a.winRate;
+      if (winDiff !== 0) return winDiff;
+      return b.totalReuses - a.totalReuses;
+    });
+}
+
+function renderContributorDetail(group) {
+  const pane = el("detail-pane");
+  if (!group) {
+    pane.innerHTML = `<div class="empty">Select a contributor or source to inspect quality breakdown.</div>`;
     return;
   }
 
-  const leaderboardHtml = allAssets
-    .map((item, idx) => {
-      const b = item.gdiBreakdown || {};
-      const kindCls = item.type === "Fix" ? "kind-capsule" : "kind-gene";
-      const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
-      const rankBadge =
-        idx === 0
-          ? `<span class="badge gdi-badge" title="Rank #1"><svg class="trophy-icon" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#0969da" fill-opacity="0.2" stroke="#0969da" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11M8 8.7v2.8M5.8 13.5h4.4" stroke="#0969da" stroke-width="1.2" stroke-linecap="round"/></svg></span>`
-          : `<span class="badge">#${idx + 1}</span>`;
-      return `
-      <div class="lb-row ${idx === 0 ? "rank-1" : ""}">
-        <div class="lb-top">
-          <div class="card-title-wrap">
-            ${rankBadge}
-            <span class="tier-badge tier-${escapeHtml(b.tier || "B")}">${escapeHtml(b.tier || "B")}</span>
-            <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
-            <span class="card-title">${escapeHtml(item.title)}</span>
-          </div>
-          <div class="actions">
-            <span class="badge gdi-badge">Score ${item.gdiScore || 0}</span>
-            <span class="badge">${item.successCount || 0} reuses</span>
-            <span class="badge">${b.winRate ?? 100}% win</span>
-            ${hasVal ? `<button class="btn" data-validate="${escapeHtml(item.id)}" type="button">Run Validation</button>` : ""}
-            <button class="btn" data-inspect="${escapeHtml(item.id)}" type="button">Inspect</button>
-          </div>
-        </div>
-        <div class="lb-dims">
-          <div class="mini-dim">Quality <strong>${b.quality || 0}</strong><div class="bar-track"><div class="bar-fill gene" style="width:${b.quality || 0}%"></div></div></div>
-          <div class="mini-dim">Reliability <strong>${b.reliability || 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${b.reliability || 0}%"></div></div></div>
-          <div class="mini-dim">Lineage <strong>${b.lineage || 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${b.lineage || 0}%"></div></div></div>
-          <div class="mini-dim">Freshness <strong>${b.freshness || 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${b.freshness || 0}%"></div></div></div>
-        </div>
-      </div>`;
-    })
+  const modeLabel = contribMode === "source" ? "Source" : "Author";
+  const closeBtn = `<button class="btn btn-close" data-close-contrib type="button" title="Close detail drawer">✕</button>`;
+  const expRows = group.items
+    .map(
+      (item) => `
+      <button class="contrib-exp-item" data-jump-exp="${escapeHtml(item.id)}" type="button">
+        <span class="contrib-exp-title">${escapeHtml(item.title)}</span>
+        <span class="contrib-exp-meta">${item.type === "Fix" ? "Fix" : "Rule"} · ${Number(item.gdiScore || 0).toFixed(1)} · ${item.successCount || 0} used</span>
+      </button>`
+    )
     .join("");
 
-  listPane.innerHTML = `
-    <div class="arena-wrap">
-      <div class="arena-section">
-        <div class="arena-header">
-          <h3>Experience Leaderboard</h3>
-          <span class="muted">${allAssets.length} entries · Auto-scored by Quality, Reliability, Lineage & Freshness</span>
+  pane.innerHTML = `
+    <div class="detail-head">
+      <div class="detail-title-row">
+        ${renderScoreRing(group.avgScore)}
+        <div>
+          <h2 class="detail-title">${escapeHtml(group.key)}</h2>
+          <div class="detail-meta-line">
+            <span class="detail-meta-pill">${modeLabel}</span>
+            <span>·</span>
+            <span>Avg ${group.avgScore.toFixed(1)}</span>
+            <span>·</span>
+            <span>Best ${group.bestScore.toFixed(1)}</span>
+            <span>·</span>
+            <span>${group.winRate}% win</span>
+            <span>·</span>
+            <span>${group.totalReuses} hits</span>
+          </div>
+          <div class="detail-id-sub">${group.count} experience(s) · ${group.teamCount} shared to team</div>
         </div>
-        ${leaderboardHtml}
       </div>
+      <div class="actions">${closeBtn}</div>
     </div>
+    <div class="section-label">Average Quality Breakdown</div>
+    <div class="detail-breakdown">
+      <div class="mini-dim">Quality <strong>${group.avgQuality}</strong><div class="bar-track"><div class="bar-fill" style="width:${group.avgQuality}%"></div></div></div>
+      <div class="mini-dim">Reliability <strong>${group.avgReliability}</strong><div class="bar-track"><div class="bar-fill" style="width:${group.avgReliability}%"></div></div></div>
+      <div class="mini-dim">Lineage <strong>${group.avgLineage}</strong><div class="bar-track"><div class="bar-fill" style="width:${group.avgLineage}%"></div></div></div>
+      <div class="mini-dim">Freshness <strong>${group.avgFreshness}</strong><div class="bar-track"><div class="bar-fill" style="width:${group.avgFreshness}%"></div></div></div>
+    </div>
+    <div class="section-label">Top Experiences (Sorted by Quality)</div>
+    <div class="contrib-exp-list">${expRows}</div>
   `;
 
-  listPane.querySelectorAll("[data-inspect]").forEach((btn) => {
+  pane.querySelector("[data-close-contrib]")?.addEventListener("click", () => {
+    selectedContribKey = "";
+    render();
+  });
+  pane.querySelectorAll("[data-jump-exp]").forEach((btn) => {
     btn.addEventListener("click", () => {
       activeTab = "assets";
-      selectedId = btn.dataset.inspect;
+      activeFilter = "all";
+      activeKind = "all";
+      repoFilter = "all";
+      selectedId = btn.dataset.jumpExp;
+      pendingDeleteId = "";
       render();
     });
   });
-  listPane.querySelectorAll("[data-validate]").forEach((btn) => {
-    btn.addEventListener("click", () => mutate("/api/arena/validate", { id: btn.dataset.validate }));
+}
+
+function renderContributorsView(listPane, groups) {
+  if (!groups.length) {
+    listPane.innerHTML = `<div class="empty">No authored or project experiences match this filter yet.</div>`;
+    renderContributorDetail(null);
+    return;
+  }
+
+  const trophySvg = `<svg class="trophy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-label="Rank #1"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#0969da" fill-opacity="0.18" stroke="#0969da" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11" stroke="#0969da" stroke-width="1.2" stroke-linecap="round"/><path d="M8 8.7v2.8M5.8 13.5h4.4" stroke="#0969da" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+
+  listPane.innerHTML = `
+    <div class="contrib-header">
+      <span class="col-rank">#</span>
+      <span>${contribMode === "source" ? "Source" : "Author"}</span>
+      <span class="col-num">Avg</span>
+      <span class="col-num">Best</span>
+      <span class="col-num">Win</span>
+    </div>
+    ${groups
+      .map((g, idx) => {
+        const rankCell =
+          idx === 0
+            ? `<span class="exp-rank is-top" title="Quality Rank #1">${trophySvg}</span>`
+            : `<span class="exp-rank" title="Rank #${idx + 1}">${idx + 1}</span>`;
+        const teamBadge = g.teamCount > 0 ? `<span class="row-scope-team">${g.teamCount} Team</span>` : `<span class="row-scope">Local</span>`;
+        return `
+        <div class="contrib-row ${g.key === selectedContribKey ? "selected" : ""}" data-contrib-key="${escapeHtml(g.key)}">
+          ${rankCell}
+          <div class="exp-main">
+            <div class="exp-title-line">
+              <span class="exp-title">${escapeHtml(g.key)}</span>
+              ${teamBadge}
+              <span class="row-scope">${g.totalReuses} hits</span>
+            </div>
+            <div class="exp-summary">Top: ${escapeHtml(g.topItem?.title || "-")} · ${g.count} exp</div>
+          </div>
+          <span class="exp-score col-num ${idx === 0 ? "contrib-score-top" : ""}" title="Average quality score">${g.avgScore.toFixed(1)}</span>
+          <span class="exp-reuses col-num" title="Highest single experience score">${g.bestScore.toFixed(1)}</span>
+          <span class="exp-reuses col-num" title="Verified win rate">${g.winRate}%</span>
+        </div>`;
+      })
+      .join("")}`;
+
+  listPane.querySelectorAll(".contrib-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      selectedContribKey = selectedContribKey === row.dataset.contribKey ? "" : row.dataset.contribKey;
+      render();
+    });
   });
+
+  const selectedGroup = selectedContribKey ? groups.find((g) => g.key === selectedContribKey) || null : null;
+  renderContributorDetail(selectedGroup);
 }
 
 function render() {
@@ -658,8 +801,10 @@ function render() {
       : `Auto-clone repo: ${state.config?.syncRepo || "JiaqiZhang-Dev/copilot-evo"}`;
   }
 
+  const contributorGroups = buildContributorStats(getAllAssets(), contribMode, contribScope);
+
   el("count-assets").textContent = String(allAssets.length);
-  el("count-arena").textContent = String(allAssets.length);
+  el("count-contributors").textContent = String(contributorGroups.length);
   el("count-links").textContent = String(linkCount);
   el("count-events").textContent = String(state.counts?.events || 0);
 
@@ -676,11 +821,17 @@ function render() {
     selectedId = "";
     pendingDeleteId = "";
   }
+  if (selectedContribKey && !contributorGroups.some((g) => g.key === selectedContribKey)) {
+    selectedContribKey = "";
+  }
 
   el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets");
+  el("contributors-toolbar")?.classList.toggle("hidden", activeTab !== "contributors");
   el("rel-toolbar").classList.toggle("hidden", activeTab !== "relationships");
   el("events-toolbar").classList.toggle("hidden", activeTab !== "events");
-  const hasDetail = (activeTab === "assets" || activeTab === "relationships") && Boolean(selectedId);
+  const hasDetail =
+    ((activeTab === "assets" || activeTab === "relationships") && Boolean(selectedId)) ||
+    (activeTab === "contributors" && Boolean(selectedContribKey));
   el("content").classList.toggle("single-pane", !hasDetail);
   el("content").classList.toggle("graph-pane", activeTab === "relationships" && hasDetail);
   el("pane-splitter")?.classList.toggle("hidden", !hasDetail);
@@ -689,6 +840,8 @@ function render() {
   document.querySelectorAll(".tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === activeTab));
   document.querySelectorAll(".chip[data-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.filter === activeFilter));
   document.querySelectorAll(".seg[data-kind]").forEach((btn) => btn.classList.toggle("active", btn.dataset.kind === activeKind));
+  document.querySelectorAll(".seg[data-contrib-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribMode === contribMode));
+  document.querySelectorAll(".chip[data-contrib-scope]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribScope === contribScope));
   document.querySelectorAll(".chip[data-event-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.eventFilter === eventFilter));
   document.querySelectorAll(".chip[data-rel-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.relMode === relMode));
   const repoBtn = el("chip-repo");
@@ -699,8 +852,8 @@ function render() {
 
   const listPane = el("list-pane");
 
-  if (activeTab === "arena") {
-    renderArenaView(listPane, getAllAssets());
+  if (activeTab === "contributors") {
+    renderContributorsView(listPane, contributorGroups);
     return;
   }
 
@@ -805,7 +958,8 @@ async function loadState(applyServerView = false) {
   const res = await fetch("/api/state", { cache: "no-store" });
   state = await res.json();
   if (applyServerView && state.viewState) {
-    activeTab = state.viewState.tab || activeTab;
+    const serverTab = state.viewState.tab === "arena" ? "contributors" : state.viewState.tab;
+    activeTab = serverTab || activeTab;
     activeFilter = state.viewState.filter || activeFilter;
     if (state.viewState.assetId) selectedId = state.viewState.assetId;
   }
@@ -818,7 +972,14 @@ async function mutate(endpoint, body) {
   buttons.forEach((b) => (b.disabled = true));
   if (endpoint === "/api/assets/promote-team" && body?.id) {
     sharingId = body.id;
+    setLoadingOverlay(true, "Sharing to team repository...");
     render();
+  } else if (endpoint === "/api/sync/pull") {
+    setLoadingOverlay(true, "Syncing with team...");
+  } else if (endpoint === "/api/arena/validate") {
+    setLoadingOverlay(true, "Running validation...");
+  } else if (endpoint === "/api/assets/refine") {
+    setLoadingOverlay(true, "Sending to Copilot...");
   }
   try {
     const res = await fetch(endpoint, {
@@ -871,13 +1032,16 @@ async function mutate(endpoint, body) {
       showBanner(`Deleted ${data.deletedId || "asset"}.`);
     }
     sharingId = "";
+    setLoadingOverlay(false);
     await loadState(false);
   } catch (err) {
     sharingId = "";
+    setLoadingOverlay(false);
     showBanner(err.message, true);
     render();
   } finally {
     sharingId = "";
+    setLoadingOverlay(false);
     buttons.forEach((b) => (b.disabled = false));
   }
 }
@@ -905,6 +1069,22 @@ async function init() {
   document.querySelectorAll(".seg[data-kind]").forEach((btn) => {
     btn.addEventListener("click", () => {
       activeKind = btn.dataset.kind;
+      render();
+    });
+  });
+
+  document.querySelectorAll(".seg[data-contrib-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      contribMode = btn.dataset.contribMode;
+      selectedContribKey = "";
+      render();
+    });
+  });
+
+  document.querySelectorAll(".chip[data-contrib-scope]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      contribScope = btn.dataset.contribScope;
+      selectedContribKey = "";
       render();
     });
   });
@@ -962,8 +1142,9 @@ async function init() {
   }
 
   window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && selectedId) {
+    if (e.key === "Escape" && (selectedId || selectedContribKey)) {
       selectedId = "";
+      selectedContribKey = "";
       pendingDeleteId = "";
       render();
     }

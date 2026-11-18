@@ -39,7 +39,11 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     const baseUrl = new URL(openResult.url).origin;
     const htmlRes = await fetch(`${baseUrl}/`);
     assert.equal(htmlRes.status, 200);
-    assert.match(await htmlRes.text(), /Copilot Evo/);
+    const html = await htmlRes.text();
+    assert.match(html, /Copilot Evo/);
+    assert.match(html, /Contributors/);
+    assert.match(html, /loading-overlay/);
+    assert.doesNotMatch(html, /data-tab="arena"/);
 
     const stateRes = await fetch(`${baseUrl}/api/state`);
     assert.equal(stateRes.status, 200);

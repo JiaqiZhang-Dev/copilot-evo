@@ -45,11 +45,17 @@
       </header>
 
       <div id="banner" class="banner hidden"></div>
+      <div id="loading-overlay" class="loading-overlay hidden" role="status" aria-live="polite" aria-busy="true">
+        <div class="loading-card">
+          <span class="loading-spinner" aria-hidden="true"></span>
+          <span id="loading-text" class="loading-text">Working...</span>
+        </div>
+      </div>
       <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
       <nav class="tabs" role="tablist">
         <button class="tab active" data-tab="assets" type="button">Experiences <span id="count-assets" class="pill">0</span></button>
-        <button class="tab" data-tab="arena" type="button">Leaderboard <span id="count-arena" class="pill">0</span></button>
+        <button class="tab" data-tab="contributors" type="button">Contributors <span id="count-contributors" class="pill">0</span></button>
         <button class="tab" data-tab="relationships" type="button">Relationships <span id="count-links" class="pill">0</span></button>
         <button class="tab" data-tab="events" type="button">Events <span id="count-events" class="pill">0</span></button>
       </nav>
@@ -69,6 +75,21 @@
           <button class="chip" data-filter="team" type="button" id="chip-team">Team</button>
           <button class="chip" data-filter="starter" type="button" id="chip-starter">Starter</button>
           <button class="chip" data-repo-filter="matching" type="button" id="chip-repo">This Repo</button>
+        </div>
+      </section>
+
+      <section id="contributors-toolbar" class="toolbar hidden">
+        <div class="contrib-bar">
+          <div class="kind-switch" role="group" aria-label="Group contributors by">
+            <button class="seg active" data-contrib-mode="author" type="button">By Author</button>
+            <button class="seg" data-contrib-mode="source" type="button">By Source</button>
+          </div>
+          <span class="muted">Ranked by avg quality score (not quantity)</span>
+        </div>
+        <div class="filters">
+          <button class="chip active" data-contrib-scope="all" type="button">All Contributed</button>
+          <button class="chip" data-contrib-scope="team" type="button">Team Shared</button>
+          <button class="chip" data-contrib-scope="local" type="button">Local</button>
         </div>
       </section>
 

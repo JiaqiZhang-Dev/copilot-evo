@@ -453,7 +453,7 @@ const session = await joinSession({
       inputSchema: {
         type: "object",
         properties: {
-          tab: { type: "string", enum: ["assets", "arena", "relationships", "events"] },
+          tab: { type: "string", enum: ["assets", "contributors", "relationships", "events"] },
           filter: { type: "string", enum: ["all", "team", "local", "starter"] },
           assetId: { type: "string" },
         },
