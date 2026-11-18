@@ -120,6 +120,31 @@
     "sourceProject": "Azure/typespec-azure",
     "author": "JiaqiZhang-Dev",
     "updatedAt": "2026-11-18T07:01:04.954Z",
+    "successCount": 1,
+    "failureCount": 0
+  },
+  {
+    "id": "tcgc-decorator-reuse",
+    "type": "Rule",
+    "title": "Reuse TCGC scoped decorator helpers",
+    "summary": "Reuse TCGC's built-in scoped decorator helpers and metadata-only decorator pattern instead of reimplementing scope parsing or testing standard scope behavior.",
+    "signals": [
+      "tcgc",
+      "decorator",
+      "scope"
+    ],
+    "strategy": [
+      "Store and read scoped decorator data with setScopedDecoratorData and getScopedDecoratorData rather than custom stateMap or scope parsers.",
+      "Use metadata-only decorators with createSdkContext's additionalDecorators and getTypeDecorators when emitters only need filtered metadata.",
+      "Omit redundant tests for standard decorator scope precedence."
+    ],
+    "solution": "Reuse setScopedDecoratorData/getScopedDecoratorData and additionalDecorators instead of custom scope logic or redundant scope tests.",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "Azure/typespec-azure",
+    "sourceProject": "Azure/typespec-azure",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-18T07:11:30.651Z",
     "successCount": 1
   }
 ]
