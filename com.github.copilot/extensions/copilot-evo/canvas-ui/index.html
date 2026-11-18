@@ -11,27 +11,22 @@
       <header class="topbar">
         <div class="brand">
           <div class="brand-badge" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <defs>
-                <linearGradient id="dnaA" x1="6" y1="3" x2="26" y2="29" gradientUnits="userSpaceOnUse">
+                <linearGradient id="helixBack" x1="4" y1="4" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#54aeff"/>
+                  <stop offset="100%" stop-color="#0969da"/>
+                </linearGradient>
+                <linearGradient id="helixFront" x1="20" y1="4" x2="4" y2="20" gradientUnits="userSpaceOnUse">
                   <stop offset="0%" stop-color="#0550ae"/>
                   <stop offset="100%" stop-color="#218bff"/>
                 </linearGradient>
-                <linearGradient id="dnaB" x1="26" y1="3" x2="6" y2="29" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stop-color="#0969da"/>
-                  <stop offset="100%" stop-color="#54aeff"/>
-                </linearGradient>
               </defs>
-              <line x1="10.5" y1="8" x2="21.5" y2="8" stroke="url(#dnaA)" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
-              <line x1="12" y1="12" x2="20" y2="12" stroke="url(#dnaB)" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/>
-              <line x1="12" y1="20" x2="20" y2="20" stroke="url(#dnaA)" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/>
-              <line x1="10.5" y1="24" x2="21.5" y2="24" stroke="url(#dnaB)" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
-              <path d="M9.5 4.5C9.5 10.5 22.5 11.5 22.5 16C22.5 20.5 9.5 21.5 9.5 27.5" stroke="url(#dnaA)" stroke-width="2.2" stroke-linecap="round"/>
-              <path d="M22.5 4.5C22.5 10.5 9.5 11.5 9.5 16C9.5 20.5 22.5 21.5 22.5 27.5" stroke="url(#dnaB)" stroke-width="2.2" stroke-linecap="round"/>
-              <circle cx="9.5" cy="4.5" r="2" fill="#0550ae"/>
-              <circle cx="22.5" cy="4.5" r="2" fill="#0969da"/>
-              <circle cx="9.5" cy="27.5" r="2" fill="#218bff"/>
-              <circle cx="22.5" cy="27.5" r="2" fill="#54aeff"/>
+              <g transform="rotate(35 12 12)">
+                <path d="M8.5 3.5C8.5 8.5 15.5 9.5 15.5 12C15.5 14.5 8.5 15.5 8.5 20.5" stroke="url(#helixBack)" stroke-width="2.5" stroke-linecap="round"/>
+                <path d="M15.5 3.5C15.5 8.5 8.5 9.5 8.5 12C8.5 14.5 15.5 15.5 15.5 20.5" stroke="#ffffff" stroke-width="4.4" stroke-linecap="round"/>
+                <path d="M15.5 3.5C15.5 8.5 8.5 9.5 8.5 12C8.5 14.5 15.5 15.5 15.5 20.5" stroke="url(#helixFront)" stroke-width="2.5" stroke-linecap="round"/>
+              </g>
             </svg>
           </div>
           <div class="brand-meta">
@@ -68,10 +63,10 @@
           </div>
         </div>
         <div class="filters">
-          <button class="chip active" data-filter="all" type="button">All Scopes</button>
-          <button class="chip" data-filter="team" type="button">Team</button>
-          <button class="chip" data-filter="local" type="button">Local</button>
-          <button class="chip" data-filter="starter" type="button">Starter</button>
+          <button class="chip active" data-filter="all" type="button" id="chip-all">All</button>
+          <button class="chip" data-filter="local" type="button" id="chip-local">Local</button>
+          <button class="chip" data-filter="team" type="button" id="chip-team">Team</button>
+          <button class="chip" data-filter="starter" type="button" id="chip-starter">Starter</button>
           <button class="chip" data-repo-filter="matching" type="button" id="chip-repo">This Repo</button>
         </div>
       </section>

@@ -613,6 +613,14 @@ function render() {
   el("count-links").textContent = String(linkCount);
   el("count-events").textContent = String(state.counts?.events || 0);
 
+  const localCount = allAssets.filter((a) => !a.scope || a.scope === "local").length;
+  const teamCount = allAssets.filter((a) => a.scope === "team").length;
+  const starterCount = allAssets.filter((a) => a.scope === "starter").length;
+  if (el("chip-all")) el("chip-all").textContent = `All ${allAssets.length}`;
+  if (el("chip-local")) el("chip-local").textContent = `Local ${localCount}`;
+  if (el("chip-team")) el("chip-team").textContent = `Team ${teamCount}`;
+  if (el("chip-starter")) el("chip-starter").textContent = `Starter ${starterCount}`;
+
   const itemsForTab = activeTab === "assets" ? getFilteredAssets() : allAssets;
   if (selectedId && !itemsForTab.some((i) => i.id === selectedId)) {
     selectedId = "";
@@ -701,6 +709,10 @@ function render() {
           idx === 0
             ? `<span class="exp-rank is-top" title="Rank #1">${trophySvg}</span>`
             : `<span class="exp-rank" title="Rank #${idx + 1}">${idx + 1}</span>`;
+        const shareAction =
+          !item.scope || item.scope === "local"
+            ? `<button class="row-share" data-quick-share="${escapeHtml(item.id)}" type="button" title="Share to team repository">Share</button>`
+            : "";
         return `
         <div class="exp-row ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
           ${rankCell}
@@ -709,6 +721,7 @@ function render() {
               <span class="exp-title">${escapeHtml(item.title)}</span>
               <span class="row-kind ${isFix ? "is-fix" : "is-rule"}">${isFix ? "Fix" : "Rule"}</span>
               <span class="${scopeCls}">${scopeLabel}${repoTag}</span>
+              ${shareAction}
             </div>
             <div class="exp-summary">${escapeHtml(item.summary)}</div>
           </div>
@@ -717,6 +730,13 @@ function render() {
         </div>`;
       })
       .join("")}`;
+
+  listPane.querySelectorAll("[data-quick-share]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      mutate("/api/assets/promote-team", { id: btn.dataset.quickShare });
+    });
+  });
 
   listPane.querySelectorAll(".exp-row").forEach((card) => {
     card.addEventListener("click", () => {
