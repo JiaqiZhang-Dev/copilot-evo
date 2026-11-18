@@ -1,6 +1,11 @@
 <div align="center">
 
-<p><img src="docs/images/hero.svg" width="340" alt="Copilot Evo" /></p>
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.svg" />
+    <img src="docs/images/hero.svg" width="340" alt="Copilot Evo" />
+  </picture>
+</p>
 
 <h3>Solve once. Evolve everywhere.</h3>
 <p>Self-evolving Experience Engine (<code>EXP</code>: Rules &amp; Fixes) for GitHub Copilot App &amp; CLI</p>
