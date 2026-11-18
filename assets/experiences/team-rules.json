@@ -68,6 +68,30 @@
     "sourceProject": "local-git",
     "updatedAt": "2026-11-18T06:18:17.553Z",
     "successCount": 1,
-    "author": "JiaqiZhang-Dev"
+    "author": "JiaqiZhang-Dev",
+    "failureCount": 0
+  },
+  {
+    "id": "exp-do-not-hard-wrap-lines-in-markdown-docs-mwlqygpi",
+    "type": "Rule",
+    "title": "Do not hard-wrap lines in Markdown docs",
+    "summary": "Write Markdown paragraphs and list items without hard-wrapping lines across all repositories.",
+    "signals": [
+      "documentation",
+      "markdown",
+      "docs_style"
+    ],
+    "strategy": [
+      "Keep each Markdown paragraph or list item on a single line without manual line breaks.",
+      "Disable or avoid automatic line-wrapping formatting in documentation edits across all repositories."
+    ],
+    "solution": "",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "*",
+    "sourceProject": "chat",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-18T06:43:22.098Z",
+    "successCount": 1
   }
 ]
