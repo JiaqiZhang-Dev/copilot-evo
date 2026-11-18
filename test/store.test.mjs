@@ -11,6 +11,7 @@ import {
   detectSourceLabel,
   exportBundle,
   extractSignals,
+  extractToolTargetKey,
   getAssetRelationships,
   getPendingScoreDeltaTotal,
   hasCorrectionOrPitfallCue,
@@ -400,6 +401,10 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(hasCorrectionOrPitfallCue("the commit can not show in comment"), true);
     assert.equal(hasCorrectionOrPitfallCue("这里看不到链接"), true);
     assert.equal(hasCorrectionOrPitfallCue("Looks good, thanks"), false);
+    assert.equal(extractToolTargetKey("view", { path: "README.md" }), "");
+    assert.equal(extractToolTargetKey("edit", { path: "C:\\repo\\README.md" }), "file:c:\\repo\\readme.md");
+    assert.equal(extractToolTargetKey("reply_to_review_thread", { thread_id: "PRRT_123" }), "pr_thread:PRRT_123");
+    assert.equal(extractToolTargetKey("powershell", { command: "gh api repos/o/r/pulls/comments/4610709428 -X PATCH" }), "gh_comment:4610709428");
     assert.equal(isTrivialToolFailure("create", "File already exists"), true);
     assert.equal(isTrivialToolFailure("edit", "No match found: old_str not found"), true);
     assert.equal(isTrivialToolFailure("powershell", "npm ERR! code E401"), false);

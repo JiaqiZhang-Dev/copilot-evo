@@ -485,6 +485,35 @@ export function hasCorrectionOrPitfallCue(text) {
   return typeof text === "string" && CORRECTION_OR_PITFALL_RE.test(text);
 }
 
+export function extractToolTargetKey(toolName, toolArgs) {
+  const tool = String(toolName || "").trim();
+  if (!tool || tool.startsWith("evo_")) return "";
+  if (/^(?:view|glob|grep|list_|get_|read_|tool_search_tool|ask_user|open_canvas|navigate_)/i.test(tool)) {
+    return "";
+  }
+  let args = toolArgs;
+  if (typeof args === "string") {
+    try {
+      args = JSON.parse(args);
+    } catch {
+      args = { raw: args };
+    }
+  }
+  if (!args || typeof args !== "object") return "";
+  if (typeof args.path === "string" && args.path) {
+    return `file:${path.normalize(args.path).toLowerCase()}`;
+  }
+  if (args.thread_id) return `pr_thread:${args.thread_id}`;
+  if (args.root_comment_id) return `pr_comment:${args.root_comment_id}`;
+  const cmd = String(args.command || args.cmd || args.raw || "");
+  if (cmd) {
+    const ghCommentMatch = cmd.match(/(?:pulls\/comments\/|issues\/comments\/|gh\s+pr\s+comment[^\r\n]*?)(\d+)/i);
+    if (ghCommentMatch) return `gh_comment:${ghCommentMatch[1]}`;
+    if (/\bgh\s+api\b.*\bPATCH\b/i.test(cmd)) return "gh_api_patch";
+  }
+  return "";
+}
+
 export function extractSignals(text, extraSignals = [], options = {}) {
   const signals = new Set(extraSignals.map((s) => String(s).toLowerCase()).filter(Boolean));
   if (options.includePlatform && process.platform === "win32") {

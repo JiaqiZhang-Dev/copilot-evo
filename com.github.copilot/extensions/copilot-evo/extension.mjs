@@ -10,6 +10,7 @@ import {
   detectSourceLabel,
   exportBundle,
   extractSignals,
+  extractToolTargetKey,
   formatAssetPreview,
   getPendingScoreDeltaTotal,
   hasCorrectionOrPitfallCue,
@@ -33,7 +34,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.22";
+const EXTENSION_VERSION = "0.10.23";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -108,10 +109,12 @@ const canvasServer = createEvoCanvasServer({
 });
 const sessionState = {
   protocolInjected: false,
+  turnIndex: 0,
   pendingFailure: null,
   pendingCorrection: null,
   activeAssets: [],
   recentFailureFingerprints: new Map(),
+  recentToolTargets: new Map(),
   recentRecallAt: new Map(),
   lastSolidifyAt: 0,
   recentFailures: [],
@@ -191,6 +194,7 @@ const session = await joinSession({
     },
 
     onUserPromptSubmitted: async (input) => {
+      sessionState.turnIndex++;
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
       const { rules, fixes, config } = loadStore(evoHome);
@@ -337,6 +341,23 @@ const session = await joinSession({
         return {
           additionalContext: `[copilot-evo auto-capture check] You just completed \`${toolName}\` while resolving a user-reported issue or correction. If this revealed a reusable pitfall or rule (for example, GitHub/Markdown rendering quirks, API/CLI behavior, or repo conventions), proactively call \`evo_solidify\` in English with \`scope: "local"\` now instead of waiting for the user to remind you.`,
         };
+      }
+
+      const targetKey = extractToolTargetKey(toolName, input.toolArgs);
+      if (targetKey) {
+        const prev = sessionState.recentToolTargets.get(targetKey);
+        const now = Date.now();
+        sessionState.recentToolTargets.set(targetKey, { turn: sessionState.turnIndex, ts: now });
+        if (
+          prev &&
+          prev.turn < sessionState.turnIndex &&
+          now - prev.ts < 15 * 60 * 1000 &&
+          now - sessionState.lastSolidifyAt > 15000
+        ) {
+          return {
+            additionalContext: `[copilot-evo revision check] You just revised \`${targetKey}\` across user turns. If this fixed a non-obvious mistake, rendering quirk, or missing convention that could recur, proactively call \`evo_solidify\` in English with \`scope: "local"\` now without waiting to be asked.`,
+          };
+        }
       }
 
       if (!sessionState.pendingFailure) return;
