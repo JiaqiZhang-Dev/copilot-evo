@@ -4,7 +4,7 @@
 
 <h1>Copilot Evo</h1>
 
-<p><strong>Solve once. Evolve everywhere.</strong></p>
+<p><img src="docs/images/slogan.svg" width="460" alt="Solve once. Evolve everywhere." /></p>
 <p>Self-evolving Experience Engine (<code>EXP</code>: Rules &amp; Fixes) for GitHub Copilot App &amp; CLI</p>
 
 <p>
@@ -84,21 +84,28 @@ Open the side-panel dashboard anytime with `/evo-canvas`:
       <img src="docs/images/canvas-experiences.png" alt="Experiences view" width="100%" />
     </td>
     <td align="center" width="50%">
+      <strong>Local Workspace</strong><br />
+      <sub>Unshared drafts with inline Copilot refine and one-click team share</sub><br /><br />
+      <img src="docs/images/canvas-local.png" alt="Local workspace view" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
       <strong>Quality-First Leaderboard</strong><br />
       <sub>Ranked by average quality and pass rate—never spam count</sub><br /><br />
       <img src="docs/images/canvas-leaderboard.png" alt="Leaderboard view" width="100%" />
     </td>
-  </tr>
-  <tr>
     <td align="center" width="50%">
       <strong>Relationships Graph</strong><br />
       <sub>Force-directed network of rules, fixes, and shared signals</sub><br /><br />
       <img src="docs/images/canvas-relationships.png" alt="Relationships graph view" width="100%" />
     </td>
-    <td align="center" width="50%">
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
       <strong>Session-Attributed Events</strong><br />
       <sub>Full timeline of recalls, outcomes, and Git syncs per session</sub><br /><br />
-      <img src="docs/images/canvas-events.png" alt="Events timeline view" width="100%" />
+      <img src="docs/images/canvas-events.png" alt="Events timeline view" width="50%" />
     </td>
   </tr>
 </table>
