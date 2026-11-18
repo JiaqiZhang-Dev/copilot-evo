@@ -1084,6 +1084,21 @@ function render() {
         const shareCell = showShareCol
           ? `<div class="col-action"><button class="row-share-icon" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share with your team" aria-label="Share with your team">${shareIconSvg}</button></div>`
           : "";
+        const allSignals = Array.isArray(item.signals) ? item.signals : [];
+        const visibleSignals = allSignals.slice(0, 3);
+        const extraSignalCount = Math.max(0, allSignals.length - visibleSignals.length);
+        const labelsHtml = visibleSignals.length
+          ? `<span class="exp-labels">${visibleSignals
+              .map(
+                (s) =>
+                  `<button class="exp-label" data-filter-signal="${escapeHtml(s)}" type="button" title="Filter by #${escapeHtml(s)}">#${escapeHtml(s)}</button>`
+              )
+              .join("")}${extraSignalCount ? `<span class="exp-label-more">+${extraSignalCount}</span>` : ""}</span>`
+          : "";
+        const footHtml =
+          footText || labelsHtml
+            ? `<div class="exp-foot">${footText ? `<span class="exp-origin">${footText}</span>` : ""}${footText && labelsHtml ? `<span>·</span>` : ""}${labelsHtml}</div>`
+            : "";
         return `
         <div class="exp-row ${showShareCol ? "has-share" : ""} ${item.id === selectedId ? "selected" : ""} ${item.id === justSharedId ? "just-shared" : ""}" data-id="${escapeHtml(item.id)}">
           ${rankCell}
@@ -1094,7 +1109,7 @@ function render() {
               <span class="row-scope" title="Repository scope">${repoLabel}</span>
             </div>
             <div class="exp-summary">${escapeHtml(item.summary)}</div>
-            ${footText ? `<div class="exp-foot">${footText}</div>` : ""}
+            ${footHtml}
           </div>
           <span class="exp-score col-num" title="Composite score">${scoreVal}</span>
           <span class="exp-reuses col-num" title="Verified reuse count">${uses}</span>
@@ -1107,6 +1122,16 @@ function render() {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       mutate("/api/assets/promote-team", { id: btn.dataset.quickShare });
+    });
+  });
+
+  listPane.querySelectorAll("[data-filter-signal]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const sig = btn.dataset.filterSignal || "";
+      searchQuery = searchQuery === sig ? "" : sig;
+      if (el("search-input")) el("search-input").value = searchQuery;
+      render();
     });
   });
 

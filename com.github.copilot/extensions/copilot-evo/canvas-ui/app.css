@@ -733,13 +733,51 @@ body {
 }
 
 .exp-foot {
-  margin-top: 3px;
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--muted);
-  opacity: 0.82;
+}
+
+.exp-origin {
+  opacity: 0.85;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.exp-labels {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.exp-label {
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 16px;
+  font-family: var(--font-mono, Consolas, monospace);
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.exp-label:hover {
+  border-color: rgba(9, 105, 218, 0.35);
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.exp-label-more {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-mono, Consolas, monospace);
+  opacity: 0.78;
 }
 
 .exp-score {
