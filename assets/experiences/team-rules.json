@@ -45,6 +45,29 @@
     "sourceProject": "chat",
     "author": "Jiaqi Zhang",
     "updatedAt": "2026-11-18T06:15:18.256Z",
-    "successCount": 1
+    "successCount": 1,
+    "failureCount": 0
+  },
+  {
+    "id": "exp-keep-minimal-changes",
+    "type": "Rule",
+    "title": "Keep changes minimal unless refactoring is necessary",
+    "summary": "Keep code changes minimal and surgical; avoid unnecessary refactoring unless strictly required.",
+    "signals": [
+      "refactoring",
+      "pr_review",
+      "code_change"
+    ],
+    "strategy": [
+      "Make the smallest surgical change that solves the issue without touching unrelated code or signatures.",
+      "Avoid speculative refactoring unless it is strictly required for correctness or explicitly requested."
+    ],
+    "solution": "",
+    "validation": [],
+    "scope": "team",
+    "sourceProject": "local-git",
+    "updatedAt": "2026-11-18T06:18:17.553Z",
+    "successCount": 1,
+    "author": "JiaqiZhang-Dev"
   }
 ]
