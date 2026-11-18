@@ -41,7 +41,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     assert.equal(htmlRes.status, 200);
     const html = await htmlRes.text();
     assert.match(html, /Copilot Evo/);
-    assert.match(html, /Contributors/);
+    assert.match(html, /Leaderboard/);
     assert.match(html, /loading-overlay/);
     assert.doesNotMatch(html, /data-tab="arena"/);
 
