@@ -12,11 +12,23 @@
       <header class="topbar">
         <div class="brand">
           <div class="brand-badge" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M7 4c0 4 10 4 10 8s-10 4-10 8" stroke="#1a7f37" stroke-width="2.1" stroke-linecap="round"/>
-              <path d="M17 4c0 4-10 4-10 8s10 4 10 8" stroke="#0969da" stroke-width="2.1" stroke-linecap="round"/>
-              <line x1="8.5" y1="7" x2="15.5" y2="7" stroke="#0969da" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
-              <line x1="8.5" y1="17" x2="15.5" y2="17" stroke="#1a7f37" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+              <defs>
+                <linearGradient id="evoGradA" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#1a7f37"/>
+                  <stop offset="50%" stop-color="#0969da"/>
+                  <stop offset="100%" stop-color="#8250df"/>
+                </linearGradient>
+                <linearGradient id="evoGradB" x1="28" y1="4" x2="4" y2="28" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#0969da"/>
+                  <stop offset="100%" stop-color="#2da44e"/>
+                </linearGradient>
+              </defs>
+              <ellipse cx="16" cy="16" rx="11.5" ry="5.5" transform="rotate(-35 16 16)" stroke="url(#evoGradA)" stroke-width="1.9" stroke-linecap="round"/>
+              <ellipse cx="16" cy="16" rx="11.5" ry="5.5" transform="rotate(35 16 16)" stroke="url(#evoGradB)" stroke-width="1.9" stroke-linecap="round" opacity="0.85"/>
+              <path d="M16 9.5l1.6 4.4 4.4 1.6-4.4 1.6L16 21.5l-1.6-4.4-4.4-1.6 4.4-1.6L16 9.5Z" fill="url(#evoGradA)"/>
+              <circle cx="25" cy="9" r="2" fill="#0969da"/>
+              <circle cx="7" cy="23" r="2" fill="#1a7f37"/>
             </svg>
           </div>
           <div class="brand-meta">
