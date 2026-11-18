@@ -15,10 +15,10 @@
 </p>
 
 <p>
-  <a href="#install">Install</a> ·
+  <a href="#highlights">Highlights</a> ·
   <a href="#how-it-works">How It Works</a> ·
-  <a href="#copilot-evo-canvas">Canvas UI</a> ·
-  <a href="#commands--tools">Commands &amp; Tools</a> ·
+  <a href="#canvas">Canvas</a> ·
+  <a href="#install">Install</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="docs/privacy-and-sync.md">Privacy &amp; Sync</a>
 </p>
@@ -27,29 +27,27 @@
 
 ---
 
-**Copilot Evo** turns verified debugging breakthroughs (`Fix`) and engineering conventions (`Rule`) into atomic, scored **Experiences (`EXP`)** that recall automatically across sessions and sync privately with your team.
-
 ## Highlights
 
 <table>
   <tr>
     <td width="50%" valign="top">
       <strong>🧬 Atomic Self-Evolution</strong><br />
-      Turns verified fixes and coding conventions into focused, reusable <code>Rule</code> and <code>Fix</code> entries automatically—one topic per entry.
+      Turns verified fixes and conventions into focused <code>Rule</code> and <code>Fix</code> entries automatically—one topic per card.
     </td>
     <td width="50%" valign="top">
-      <strong>🎯 Smart Repo-Aware Recall</strong><br />
-      Matches <code>Cross-repo</code> and <code>owner/repo</code> knowledge to your active context and ranks what actually works from real outcomes.
+      <strong>🎯 Repo-Aware Recall</strong><br />
+      Surfaces the highest-scoring <code>Cross-repo</code> or <code>owner/repo</code> knowledge right when prompts or errors hit.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <strong>🔒 Local-First &amp; Leak-Safe</strong><br />
-      Keeps drafts and logs in <code>~/.copilot/evo/</code>; strips secrets and personal paths and asks before sharing anything with your team.
+      Keeps logs and drafts in <code>~/.copilot/evo/</code>; strips secrets and personal paths and asks before sharing.
     </td>
     <td width="50%" valign="top">
-      <strong>⚡ Zero-PR Sync &amp; Live Canvas</strong><br />
-      Shares team experiences via private Git with a sleek side-panel dashboard (<code>/evo-canvas</code>) for leaderboard, graph, and session audit.
+      <strong>⚡ Zero-PR Sync &amp; Canvas</strong><br />
+      Shares team wisdom through a private Git repo with an interactive side-panel dashboard (<code>/evo-canvas</code>).
     </td>
   </tr>
 </table>
@@ -58,50 +56,48 @@
 
 ```mermaid
 flowchart LR
-  A[Session Start / Prompt / Tool Failure] -->|Extract Signals + Repo| B[Recall Top EXP]
-  B -->|Inject into Context| C[Agent Solves Task]
-  C -->|Verified Fix or Rule| D[evo_solidify - Atomic Local]
-  D -->|Native Share Prompt| E{Share with Team?}
-  E -->|Keep local| F[(Local Store: ~/.copilot/evo)]
-  E -->|Share to Team| G[Redact + Leak Check]
-  G --> H[(Private Git Repo: team-rules & team-fixes)]
-  C -->|Verified Outcome| I[Auto +Score / -Score]
-  I -->|Background Sync| H
+  A[Prompt / Tool Failure] -->|Signals + Repo| B[Recall Top EXP]
+  B --> C[Solve & Verify]
+  C -->|evo_solidify| D[Atomic Local EXP]
+  D -->|Confirm| E{Share?}
+  E -->|Local| F[(~/.copilot/evo)]
+  E -->|Team| G[Redact + Leak Check]
+  G --> H[(Private Git Repo)]
+  C -->|Outcome| I[Auto Score Sync]
+  I --> H
 ```
 
-1. **Recall**: At session start, on user prompts, and on non-trivial tool failures, `copilot-evo` extracts signals and injects the top matching `Rule` and `Fix` experiences for your active repository.
-2. **Solidify Atomically**: Once a fix is verified or a reusable convention is established, Copilot calls `evo_solidify` with `scope: "local"`—keeping each topic atomic instead of bundling unrelated advice into a single entry.
-3. **Confirm & Share**: `evo_solidify` prompts you directly to **Keep local** or **Share to Team**. Approved entries are stripped of secrets, internal IPs, and local paths, attributed to your GitHub login, and pushed directly to your private sync repo.
-4. **Evolve Automatically**: Subsequent recoveries and whitelisted `Run Validation` checks automatically update reuse counts and quality scores across the team.
+1. **Recall**: Matches top `Rule` and `Fix` experiences to your prompt, error signals, and active repo.
+2. **Solidify**: Captures each verified fix or convention atomically in English (`scope: "local"`).
+3. **Confirm**: Prompts natively to keep local or sanitize and share directly to your team's private repo.
+4. **Evolve**: Tracks recalls, recoveries, and validation runs to continuously rank what works best.
 
-## Copilot Evo Canvas
+## Canvas
 
-Open the interactive side panel anytime with `/evo-canvas`:
-
-- **`Experiences`**: Score-ranked catalog of `Team` and `Built-in` experiences with `All · Team · Built-in` filters, one-click current-repo toggle, clickable `#signal` tags, `#1` trophy indicator, collapsible Detail Inspector, 4-dimension Score Breakdown, `Run Validation`, and inline **Refine with Copilot**.
-- **`Local`**: Dedicated workspace for unshared local rules and fixes featuring a right-aligned Share action with translucent progress overlay and celebration toast.
-- **`Leaderboard`**: Quality-first contributor and source board (**By Author** via GitHub CLI login / `git user.name`, or **By Source** repository/chat) ranked strictly by **Avg**, **Best**, and **Pass** rate—rewarding high-signal engineering rather than entry count.
-- **`Relationships`**: Force-directed knowledge graph connecting `Rule` nodes, `Fix` nodes, shared `#Signal` clusters, and `ruleId` / `parentId` / `supersedes` lineage with 1-hop neighborhood highlighting and a `Show Standalone` toggle.
-- **`Events`**: Real-time audit timeline of captured failure signals, solidifications, auto-scoring outcomes, and Git syncs—tagged with each session's name and short ID for one-click session filtering.
+Open the side-panel dashboard anytime with `/evo-canvas`:
 
 <table>
   <tr>
     <td align="center" width="50%">
-      <strong>Experiences &amp; Detail Inspector</strong><br />
+      <strong>Experiences &amp; Inspector</strong><br />
+      <sub>Score-ranked <code>Team</code> &amp; <code>Built-in</code> rules, repo filter, and Copilot refine</sub><br /><br />
       <img src="docs/images/canvas-experiences.png" alt="Experiences view" width="100%" />
     </td>
     <td align="center" width="50%">
       <strong>Quality-First Leaderboard</strong><br />
+      <sub>Ranked by average quality and pass rate—never spam count</sub><br /><br />
       <img src="docs/images/canvas-leaderboard.png" alt="Leaderboard view" width="100%" />
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <strong>Relationships Knowledge Graph</strong><br />
+      <strong>Relationships Graph</strong><br />
+      <sub>Force-directed network of rules, fixes, and shared signals</sub><br /><br />
       <img src="docs/images/canvas-relationships.png" alt="Relationships graph view" width="100%" />
     </td>
     <td align="center" width="50%">
-      <strong>Session-Attributed Events Timeline</strong><br />
+      <strong>Session-Attributed Events</strong><br />
+      <sub>Full timeline of recalls, outcomes, and Git syncs per session</sub><br /><br />
       <img src="docs/images/canvas-events.png" alt="Events timeline view" width="100%" />
     </td>
   </tr>
@@ -109,58 +105,37 @@ Open the interactive side panel anytime with `/evo-canvas`:
 
 ## Install
 
-Install directly as a GitHub Copilot plugin:
-
 ```bash
 copilot plugin install JiaqiZhang-Dev/copilot-evo
-```
-
-Update to the latest version:
-
-```bash
 copilot plugin update copilot-evo
 ```
 
-> **Team Permissions**: Teammates need GitHub **Read** access on the shared sync repository to install and pull updates, and **Write** access to share new experiences or push score deltas. See [Privacy & Sync](docs/privacy-and-sync.md) for custom repository configuration via `COPILOT_EVO_SYNC_REPO` or offline `.evopack.json` bundles.
+Teammates need **Read** access on the shared sync repo to pull updates and **Write** access to share experiences or sync scores. Custom repo setup (`COPILOT_EVO_SYNC_REPO`) and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
 
-## Commands & Tools
-
-### Slash Commands
+## Commands
 
 | Command | Action |
 | --- | --- |
 | `/evo-canvas` | Open the **Copilot Evo** side-panel dashboard |
-| `/evo-list` | Print a grouped in-chat preview of `Team`, `Local`, and `Starter` experiences |
-| `/evo-status` | Inspect local store counts, recent signals, and Git sync configuration |
+| `/evo-list` | Preview `Team`, `Local`, and `Starter` experiences in chat |
+| `/evo-status` | Inspect store counts, recent signals, and sync status |
 
-### Extension Tools
+<details>
+<summary><strong>Tools, Environment Variables &amp; Tests</strong></summary>
 
-| Tool | Purpose |
-| --- | --- |
-| `evo_search` | Search stored `Rule` and `Fix` experiences by query, signals, kind, scope, or repo |
-| `evo_solidify` | Save or update one atomic `Rule` or `Fix` with automatic sanitization and share confirmation |
-| `evo_manage_asset` | Inspect, promote (`promote_team`), pin/unpin, vote, or delete an experience by ID |
-| `evo_sync_repo` | `pull` or `push` team experiences via Git, or `export` / `import` `.evopack.json` bundles |
-| `evo_status` | Return store version, counts, session telemetry, and resolved sync repo path |
+- **Tools**: `evo_search`, `evo_solidify`, `evo_manage_asset`, `evo_sync_repo`, `evo_status`
+- **Env Vars**: `COPILOT_EVO_HOME` (`~/.copilot/evo`), `COPILOT_EVO_SYNC_REPO`, `COPILOT_EVO_AUTHOR`
+- **Tests**: `npm test`
 
-### Environment Variables
+</details>
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `COPILOT_EVO_HOME` | `~/.copilot/evo` | Override the local store directory for rules, fixes, events, and config |
-| `COPILOT_EVO_SYNC_REPO` | `~/.copilot/evo/sync-repo` | Path to an existing local clone of your private team sync repository |
-| `COPILOT_EVO_AUTHOR` | GitHub CLI login / `git user.name` | Override the author attribution recorded on newly solidified experiences |
+---
 
-## Documentation & Tests
+<p align="center">
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/privacy-and-sync.md">Privacy &amp; Sync</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="LICENSE">MIT License</a>
+</p>
 
-- [Architecture & Scoring Engine](docs/architecture.md)
-- [Privacy, Sanitization & Team Sync](docs/privacy-and-sync.md)
-- [Contributing Guide](CONTRIBUTING.md)
-- [MIT License](LICENSE)
-
-Run the full test suite:
-
-```bash
-npm test
-```
 
