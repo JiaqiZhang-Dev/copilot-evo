@@ -31,7 +31,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.8";
+const EXTENSION_VERSION = "0.10.9";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -104,13 +104,14 @@ const sessionState = {
   recentFailures: [],
   recoveries: 0,
   solidifiedCount: 0,
+  lastSolidifiedLocalId: "",
 };
 
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
   "2. Auto-discover & solidify locally first (English only): When you resolve and verify a non-obvious error/failure (`kind: \"Fix\"`) or when the user states a reusable rule/preference (`kind: \"Rule\"`, even if also saved via `store_memory`), proactively call `evo_solidify` with `scope: \"local\"` (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
-  "3. Preview & ask before sharing to team: Immediately after `evo_solidify` succeeds, present the full English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) and ask the user (using `ask_user` when available) whether to keep it local or promote it to `team` (`evo_manage_asset({ action: \"promote_team\", id })`) and sync (`evo_sync_repo({ action: \"push\" })`). Never assign `scope: \"team\"` or push without explicit user confirmation.",
+  "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND call `ask_user` with choices `[\"Keep local (Recommended)\", \"Share to Team (promote & push)\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
 ].join("\n");
 
 function formatAssetsContext(assets) {
@@ -259,6 +260,13 @@ const session = await joinSession({
 
     onPostToolUse: async (input) => {
       const toolName = String(input.toolName || "");
+      if (toolName === "evo_solidify" && sessionState.lastSolidifiedLocalId) {
+        const localId = sessionState.lastSolidifiedLocalId;
+        sessionState.lastSolidifiedLocalId = "";
+        return {
+          additionalContext: `[copilot-evo share confirmation required] You just saved "${localId}" with scope: "local". In this turn, present the concise preview AND immediately call \`ask_user\` asking whether to share it to the team, with choices ["Keep local (Recommended)", "Share to Team (promote & push)"].`,
+        };
+      }
       if (toolName.startsWith("evo_")) return;
 
       if (toolName === "store_memory" && Date.now() - sessionState.lastSolidifyAt > 15000) {
@@ -376,6 +384,7 @@ const session = await joinSession({
         if (res.ok) {
           sessionState.solidifiedCount++;
           sessionState.lastSolidifyAt = Date.now();
+          sessionState.lastSolidifiedLocalId = res.asset.scope === "local" ? res.asset.id : "";
           canvasServer.setViewState({ tab: "assets", filter: "all", assetId: res.asset.id });
           try {
             await session.log(`Saved ${res.asset.type} ${res.asset.id} (${res.asset.scope})`);
