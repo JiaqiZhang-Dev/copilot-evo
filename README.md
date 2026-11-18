@@ -19,11 +19,11 @@
 
 <p>
   <a href="#highlights">Highlights</a> ·
-  <a href="#how-it-works">How It Works</a> ·
-  <a href="#canvas">Canvas</a> ·
   <a href="#install">Install</a> ·
-  <a href="docs/architecture.md">Architecture</a> ·
-  <a href="docs/privacy-and-sync.md">Privacy &amp; Sync</a>
+  <a href="#commands">Commands</a> ·
+  <a href="#canvas">Canvas</a> ·
+  <a href="#how-it-works">How It Works</a> ·
+  <a href="docs/architecture.md">Architecture</a>
 </p>
 
 </div>
@@ -59,25 +59,26 @@
   </tr>
 </table>
 
-## How It Works
+## Install
 
-```mermaid
-flowchart LR
-  A[Prompt / Tool Failure] -->|Signals + Repo| B[Recall Top EXP]
-  B --> C[Solve & Verify]
-  C -->|evo_solidify| D[Atomic Local EXP]
-  D -->|Confirm| E{Share?}
-  E -->|Local| F[(~/.copilot/evo)]
-  E -->|Team| G[Redact + Leak Check]
-  G --> H[(Private Git Repo)]
-  C -->|Outcome| I[Auto Score Sync]
-  I --> H
+```bash
+copilot plugin install JiaqiZhang-Dev/copilot-evo
+copilot plugin update copilot-evo
 ```
 
-1. **Recall**: Matches top `Rule` and `Fix` experiences to your prompt, error signals, and active repo.
-2. **Solidify**: Captures each verified fix or convention atomically in English (`scope: "local"`).
-3. **Confirm**: Prompts natively to keep local or sanitize and share directly to your team's private repo.
-4. **Evolve**: Tracks recalls, recoveries, and validation runs to continuously rank what works best.
+Teammates need **Read** access on the shared sync repo to pull updates and **Write** access to share experiences or sync scores. Custom repo setup (`COPILOT_EVO_SYNC_REPO`) and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
+
+## Commands
+
+<p align="center">
+  <img src="docs/images/commands-autocomplete.png" width="76%" alt="Copilot Evo slash commands autocomplete" />
+</p>
+
+| Command | Action |
+| --- | --- |
+| `/evo-canvas` | Open the **Copilot Evo** side-panel dashboard |
+| `/evo-list` | Preview `Team`, `Local`, and `Starter` experiences in chat |
+| `/evo-status` | Inspect store counts, recent signals, and sync status |
 
 ## Canvas
 
@@ -117,26 +118,25 @@ Open the side-panel dashboard anytime with `/evo-canvas`:
   </tr>
 </table>
 
-## Install
+## How It Works
 
-```bash
-copilot plugin install JiaqiZhang-Dev/copilot-evo
-copilot plugin update copilot-evo
+```mermaid
+flowchart LR
+  A[Prompt / Tool Failure] -->|Signals + Repo| B[Recall Top EXP]
+  B --> C[Solve & Verify]
+  C -->|evo_solidify| D[Atomic Local EXP]
+  D -->|Confirm| E{Share?}
+  E -->|Local| F[(~/.copilot/evo)]
+  E -->|Team| G[Redact + Leak Check]
+  G --> H[(Private Git Repo)]
+  C -->|Outcome| I[Auto Score Sync]
+  I --> H
 ```
 
-Teammates need **Read** access on the shared sync repo to pull updates and **Write** access to share experiences or sync scores. Custom repo setup (`COPILOT_EVO_SYNC_REPO`) and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
-
-## Commands
-
-<p align="center">
-  <img src="docs/images/commands-autocomplete.png" width="76%" alt="Copilot Evo slash commands autocomplete" />
-</p>
-
-| Command | Action |
-| --- | --- |
-| `/evo-canvas` | Open the **Copilot Evo** side-panel dashboard |
-| `/evo-list` | Preview `Team`, `Local`, and `Starter` experiences in chat |
-| `/evo-status` | Inspect store counts, recent signals, and sync status |
+1. **Recall**: Matches top `Rule` and `Fix` experiences to your prompt, error signals, and active repo.
+2. **Solidify**: Captures each verified fix or convention atomically in English (`scope: "local"`).
+3. **Confirm**: Prompts natively to keep local or sanitize and share directly to your team's private repo.
+4. **Evolve**: Tracks recalls, recoveries, and validation runs to continuously rank what works best.
 
 <details>
 <summary><strong>Tools, Environment Variables &amp; Tests</strong></summary>
