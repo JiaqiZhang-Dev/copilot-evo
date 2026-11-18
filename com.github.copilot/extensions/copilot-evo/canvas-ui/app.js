@@ -99,6 +99,9 @@ function getFilteredAssets() {
     if (repoFilter === "matching") {
       const r = (item.repoScope || "*").toLowerCase();
       if (r !== "*" && (!curRepo || r !== curRepo)) return false;
+    } else if (repoFilter === "only") {
+      const r = (item.repoScope || "*").toLowerCase();
+      if (r === "*" || (curRepo && r !== curRepo)) return false;
     }
     if (!q) return true;
     const text = `${item.id} ${item.title} ${item.summary} ${item.solution || ""} ${item.repoScope || ""} ${(item.signals || []).join(" ")}`.toLowerCase();
@@ -956,10 +959,20 @@ function render() {
   document.querySelectorAll(".chip[data-contrib-scope]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribScope === contribScope));
   document.querySelectorAll(".chip[data-event-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.eventFilter === eventFilter));
   document.querySelectorAll(".chip[data-rel-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.relMode === relMode));
-  const repoBtn = el("chip-repo");
-  if (repoBtn) {
-    repoBtn.classList.toggle("active", repoFilter === "matching");
-    repoBtn.textContent = state.currentRepo ? `Repo: ${state.currentRepo}` : "Global (*)";
+  const scopeFilters = el("scope-filters");
+  if (scopeFilters) scopeFilters.classList.toggle("hidden", activeTab === "local");
+  const repoSel = el("repo-select");
+  if (repoSel) {
+    repoSel.value = repoFilter;
+    repoSel.classList.toggle("is-filtered", repoFilter !== "all");
+    const matchingOpt = repoSel.querySelector('option[value="matching"]');
+    const onlyOpt = repoSel.querySelector('option[value="only"]');
+    if (matchingOpt) {
+      matchingOpt.textContent = state.currentRepo ? `${state.currentRepo} + Global` : "Global (*) Only";
+    }
+    if (onlyOpt) {
+      onlyOpt.textContent = state.currentRepo ? `Only ${state.currentRepo}` : "Repo-specific Only";
+    }
   }
 
   const listPane = el("list-pane");
@@ -1034,19 +1047,25 @@ function render() {
     return;
   }
 
+  const showShareCol = activeTab === "local";
   listPane.innerHTML = `
-    <div class="exp-header">
+    <div class="exp-header ${showShareCol ? "has-share" : ""}">
       <span class="col-rank">#</span>
       <span>Experience</span>
       <span class="col-num">Score</span>
       <span class="col-num">Used</span>
+      ${showShareCol ? `<span class="col-action" title="Share to Team"></span>` : ""}
     </div>
     ${items
       .map((item, idx) => {
         const isFix = item.type === "Fix";
-        const scopeLabel = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "Local";
+        const scopeLabel = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "";
         const scopeCls = item.scope === "team" ? "row-scope-team" : "row-scope";
-        const repoTag = item.repoScope && item.repoScope !== "*" ? ` · ${escapeHtml(item.repoScope)}` : "";
+        const repoTag =
+          item.repoScope && item.repoScope !== "*"
+            ? `${scopeLabel ? " · " : ""}${escapeHtml(item.repoScope)}`
+            : "";
+        const scopeText = `${scopeLabel}${repoTag}`;
         const uses = item.successCount || 0;
         const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
         const trophySvg = `<svg class="trophy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-label="Rank #1"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#0969da" fill-opacity="0.18" stroke="#0969da" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11" stroke="#0969da" stroke-width="1.2" stroke-linecap="round"/><path d="M8 8.7v2.8M5.8 13.5h4.4" stroke="#0969da" stroke-width="1.3" stroke-linecap="round"/></svg>`;
@@ -1056,24 +1075,23 @@ function render() {
             : `<span class="exp-rank" title="Rank #${idx + 1}">${idx + 1}</span>`;
         const isSharing = sharingId === item.id;
         const shareIconSvg = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 10.8V2.6m0 0L5 5.6M8 2.6l3 3M3 10.4v2.1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-        const shareAction =
-          !item.scope || item.scope === "local"
-            ? `<button class="row-share-icon" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share to team repository" aria-label="Share to team repository">${shareIconSvg}</button>`
-            : "";
+        const shareCell = showShareCol
+          ? `<div class="col-action"><button class="row-share-icon" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share to team repository" aria-label="Share to team repository">${shareIconSvg}</button></div>`
+          : "";
         return `
-        <div class="exp-row ${item.id === selectedId ? "selected" : ""} ${item.id === justSharedId ? "just-shared" : ""}" data-id="${escapeHtml(item.id)}">
+        <div class="exp-row ${showShareCol ? "has-share" : ""} ${item.id === selectedId ? "selected" : ""} ${item.id === justSharedId ? "just-shared" : ""}" data-id="${escapeHtml(item.id)}">
           ${rankCell}
           <div class="exp-main">
             <div class="exp-title-line">
               <span class="exp-title">${escapeHtml(item.title)}</span>
               <span class="row-kind ${isFix ? "is-fix" : "is-rule"}">${isFix ? "Fix" : "Rule"}</span>
-              <span class="${scopeCls}">${scopeLabel}${repoTag}</span>
-              ${shareAction}
+              ${scopeText ? `<span class="${scopeCls}">${scopeText}</span>` : ""}
             </div>
             <div class="exp-summary">${escapeHtml(item.summary)}</div>
           </div>
           <span class="exp-score col-num" title="Composite score">${scoreVal}</span>
           <span class="exp-reuses col-num" title="Verified reuse count">${uses}</span>
+          ${shareCell}
         </div>`;
       })
       .join("")}`;
@@ -1257,8 +1275,8 @@ async function init() {
     render();
   });
 
-  el("chip-repo")?.addEventListener("click", () => {
-    repoFilter = repoFilter === "matching" ? "all" : "matching";
+  el("repo-select")?.addEventListener("change", (e) => {
+    repoFilter = e.target.value || "all";
     render();
   });
 

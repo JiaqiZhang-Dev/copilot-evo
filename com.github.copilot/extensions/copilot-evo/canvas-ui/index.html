@@ -70,11 +70,17 @@
             <button class="seg" data-kind="Fix" type="button">Fixes</button>
           </div>
         </div>
-        <div class="filters">
-          <button class="chip active" data-filter="all" type="button" id="chip-all">All</button>
-          <button class="chip" data-filter="team" type="button" id="chip-team">Team</button>
-          <button class="chip" data-filter="starter" type="button" id="chip-starter">Starter</button>
-          <button class="chip" data-repo-filter="matching" type="button" id="chip-repo">This Repo</button>
+        <div class="filters-bar">
+          <div class="filters" id="scope-filters">
+            <button class="chip active" data-filter="all" type="button" id="chip-all">All</button>
+            <button class="chip" data-filter="team" type="button" id="chip-team">Team</button>
+            <button class="chip" data-filter="starter" type="button" id="chip-starter">Starter</button>
+          </div>
+          <select id="repo-select" class="repo-select" aria-label="Filter by repository scope">
+            <option value="all">All Repos</option>
+            <option value="matching">This Repo + Global</option>
+            <option value="only">Repo-specific Only</option>
+          </select>
         </div>
       </section>
 
