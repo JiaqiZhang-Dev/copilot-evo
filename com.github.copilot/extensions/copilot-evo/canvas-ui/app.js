@@ -290,7 +290,7 @@ function renderDetail(item) {
     ${strategy}
     ${guardrail}
     ${validation}
-    <div class="section-label">Score Breakdown · Tier ${escapeHtml(item.gdiBreakdown?.tier || "B")} · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Win Rate</div>
+    <div class="section-label">Score Breakdown · Tier ${escapeHtml(item.gdiBreakdown?.tier || "B")} · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Pass Rate</div>
     <div class="detail-breakdown">
       <div class="mini-dim">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.quality ?? 0}%"></div></div></div>
       <div class="mini-dim">Reliability <strong>${item.gdiBreakdown?.reliability ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.reliability ?? 0}%"></div></div></div>
@@ -692,11 +692,11 @@ function renderContributorDetail(group) {
             <span>·</span>
             <span>Best ${group.bestScore.toFixed(1)}</span>
             <span>·</span>
-            <span>${group.winRate}% win</span>
+            <span>${group.winRate}% pass</span>
             <span>·</span>
-            <span>${group.totalReuses} hits</span>
+            <span>${group.totalReuses} reuses</span>
           </div>
-          <div class="detail-id-sub">${group.count} experience(s) · ${group.teamCount} shared to team</div>
+          <div class="detail-id-sub">${group.count} experience(s) · ${group.teamCount} shared with team</div>
         </div>
       </div>
       <div class="actions">${closeBtn}</div>
@@ -742,9 +742,9 @@ function renderContributorsView(listPane, groups) {
     <div class="contrib-header">
       <span class="col-rank">#</span>
       <span>${contribMode === "source" ? "Source" : "Author"}</span>
-      <span class="col-num">Avg</span>
-      <span class="col-num">Best</span>
-      <span class="col-num">Win</span>
+      <span class="col-num" title="Average quality score">Avg</span>
+      <span class="col-num" title="Highest single experience score">Best</span>
+      <span class="col-num" title="Pass rate (successes / total runs)">Pass</span>
     </div>
     ${groups
       .map((g, idx) => {
@@ -752,7 +752,10 @@ function renderContributorsView(listPane, groups) {
           idx === 0
             ? `<span class="exp-rank is-top" title="Quality Rank #1">${trophySvg}</span>`
             : `<span class="exp-rank" title="Rank #${idx + 1}">${idx + 1}</span>`;
-        const teamBadge = g.teamCount > 0 ? `<span class="row-scope-team">${g.teamCount} Team</span>` : `<span class="row-scope">Local</span>`;
+        const teamBadge =
+          g.teamCount > 0
+            ? `<span class="row-scope-team" title="${g.teamCount} experience(s) shared with team">${g.teamCount} shared</span>`
+            : `<span class="row-scope" title="Local only">local</span>`;
         return `
         <div class="contrib-row ${g.key === selectedContribKey ? "selected" : ""}" data-contrib-key="${escapeHtml(g.key)}">
           ${rankCell}
@@ -760,13 +763,13 @@ function renderContributorsView(listPane, groups) {
             <div class="exp-title-line">
               <span class="exp-title">${escapeHtml(g.key)}</span>
               ${teamBadge}
-              <span class="row-scope">${g.totalReuses} hits</span>
+              <span class="row-scope" title="Total verified reuses">${g.totalReuses} reuses</span>
             </div>
             <div class="exp-summary">Top: ${escapeHtml(g.topItem?.title || "-")} · ${g.count} exp</div>
           </div>
           <span class="exp-score col-num ${idx === 0 ? "contrib-score-top" : ""}" title="Average quality score">${g.avgScore.toFixed(1)}</span>
           <span class="exp-reuses col-num" title="Highest single experience score">${g.bestScore.toFixed(1)}</span>
-          <span class="exp-reuses col-num" title="Verified win rate">${g.winRate}%</span>
+          <span class="exp-reuses col-num" title="Pass rate (successes / total runs)">${g.winRate}%</span>
         </div>`;
       })
       .join("")}`;
