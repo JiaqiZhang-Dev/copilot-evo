@@ -69,6 +69,29 @@ Open the interactive side panel anytime with `/evo-canvas`:
 - **`Relationships`**: Force-directed knowledge graph connecting `Rule` nodes, `Fix` nodes, shared `#Signal` clusters, and `ruleId` / `parentId` / `supersedes` lineage with 1-hop neighborhood highlighting and a `Show Standalone` toggle.
 - **`Events`**: Real-time audit timeline of captured failure signals, solidifications, auto-scoring outcomes, and Git syncs—tagged with each session's name and short ID for one-click session filtering.
 
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Experiences &amp; Detail Inspector</strong><br />
+      <img src="docs/images/canvas-experiences.png" alt="Experiences view" width="100%" />
+    </td>
+    <td align="center" width="50%">
+      <strong>Quality-First Leaderboard</strong><br />
+      <img src="docs/images/canvas-leaderboard.png" alt="Leaderboard view" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Relationships Knowledge Graph</strong><br />
+      <img src="docs/images/canvas-relationships.png" alt="Relationships graph view" width="100%" />
+    </td>
+    <td align="center" width="50%">
+      <strong>Session-Attributed Events Timeline</strong><br />
+      <img src="docs/images/canvas-events.png" alt="Events timeline view" width="100%" />
+    </td>
+  </tr>
+</table>
+
 ## Install
 
 Install directly as a GitHub Copilot plugin:
