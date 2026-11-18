@@ -28,7 +28,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.8.0";
+const EXTENSION_VERSION = "0.8.1";
 let lastWorkingDirectory = process.cwd();
 const canvasServer = createEvoCanvasServer({
   evoHome,
