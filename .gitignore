@@ -1,0 +1,6 @@
+.evolver-local/
+node_modules/
+.env
+.env.*
+*.log
+*.evopack.json

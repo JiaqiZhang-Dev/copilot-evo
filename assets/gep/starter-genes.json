@@ -1,0 +1,52 @@
+[
+  {
+    "id": "gene-verify-before-claim",
+    "type": "Gene",
+    "title": "Verify with targeted checks after fixing failures",
+    "summary": "After resolving a build, lint, or test failure, run the smallest targeted verification command before concluding and solidify the verified fix as a Capsule.",
+    "signals": ["test_failure", "build_error", "lint_error", "recovery"],
+    "strategy": [
+      "Run the narrowest failing test or build command first to reproduce.",
+      "Apply a minimal, surgical fix without unrelated changes.",
+      "Re-run the verification command to confirm green output before finishing.",
+      "Call evo_solidify if the root cause is non-obvious and reusable across projects."
+    ],
+    "validation": ["npm test"],
+    "priority": 10,
+    "scope": "starter"
+  },
+  {
+    "id": "gene-windows-path-safety",
+    "type": "Gene",
+    "title": "Handle Windows paths and PowerShell syntax safely",
+    "summary": "On Windows, use backslash paths, avoid bash heredocs, and wrap cmd.exe .bat scripts in a single subshell.",
+    "signals": ["win32", "powershell_error", "path_error", "enoent"],
+    "strategy": [
+      "Prefer Windows backslash separators and native PowerShell commands over bash syntax.",
+      "Avoid heredoc syntax (<<EOF); pass inline scripts via here-strings (@' ... '@).",
+      "For .cmd/.bat toolchains, run setup and target command in the same shell invocation."
+    ],
+    "guardrail": {
+      "toolNames": ["powershell", "bash"],
+      "pattern": "<<\\s*'?EOF'?",
+      "action": "warn",
+      "reason": "Heredoc syntax fails in PowerShell on Windows; use a single-quoted here-string instead."
+    },
+    "priority": 8,
+    "scope": "starter"
+  },
+  {
+    "id": "gene-sanitize-before-share",
+    "type": "Gene",
+    "title": "Sanitize secrets and local paths before sharing assets",
+    "summary": "Never persist tokens, private keys, internal IPs, or personal filesystem paths in shared Genes or Capsules.",
+    "signals": ["secret_leak", "share", "sync", "privacy"],
+    "strategy": [
+      "Replace literal credentials with environment variable names such as process.env.GITHUB_TOKEN.",
+      "Replace user-specific paths (/Users/<name>, C:\\Users\\<name>) with placeholders or relative paths.",
+      "Run evo_sync_repo only after leak checks pass."
+    ],
+    "priority": 12,
+    "scope": "starter"
+  }
+]
