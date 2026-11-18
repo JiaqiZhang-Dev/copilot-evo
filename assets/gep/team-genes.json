@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "id": "gene-follow-repo-design-conventions",
+    "type": "Gene",
+    "title": "Follow existing repository design conventions",
+    "summary": "Before implementing or refactoring code, inspect existing patterns and design conventions in the repository and align with them rather than improvising ad-hoc designs.",
+    "signals": [
+      "code_implementation",
+      "design_convention",
+      "refactoring"
+    ],
+    "strategy": [
+      "Inspect existing sibling implementations and callers in the target module before writing new code.",
+      "Follow established parameter patterns, helper abstractions, and separation of concerns rather than overloading existing parameters or improvising ad-hoc flags.",
+      "Verify new changes match the surrounding architecture before finalizing."
+    ],
+    "solution": "",
+    "validation": [],
+    "scope": "team",
+    "sourceProject": "jiaqizhang-dev-glowing-broccoli-f10218c1",
+    "updatedAt": "2026-11-18T03:57:38.521Z",
+    "successCount": 1
+  }
+]
