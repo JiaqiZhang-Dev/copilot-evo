@@ -4,10 +4,10 @@ Self-evolving GEP (Genes, Capsules, EvolutionEvents) memory and cross-project ex
 
 ## Capabilities
 
-- **Automatic Signal Capture & Recall**: Uses Copilot SDK lifecycle hooks (`onSessionStart`, `onUserPromptSubmitted`, `onPreToolUse`, `onPostToolUseFailure`, `onPostToolUse`, `onSessionEnd`) to match past strategies (Genes) and verified fixes (Capsules) to your current task.
+- **Proactive Auto-Evolution**: Injects an active GEP protocol on session start, detects failure-to-recovery transitions via `onPostToolUseFailure` / `onPostToolUse` and rule cues in prompts, nudging the agent to automatically call `evo_solidify` and ask whether to sync via `evo_sync_repo`.
 - **Local-First Storage**: Keeps raw session failure logs and unshared assets strictly on your machine under `~/.copilot/evo/` (overridable with `COPILOT_EVO_HOME`).
 - **Pre-Share Privacy & Leak Guardrails**: Automatically strips tokens, private keys, database credentials, internal IPs, emails, and personal home-directory paths, and checks `process.env` secrets before saving `team`-scoped assets or syncing to Git.
-- **Private Git Sync (No PR Required)**: Push sanitized `team` Genes and Capsules directly to `main` via `evo_sync_repo`, or export/import offline `.evopack.json` bundles.
+- **Private Git Sync (No PR Required)**: Push sanitized `team` Genes and Capsules directly to `main` via `evo_sync_repo` (auto-clones the configured private repo into `~/.copilot/evo/sync-repo` on first sync if needed), or export/import offline `.evopack.json` bundles.
 
 ## Install as a Copilot Plugin
 
@@ -23,10 +23,9 @@ copilot plugin update copilot-evo
 
 ## Syncing Shared Experiences via Your Private Repo
 
-1. Clone your private plugin repo locally (default lookup path is `~/copilot-evo`, or set `COPILOT_EVO_SYNC_REPO`).
-2. Save a verified fix with `evo_solidify` using `scope: "team"`.
-3. Ask Copilot to run `evo_sync_repo` with `action: "push"` to sanitize, commit, and push directly to `assets/gep/team-genes.json` and `assets/gep/team-capsules.json`.
-4. On another machine, run `evo_sync_repo` with `action: "pull"` or `copilot plugin update copilot-evo` to receive the shared assets.
+1. After Copilot verifies a reusable fix or rule, it proactively runs `evo_solidify` and asks whether to sync via `evo_sync_repo`.
+2. When you confirm sync, `evo_sync_repo` (`action: "push"`) pulls/rebases the latest `main` in `~/.copilot/evo/sync-repo` (or `~/copilot-evo` / `COPILOT_EVO_SYNC_REPO`), runs full leak checks, and pushes directly to `assets/gep/team-genes.json` and `assets/gep/team-capsules.json`.
+3. Teammates can run `evo_sync_repo` (`action: "pull"`) or `copilot plugin update copilot-evo` to receive the shared assets.
 
 ## Development & Tests
 

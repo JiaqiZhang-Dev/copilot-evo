@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { fullLeakCheck, isValidationCommandAllowed, sanitizePayload } from "./sanitize.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BUNDLED_GEP_DIR = path.resolve(__dirname, "..", "..", "..", "assets", "gep");
+const PLUGIN_ROOT = path.resolve(__dirname, "..", "..", "..");
+const BUNDLED_GEP_DIR = path.join(PLUGIN_ROOT, "assets", "gep");
 
 export function getEvoHome(overrideHome) {
   return overrideHome || process.env.COPILOT_EVO_HOME || path.join(os.homedir(), ".copilot", "evo");
@@ -41,6 +42,13 @@ function mergeById(existing, incoming) {
   return { merged, added };
 }
 
+function getDefaultSyncRepoSlug() {
+  const pkg = readJsonSafe(path.join(PLUGIN_ROOT, "plugin.json"), null);
+  const owner = pkg?.author?.name || "JiaqiZhang-Dev";
+  const name = pkg?.name || "copilot-evo";
+  return `${owner}/${name}`;
+}
+
 export function initStore(options = {}) {
   const evoHome = getEvoHome(options.evoHome);
   const bundledDir = options.bundledDir || BUNDLED_GEP_DIR;
@@ -72,6 +80,7 @@ export function initStore(options = {}) {
   if (!fs.existsSync(configPath)) {
     writeJson(configPath, {
       syncRepoPath: "",
+      syncRepo: getDefaultSyncRepoSlug(),
       strictGuardrails: false,
       autoInjectLimit: 3,
     });
@@ -86,10 +95,18 @@ export function loadStore(evoHome) {
     candidates: readJsonSafe(path.join(evoHome, "candidates.json"), []),
     config: readJsonSafe(path.join(evoHome, "config.json"), {
       syncRepoPath: "",
+      syncRepo: getDefaultSyncRepoSlug(),
       strictGuardrails: false,
       autoInjectLimit: 3,
     }),
   };
+}
+
+function saveConfig(evoHome, patch) {
+  const current = loadStore(evoHome).config;
+  const next = { ...current, ...patch };
+  writeJson(path.join(evoHome, "config.json"), next);
+  return next;
 }
 
 export function appendEvent(evoHome, event) {
@@ -127,15 +144,24 @@ const SIGNAL_PATTERNS = [
   ["npm_error", /\b(?:npm|pnpm|yarn|ERR!|E401|ERESOLVE)\b/i],
   ["python_error", /\b(?:python|pip|pytest|Traceback|ModuleNotFoundError)\b/i],
   ["powershell_error", /\b(?:powershell|pwsh|ExecutionPolicy|here-string|<<EOF)\b/i],
+  ["win32", /\b(?:windows|win32|powershell|pwsh|cmd\.exe|\.bat|\.cmd|backslash)\b|\\\\/i],
   ["syntax_error", /\b(?:SyntaxError|Unexpected token|ParseError)\b/i],
   ["type_error", /\b(?:TypeError|ReferenceError|TS\d{4})\b/i],
   ["share", /\b(?:share|sync|export|publish|team|push)\b/i],
   ["secret_leak", /\b(?:secret|token|password|api[_-]?key|redact|privacy)\b/i],
 ];
 
-export function extractSignals(text, extraSignals = []) {
+const STRATEGY_CUE_RE = /(?:记住|以后|下次|踩坑|经验|策略|规范|沉淀|固化|避免|总是|不要再|\b(?:always|never|remember|pitfall|workaround|lesson|best practice|convention)\b)/i;
+
+export function hasStrategyCue(text) {
+  return typeof text === "string" && STRATEGY_CUE_RE.test(text);
+}
+
+export function extractSignals(text, extraSignals = [], options = {}) {
   const signals = new Set(extraSignals.map((s) => String(s).toLowerCase()).filter(Boolean));
-  if (process.platform === "win32") signals.add("win32");
+  if (options.includePlatform && process.platform === "win32") {
+    signals.add("win32");
+  }
   if (typeof text === "string" && text.trim()) {
     for (const [tag, regex] of SIGNAL_PATTERNS) {
       if (regex.test(text)) signals.add(tag);
@@ -247,7 +273,15 @@ export function solidifyAsset(input, options = {}) {
     redactedOnLocalSave: leakCheck.found,
   });
 
-  return { ok: true, asset: cleanAsset, redacted: leakCheck.found };
+  return {
+    ok: true,
+    asset: cleanAsset,
+    redacted: leakCheck.found,
+    nextAction:
+      scope === "team"
+        ? "Ask the user whether to push this team asset to the shared plugin repository using evo_sync_repo(action: 'push')."
+        : "Saved locally. If broadly reusable and secret-free, you may ask the user if they want to promote and sync it to the team repo.",
+  };
 }
 
 export function manageAsset(action, id, options = {}) {
@@ -368,13 +402,17 @@ export function importBundle(evoHome, { inputPath, bundleData, autoPromote = fal
   return { ok: true, imported: candRes.added, promoted: false, rejected };
 }
 
-function runGit(repoPath, args) {
+function runCmd(cmd, args, cwd) {
   return new Promise((resolve, reject) => {
-    execFile("git", ["-C", repoPath, ...args], { timeout: 30000 }, (err, stdout, stderr) => {
+    execFile(cmd, args, { cwd, timeout: 30000 }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr?.trim() || err.message));
       else resolve(stdout.trim());
     });
   });
+}
+
+function runGit(repoPath, args) {
+  return runCmd("git", ["-C", repoPath, ...args]);
 }
 
 export function resolveSyncRepoPath(evoHome, explicitPath) {
@@ -383,6 +421,7 @@ export function resolveSyncRepoPath(evoHome, explicitPath) {
     explicitPath,
     config.syncRepoPath,
     process.env.COPILOT_EVO_SYNC_REPO,
+    path.join(evoHome, "sync-repo"),
     path.join(os.homedir(), "copilot-evo"),
   ].filter(Boolean);
   for (const dir of candidates) {
@@ -391,11 +430,30 @@ export function resolveSyncRepoPath(evoHome, explicitPath) {
   return null;
 }
 
-export async function syncRepoPull(evoHome, { repoPath, autoPromote = true } = {}) {
-  const targetRepo = resolveSyncRepoPath(evoHome, repoPath);
-  if (!targetRepo) {
-    return { ok: false, error: "Sync repo not found. Pass repoPath or clone your private copilot-evo repo." };
+// Clones the configured private plugin repo if a teammate has not cloned it locally yet.
+async function ensureSyncRepo(evoHome, { repoPath, repo } = {}) {
+  const existing = resolveSyncRepoPath(evoHome, repoPath);
+  if (existing) return existing;
+
+  const config = loadStore(evoHome).config;
+  const targetSlug = repo || config.syncRepo || getDefaultSyncRepoSlug();
+  const cloneDir = repoPath || path.join(evoHome, "sync-repo");
+  fs.mkdirSync(path.dirname(cloneDir), { recursive: true });
+
+  const cloneUrl = /^(?:https?:\/\/|git@|file:\/\/)/.test(targetSlug)
+    ? targetSlug
+    : `https://github.com/${targetSlug}.git`;
+  try {
+    await runCmd("gh", ["repo", "clone", targetSlug, cloneDir]);
+  } catch {
+    await runCmd("git", ["clone", cloneUrl, cloneDir]);
   }
+  saveConfig(evoHome, { syncRepoPath: cloneDir, syncRepo: targetSlug });
+  return cloneDir;
+}
+
+export async function syncRepoPull(evoHome, { repoPath, repo, autoPromote = true } = {}) {
+  const targetRepo = await ensureSyncRepo(evoHome, { repoPath, repo });
   await runGit(targetRepo, ["pull", "--ff-only"]);
   const genes = readJsonSafe(path.join(targetRepo, "assets", "gep", "team-genes.json"), []);
   const capsules = readJsonSafe(path.join(targetRepo, "assets", "gep", "team-capsules.json"), []);
@@ -404,11 +462,9 @@ export async function syncRepoPull(evoHome, { repoPath, autoPromote = true } = {
   return { ...res, repoPath: targetRepo };
 }
 
-export async function syncRepoPush(evoHome, { repoPath, commitMessage } = {}) {
-  const targetRepo = resolveSyncRepoPath(evoHome, repoPath);
-  if (!targetRepo) {
-    return { ok: false, error: "Sync repo not found. Pass repoPath or clone your private copilot-evo repo." };
-  }
+export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = {}) {
+  const targetRepo = await ensureSyncRepo(evoHome, { repoPath, repo });
+  await runGit(targetRepo, ["pull", "--rebase", "--autostash"]);
 
   const exported = exportBundle(evoHome, { scope: "team" });
   if (!exported.ok) return exported;

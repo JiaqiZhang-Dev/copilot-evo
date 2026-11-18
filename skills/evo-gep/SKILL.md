@@ -1,21 +1,20 @@
 ---
 name: evo-gep
-description: Use the Genome Evolution Protocol (GEP) with copilot-evo to recall past strategies (Genes), solidify verified fixes (Capsules), and share sanitized experience via your private Git repository.
+description: Use the Genome Evolution Protocol (GEP) with copilot-evo to proactively discover reusable fixes and strategies, automatically call evo_solidify, and prompt the user to sync via evo_sync_repo.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Copilot Evo (GEP Self-Evolution)
 
-Use `copilot-evo` to turn hard-won debugging insights, recurring fixes, and workflow preferences into reusable **Genes** (reusable strategies) and **Capsules** (verified fix recipes) stored locally and optionally synced to your private plugin Git repository.
+Use `copilot-evo` to automatically turn hard-won debugging insights, recurring fixes, and cross-project workflow rules into reusable **Genes** (reusable strategies) and **Capsules** (verified fix recipes).
 
-## When to Use Each Tool
+## Proactive Workflow
 
-- **`evo_search`**: Search local and synced Genes/Capsules whenever you hit an unfamiliar error, start a recurring task, or want to check whether a solution already exists.
-- **`evo_solidify`**: After fixing a non-obvious bug or discovering a reusable workflow rule, record it as a `Gene` or `Capsule`. Only solidify after verification succeeds; avoid recording trivial one-off typos or raw task logs.
-- **`evo_status`**: Inspect local asset counts, recent session signals, and configured private sync repository settings.
-- **`evo_manage_asset`**: Promote candidate assets imported from external bundles, inspect asset details, or remove outdated local entries.
-- **`evo_sync_repo`**: Pull shared assets from your private Git repository or push sanitized `team`-scoped assets directly to `main` (no PR required). Also supports offline `.evopack.json` export/import.
+1. **Recall first (`evo_search`)**: Check local and team-synced Genes/Capsules when hitting an unfamiliar failure or starting a recurring task.
+2. **Auto-solidify (`evo_solidify`)**: Whenever you resolve and verify a non-obvious failure (or the user establishes a reusable cross-project rule/strategy), proactively call `evo_solidify` without waiting to be asked. Use `scope: "team"` for generalizable, secret-free assets and `scope: "local"` for machine-specific ones. Skip trivial one-off typos.
+3. **Prompt to sync (`evo_sync_repo`)**: Immediately after `evo_solidify` succeeds for a shareable asset, ask the user (using `ask_user` when available) whether they want to push it to the team repository via `evo_sync_repo({ action: "push" })`.
+4. **Manage & inspect (`evo_status`, `evo_manage_asset`)**: Inspect store stats, review imported candidates, or delete outdated local entries.
 
 ## Privacy & Safety Rules
 

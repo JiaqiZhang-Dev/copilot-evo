@@ -3,15 +3,19 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import {
   exportBundle,
   extractSignals,
+  hasStrategyCue,
   importBundle,
   initStore,
   loadStore,
   manageAsset,
   selectAssets,
   solidifyAsset,
+  syncRepoPull,
+  syncRepoPush,
 } from "../com.github.copilot/extensions/copilot-evo/store.mjs";
 
 function makeTempDir() {
@@ -153,5 +157,65 @@ test("exportBundle and importBundle stage candidates and promote safely", () => 
   } finally {
     fs.rmSync(homeA, { recursive: true, force: true });
     fs.rmSync(homeB, { recursive: true, force: true });
+  }
+});
+
+test("hasStrategyCue and extractSignals distinguish rule cues from unrelated prompts", () => {
+  assert.equal(hasStrategyCue("以后遇到这个问题都这么处理"), true);
+  assert.equal(hasStrategyCue("Always run targeted tests before pushing"), true);
+  assert.equal(hasStrategyCue("hello"), false);
+  assert.deepEqual(extractSignals("hello world", [], { includePlatform: false }), []);
+});
+
+test("syncRepoPush and syncRepoPull round-trip team assets across clones", async () => {
+  const root = makeTempDir();
+  const bareDir = path.join(root, "remote.git");
+  const seedDir = path.join(root, "seed");
+  const cloneA = path.join(root, "clone-a");
+  const cloneB = path.join(root, "clone-b");
+  const homeA = path.join(root, "evo-a");
+  const homeB = path.join(root, "evo-b");
+
+  try {
+    execFileSync("git", ["init", "--bare", "-b", "main", bareDir]);
+    execFileSync("git", ["clone", bareDir, seedDir]);
+    execFileSync("git", ["-C", seedDir, "config", "user.name", "Test"]);
+    execFileSync("git", ["-C", seedDir, "config", "user.email", "test@example.com"]);
+    fs.mkdirSync(path.join(seedDir, "assets", "gep"), { recursive: true });
+    fs.writeFileSync(path.join(seedDir, "assets", "gep", "team-genes.json"), "[]\n");
+    fs.writeFileSync(path.join(seedDir, "assets", "gep", "team-capsules.json"), "[]\n");
+    execFileSync("git", ["-C", seedDir, "add", "."]);
+    execFileSync("git", ["-C", seedDir, "commit", "-m", "init"]);
+    execFileSync("git", ["-C", seedDir, "push", "-u", "origin", "main"]);
+
+    execFileSync("git", ["clone", bareDir, cloneA]);
+    execFileSync("git", ["-C", cloneA, "config", "user.name", "Test"]);
+    execFileSync("git", ["-C", cloneA, "config", "user.email", "test@example.com"]);
+    execFileSync("git", ["clone", bareDir, cloneB]);
+
+    solidifyAsset(
+      {
+        kind: "Gene",
+        id: "gene-synced-rule",
+        title: "Synced team rule",
+        summary: "Always validate before pushing.",
+        signals: ["git_error"],
+        scope: "team",
+      },
+      { evoHome: homeA }
+    );
+
+    const pushRes = await syncRepoPush(homeA, { repoPath: cloneA });
+    assert.equal(pushRes.ok, true);
+    assert.equal(pushRes.pushed, true);
+
+    initStore({ evoHome: homeB });
+    const pullRes = await syncRepoPull(homeB, { repoPath: cloneB });
+    assert.equal(pullRes.ok, true);
+    assert.equal(pullRes.imported, 1);
+    const storeB = loadStore(homeB);
+    assert.ok(storeB.genes.some((g) => g.id === "gene-synced-rule"));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

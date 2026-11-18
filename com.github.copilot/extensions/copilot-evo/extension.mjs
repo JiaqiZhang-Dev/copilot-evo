@@ -5,6 +5,7 @@ import {
   countEvents,
   exportBundle,
   extractSignals,
+  hasStrategyCue,
   hashProjectId,
   importBundle,
   initStore,
@@ -19,10 +20,18 @@ import {
 
 const evoHome = initStore();
 const sessionState = {
+  protocolInjected: false,
+  pendingFailure: null,
   recentFailures: [],
   recoveries: 0,
   solidifiedCount: 0,
 };
+
+const ACTIVE_PROTOCOL = [
+  "[copilot-evo active protocol]",
+  "1. Auto-discover & solidify: When you resolve and verify a non-obvious error/failure, or when the user teaches a reusable cross-project rule or strategy, proactively call `evo_solidify` without waiting to be asked (skip trivial typos or one-off facts). Use `scope: \"team\"` when the asset is generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
+  "2. Auto-ask before sync: Immediately after `evo_solidify` succeeds for a reusable `team` (or shareable) asset, proactively ask the user (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
+].join("\n");
 
 function formatAssetsContext(assets) {
   if (!assets.length) return "";
@@ -39,30 +48,46 @@ const session = await joinSession({
     onSessionStart: async (input) => {
       initStore({ evoHome });
       const { genes, capsules, config } = loadStore(evoHome);
-      const signals = extractSignals(input.initialPrompt || "");
-      const matched = selectAssets({
-        signals,
-        genes,
-        capsules,
-        limit: config.autoInjectLimit || 3,
-      });
-      if (!matched.length) return;
-      return { additionalContext: formatAssetsContext(matched) };
+      const signals = extractSignals(input.initialPrompt || "", [], { includePlatform: false });
+      const matched = signals.length
+        ? selectAssets({ signals, genes, capsules, limit: config.autoInjectLimit || 3 })
+        : [];
+      sessionState.protocolInjected = true;
+      const parts = [ACTIVE_PROTOCOL];
+      if (matched.length) parts.push(formatAssetsContext(matched));
+      return { additionalContext: parts.join("\n\n") };
     },
 
     onUserPromptSubmitted: async (input) => {
       const { genes, capsules, config } = loadStore(evoHome);
       const failureSignals = sessionState.recentFailures.flatMap((f) => f.signals);
-      const signals = extractSignals(input.prompt, failureSignals);
-      const matched = selectAssets({
-        signals,
-        query: input.prompt,
-        genes,
-        capsules,
-        limit: config.autoInjectLimit || 3,
-      });
-      if (!matched.length) return;
-      return { additionalContext: formatAssetsContext(matched) };
+      const signals = extractSignals(input.prompt, failureSignals, { includePlatform: false });
+      const matched =
+        signals.length || hasStrategyCue(input.prompt)
+          ? selectAssets({
+              signals,
+              query: input.prompt,
+              genes,
+              capsules,
+              limit: config.autoInjectLimit || 3,
+            })
+          : [];
+
+      const parts = [];
+      if (!sessionState.protocolInjected) {
+        sessionState.protocolInjected = true;
+        parts.push(ACTIVE_PROTOCOL);
+      }
+      if (matched.length) {
+        parts.push(formatAssetsContext(matched));
+      }
+      if (hasStrategyCue(input.prompt)) {
+        parts.push(
+          "[copilot-evo rule signal] This prompt may establish a reusable rule, pitfall, or workflow preference. If actionable across projects, proactively solidify it via `evo_solidify` and ask the user whether to sync via `evo_sync_repo`."
+        );
+      }
+      if (!parts.length) return;
+      return { additionalContext: parts.join("\n\n") };
     },
 
     onPreToolUse: async (input) => {
@@ -87,9 +112,12 @@ const session = await joinSession({
     },
 
     onPostToolUseFailure: async (input) => {
+      if (String(input.toolName || "").startsWith("evo_")) return;
       const cleanError = sanitizePayload(String(input.error || "")).slice(0, 280);
-      const signals = extractSignals(cleanError, [input.toolName]);
-      sessionState.recentFailures.push({ toolName: input.toolName, signals, error: cleanError });
+      const signals = extractSignals(cleanError, [input.toolName], { includePlatform: true });
+      const entry = { toolName: input.toolName, signals, error: cleanError };
+      sessionState.pendingFailure = entry;
+      sessionState.recentFailures.push(entry);
       if (sessionState.recentFailures.length > 5) sessionState.recentFailures.shift();
 
       appendEvent(evoHome, {
@@ -102,17 +130,27 @@ const session = await joinSession({
       const { genes, capsules } = loadStore(evoHome);
       const matched = selectAssets({ signals, genes, capsules, limit: 2 });
       const hint = matched.length
-        ? `${formatAssetsContext(matched)}\nOnce resolved and verified, you can call evo_solidify to save the fix.`
-        : `[copilot-evo] Failure signals recorded (${signals.join(", ")}). Once resolved and verified, call evo_solidify if the fix is reusable.`;
+        ? `${formatAssetsContext(matched)}\nOnce resolved and verified, proactively call \`evo_solidify\` and ask whether to sync via \`evo_sync_repo\`.`
+        : `[copilot-evo] Failure signals recorded (${signals.join(", ")}). Once resolved and verified, proactively call \`evo_solidify\` if the fix is reusable, then ask whether to sync via \`evo_sync_repo\`.`;
       return { additionalContext: hint };
     },
 
     onPostToolUse: async (input) => {
-      if (!sessionState.recentFailures.length) return;
-      const last = sessionState.recentFailures[sessionState.recentFailures.length - 1];
-      if (last.toolName === input.toolName) {
-        sessionState.recoveries++;
-      }
+      const toolName = String(input.toolName || "");
+      if (toolName.startsWith("evo_")) return;
+      if (!sessionState.pendingFailure) return;
+
+      const isVerificationOrAction =
+        toolName === sessionState.pendingFailure.toolName ||
+        /^(?:powershell|bash|shell|edit|create|apply_patch)$/i.test(toolName);
+      if (!isVerificationOrAction) return;
+
+      const resolvedSignals = sessionState.pendingFailure.signals;
+      sessionState.pendingFailure = null;
+      sessionState.recoveries++;
+      return {
+        additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable across tasks/projects, proactively call \`evo_solidify\` now (use \`scope: "team"\` when generalizable and secret-free), then ask the user whether to sync via \`evo_sync_repo\`.`,
+      };
     },
 
     onSessionEnd: async (input) => {
@@ -143,7 +181,7 @@ const session = await joinSession({
       },
       handler: async (args) => {
         const { genes, capsules } = loadStore(evoHome);
-        const signals = extractSignals(args.query || "", args.signals || []);
+        const signals = extractSignals(args.query || "", args.signals || [], { includePlatform: false });
         const results = selectAssets({
           signals,
           query: args.query || "",
@@ -157,7 +195,7 @@ const session = await joinSession({
     },
     {
       name: "evo_solidify",
-      description: "Record a verified strategy (Gene) or fix recipe (Capsule) into the GEP store with automatic secret/path sanitization.",
+      description: "Proactively record a verified reusable strategy (Gene) or fix recipe (Capsule) into the GEP store with automatic secret/path sanitization. Call automatically after resolving reusable failures or learning generalizable strategies, then ask the user whether to sync via evo_sync_repo.",
       parameters: {
         type: "object",
         properties: {
@@ -233,12 +271,13 @@ const session = await joinSession({
     },
     {
       name: "evo_sync_repo",
-      description: "Pull or push sanitized team Genes/Capsules directly to the private Git repo (no PR), or export/import offline .evopack.json bundles.",
+      description: "Pull or push sanitized team Genes/Capsules directly to the private Git repo (no PR), or export/import offline .evopack.json bundles. Auto-clones the configured repo if not present locally.",
       parameters: {
         type: "object",
         properties: {
           action: { type: "string", enum: ["pull", "push", "export", "import"] },
-          repoPath: { type: "string", description: "Optional local clone path of JiaqiZhang-Dev/copilot-evo" },
+          repoPath: { type: "string", description: "Optional local clone path of the private copilot-evo repo" },
+          repo: { type: "string", description: "Optional GitHub owner/repo or git URL when cloning for the first time" },
           filePath: { type: "string", description: "Bundle path for export/import actions" },
           commitMessage: { type: "string", description: "Optional commit message for push" },
           autoPromote: { type: "boolean", description: "Promote imported assets immediately (default true for pull, false for bundle import)" },
@@ -248,14 +287,22 @@ const session = await joinSession({
       handler: async (args) => {
         if (args.action === "pull") {
           return JSON.stringify(
-            await syncRepoPull(evoHome, { repoPath: args.repoPath, autoPromote: args.autoPromote ?? true }),
+            await syncRepoPull(evoHome, {
+              repoPath: args.repoPath,
+              repo: args.repo,
+              autoPromote: args.autoPromote ?? true,
+            }),
             null,
             2
           );
         }
         if (args.action === "push") {
           return JSON.stringify(
-            await syncRepoPush(evoHome, { repoPath: args.repoPath, commitMessage: args.commitMessage }),
+            await syncRepoPush(evoHome, {
+              repoPath: args.repoPath,
+              repo: args.repo,
+              commitMessage: args.commitMessage,
+            }),
             null,
             2
           );
