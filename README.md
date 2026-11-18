@@ -4,7 +4,8 @@
 
 <h1>Copilot Evo</h1>
 
-<p><strong>Self-evolving Experience Engine (<code>EXP</code>: Rules &amp; Fixes) for GitHub Copilot App &amp; CLI</strong></p>
+<p><strong>Solve once. Evolve everywhere.</strong></p>
+<p>Self-evolving Experience Engine (<code>EXP</code>: Rules &amp; Fixes) for GitHub Copilot App &amp; CLI</p>
 
 <p>
   <img src="https://img.shields.io/badge/Copilot-Plugin-0969da?style=flat-square" alt="Copilot Plugin" />
@@ -26,18 +27,32 @@
 
 ---
 
-**Copilot Evo** turns recurring debugging breakthroughs (`Fix`) and cross-project engineering conventions (`Rule`) into atomic, scored, and searchable **Experiences (`EXP`)**. It automatically recalls relevant lessons on every prompt or failure, scores what works from real outcomes, visualizes your team's knowledge network in a side-panel Canvas, and syncs sanitized team knowledge through a private Git repository without PR overhead.
+**Copilot Evo** turns verified debugging breakthroughs (`Fix`) and engineering conventions (`Rule`) into atomic, scored **Experiences (`EXP`)** that recall automatically across sessions and sync privately with your team.
 
 ## Highlights
 
-| Capability | Description |
-| --- | --- |
-| **Atomic Auto-Capture** | Detects failure-to-recovery transitions, `store_memory` saves, and rule cues; solidifies one focused English `Rule` or `Fix` per topic (`2-4` signals, `1-3` steps) locally first. |
-| **Repo-Scoped & Cross-Repo Recall** | Automatically binds experiences to `Cross-repo` (`*`) or `owner/repo` via `git remote.origin.url`, boosting exact repository matches during recall. |
-| **4-Dimension Quality Scoring** | Ranks experiences automatically (`0-100`) across **Quality (35%)**, **Reliability (30%)**, **Lineage (20%)**, and **Freshness (15%)** from real task recoveries and validation runs. |
-| **Explicit Consent & Privacy** | Keeps logs and unshared drafts strictly local under `~/.copilot/evo/`. Native UI confirmation (`Keep local` / `Share to Team`) and multi-stage secret/path leak checks gate every team push. |
-| **Zero-PR Private Git Sync** | New sessions auto-pull shared updates in the background; team score deltas merge conflict-free across clones via `pendingSuccessDelta` / `pendingFailureDelta`. |
-| **Interactive Canvas Dashboard** | Built-in loopback web UI (`/evo-canvas`) with live cross-session updates, inline **Refine with Copilot**, **Run Validation**, quality-ranked **Leaderboard**, and a force-directed **Relationships** graph. |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🧬 Atomic Self-Evolution</strong><br />
+      Turns verified fixes and coding conventions into focused, reusable <code>Rule</code> and <code>Fix</code> entries automatically—one topic per entry.
+    </td>
+    <td width="50%" valign="top">
+      <strong>🎯 Smart Repo-Aware Recall</strong><br />
+      Matches <code>Cross-repo</code> and <code>owner/repo</code> knowledge to your active context and ranks what actually works from real outcomes.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>🔒 Local-First &amp; Leak-Safe</strong><br />
+      Keeps drafts and logs in <code>~/.copilot/evo/</code>; strips secrets and personal paths and asks before sharing anything with your team.
+    </td>
+    <td width="50%" valign="top">
+      <strong>⚡ Zero-PR Sync &amp; Live Canvas</strong><br />
+      Shares team experiences via private Git with a sleek side-panel dashboard (<code>/evo-canvas</code>) for leaderboard, graph, and session audit.
+    </td>
+  </tr>
+</table>
 
 ## How It Works
 
