@@ -38,7 +38,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.31";
+const EXTENSION_VERSION = "0.10.32";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -168,14 +168,17 @@ const ACTIVE_PROTOCOL = [
   "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND, if `evo_solidify` did not already prompt via native UI (`sharedToTeam` is unset and `needsRefinement` is unset), call `ask_user` with choices `[\"Keep local\", \"Share with team\", \"Refine this experience\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
 ].join("\n");
 
-function formatAssetsContext(assets) {
+function formatAssetsContext(assets, { isReview = false } = {}) {
   if (!assets.length) return "";
   const lines = assets.map((a) => {
     const steps = a.strategy?.length ? ` Steps: ${a.strategy.slice(0, 3).join(" -> ")}` : "";
     const fix = a.solution ? ` Fix: ${a.solution}` : "";
     return `- [${a.type}:${a.id}] ${a.title}: ${a.summary}${fix}${steps}`;
   });
-  return `[copilot-evo recalled experiences]\n${lines.join("\n")}`;
+  const header = isReview
+    ? "[copilot-evo recalled experiences — check the PR diff against these rules and flag any violations or missing updates]"
+    : "[copilot-evo recalled experiences]";
+  return `${header}\n${lines.join("\n")}`;
 }
 
 const session = await joinSession({
@@ -214,7 +217,7 @@ const session = await joinSession({
         recordRecallEvent(matched, { trigger: "session_start", signals });
       }
       const parts = [ACTIVE_PROTOCOL];
-      if (matched.length) parts.push(formatAssetsContext(matched));
+      if (matched.length) parts.push(formatAssetsContext(matched, { isReview }));
       return { additionalContext: parts.join("\n\n") };
     },
 
@@ -268,7 +271,7 @@ const session = await joinSession({
         sessionState.activeAssets = matched.map((a) => a.id);
         sessionState.turnRecalledIds = Array.from(new Set([...sessionState.turnRecalledIds, ...sessionState.activeAssets]));
         recordRecallEvent(matched, { trigger: "prompt", signals });
-        parts.push(formatAssetsContext(matched));
+        parts.push(formatAssetsContext(matched, { isReview }));
       }
       if (hasStrategyCue(input.prompt)) {
         parts.push(
@@ -477,7 +480,7 @@ const session = await joinSession({
         new Set([...sessionState.turnRecalledIds, ...matched.map((a) => a.id)])
       );
       recordRecallEvent(matched, { trigger: "subagent", signals, toolName: input.agentName || "subagent" });
-      return { additionalContext: formatAssetsContext(matched) };
+      return { additionalContext: formatAssetsContext(matched, { isReview }) };
     },
 
     onSessionEnd: async (input) => {

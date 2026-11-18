@@ -486,13 +486,10 @@ export function hasCorrectionOrPitfallCue(text) {
   return typeof text === "string" && CORRECTION_OR_PITFALL_RE.test(text);
 }
 
+const PR_REVIEW_RE = /\b(?:pr\s*#?\d+|pull\s+request|code[\s-]?review|pr\s+review|review\s+(?:this|the|a|my)?\s*(?:pr|diff|changes|branch|code)|check\s+(?:this|the)?\s*pr|reviewing\s+pr)\b|审查\s*PR|代码审查|review\s*一下/i;
+
 export function isPrReviewCue(text) {
-  return (
-    typeof text === "string" &&
-    /\b(?:pr\s*#?\d+|pull\s+request|code[\s-]?review|review\s+(?:this|the|a)?\s*(?:pr|diff|changes|branch|code)|reviewing\s+pr)\b|审查\s*PR|代码审查/i.test(
-      text
-    )
-  );
+  return typeof text === "string" && PR_REVIEW_RE.test(text);
 }
 
 export function extractToolTargetKey(toolName, toolArgs) {
