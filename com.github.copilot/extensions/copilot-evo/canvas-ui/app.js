@@ -33,7 +33,13 @@ function escapeHtml(text) {
 
 function getAllAssets() {
   if (!state) return [];
-  return [...(state.genes || []), ...(state.capsules || [])].sort((a, b) => (b.gdiScore || 0) - (a.gdiScore || 0));
+  return [...(state.genes || []), ...(state.capsules || [])].sort((a, b) => {
+    const scoreDiff = (b.gdiScore || 0) - (a.gdiScore || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    const reuseDiff = (b.successCount || 0) - (a.successCount || 0);
+    if (reuseDiff !== 0) return reuseDiff;
+    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+  });
 }
 
 function getFilteredAssets() {
@@ -113,6 +119,21 @@ function kindLabel(type) {
   return type === "Capsule" ? "FIX" : "RULE";
 }
 
+function renderScoreRing(score, isFix) {
+  const val = Math.max(0, Math.min(100, Number(score || 0)));
+  const r = 17;
+  const circ = 2 * Math.PI * r;
+  const dash = ((val / 100) * circ).toFixed(1);
+  const stroke = isFix ? "var(--accent)" : "var(--gene)";
+  return `
+    <svg class="score-ring" viewBox="0 0 44 44" aria-label="Score ${val}">
+      <circle cx="22" cy="22" r="${r}" fill="none" stroke="var(--border)" stroke-width="4" />
+      <circle cx="22" cy="22" r="${r}" fill="none" stroke="${stroke}" stroke-width="4"
+        stroke-linecap="round" stroke-dasharray="${dash} ${circ.toFixed(1)}" transform="rotate(-90 22 22)" />
+      <text x="22" y="25.5" text-anchor="middle" fill="var(--text)" font-size="10.5" font-weight="700" font-family="Consolas, monospace">${Math.round(val)}</text>
+    </svg>`;
+}
+
 function renderDetail(item) {
   const pane = el("detail-pane");
   if (!item) {
@@ -177,13 +198,17 @@ function renderDetail(item) {
 
   pane.innerHTML = `
     <div class="detail-head">
-      <div>
-        <h2 class="detail-title">${escapeHtml(item.title)}</h2>
-        <div class="detail-id">
-          <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
-          <span class="badge gdi-badge">Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
-          <span class="badge">${escapeHtml(item.repoScope && item.repoScope !== "*" ? item.repoScope : "global (*)")}</span>
-          <span>${escapeHtml(item.id)}</span> · <span>${escapeHtml(item.scope || "local")}</span>
+      <div class="detail-title-row">
+        ${renderScoreRing(item.gdiScore, item.type === "Capsule")}
+        <div>
+          <h2 class="detail-title">${escapeHtml(item.title)}</h2>
+          <div class="detail-id">
+            <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
+            <span class="badge gdi-badge">Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
+            <span class="badge">${item.successCount || 0} reuses</span>
+            <span class="badge">${escapeHtml(item.repoScope && item.repoScope !== "*" ? item.repoScope : "global (*)")}</span>
+            <span>${escapeHtml(item.id)}</span> · <span>${escapeHtml(item.scope || "local")}</span>
+          </div>
         </div>
       </div>
       <div class="actions">${promoteTeamBtn}${copyBtn}${deleteControl}</div>
@@ -437,7 +462,7 @@ function renderRelationshipsView(listPane, allAssets) {
       <g class="graph-node" data-node-id="${escapeHtml(a.id)}" opacity="${related || selected ? 1 : 0.48}">
         <rect x="${pos.x}" y="${pos.y}" width="${nodeW}" height="${nodeH}" rx="7" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 1.8 : 1}" />
         <circle cx="${pos.x + 12}" cy="${pos.y + 13}" r="3.5" fill="${dotColor}" />
-        <text x="${pos.x + 20}" y="${pos.y + 16}" fill="${dotColor}" font-size="9.5" font-weight="700" font-family="Consolas, monospace">${isCap ? "FIX" : "RULE"} · ${a.gdiScore || "-"}</text>
+        <text x="${pos.x + 20}" y="${pos.y + 16}" fill="${dotColor}" font-size="9.5" font-weight="700" font-family="Consolas, monospace">${isCap ? "FIX" : "RULE"} · ${a.gdiScore || "-"} · ${a.successCount || 0}x</text>
         <text x="${pos.x + 10}" y="${pos.y + 30}" fill="var(--text)" font-size="11" font-weight="600">${escapeHtml(shortTitle)}</text>
         <title>${escapeHtml(a.title)} (${escapeHtml(a.id)})</title>
       </g>`;
@@ -490,7 +515,7 @@ function renderArenaView(listPane, allAssets) {
       const kindCls = item.type === "Capsule" ? "kind-capsule" : "kind-gene";
       const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
       return `
-      <div class="lb-row">
+      <div class="lb-row ${idx === 0 ? "rank-1" : ""}">
         <div class="lb-top">
           <div class="card-title-wrap">
             <span class="badge">#${idx + 1}</span>
@@ -500,6 +525,7 @@ function renderArenaView(listPane, allAssets) {
           </div>
           <div class="actions">
             <span class="badge gdi-badge">Score ${item.gdiScore || 0}</span>
+            <span class="badge">${item.successCount || 0} reuses</span>
             <span class="badge">${b.winRate ?? 100}% win</span>
             ${hasVal ? `<button class="btn" data-validate="${escapeHtml(item.id)}" type="button">Run Validation</button>` : ""}
             <button class="btn" data-inspect="${escapeHtml(item.id)}" type="button">Inspect</button>
@@ -596,12 +622,13 @@ function render() {
   if (activeTab === "events") {
     const events = getFilteredEvents();
     listPane.innerHTML = events.length
-      ? events
+      ? `<div class="timeline">${events
           .map((ev) => {
             const meta = formatEventMeta(ev);
+            const isWarn = meta.cls === "ev-warn";
             const sigs = (ev.signals || []).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
             return `
-            <div class="event-row">
+            <div class="event-row ${isWarn ? "is-warn" : ""}">
               <div class="event-top">
                 <span class="badge ${meta.cls}">${escapeHtml(meta.label)}</span>
                 <span class="muted" title="${escapeHtml(ev.ts || "")}">${escapeHtml(formatLocalTime(ev.ts))}</span>
@@ -610,7 +637,7 @@ function render() {
               ${sigs ? `<div class="badges">${sigs}</div>` : ""}
             </div>`;
           })
-          .join("")
+          .join("")}</div>`
       : `<div class="empty">No matching evolution events recorded.</div>`;
     return;
   }
@@ -632,15 +659,18 @@ function render() {
       const kindCls = item.type === "Capsule" ? "kind-capsule" : "kind-gene";
       const scopeClass = item.scope === "team" ? "scope-team" : "";
       const sigs = (item.signals || []).slice(0, 4).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
+      const fixClass = item.type === "Capsule" ? "card-fix" : "";
       return `
-      <div class="card ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
+      <div class="card ${fixClass} ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
         <div class="card-head">
           <div class="card-title-wrap">
             <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
             <span class="card-title">${escapeHtml(item.title)}</span>
           </div>
           <div class="card-badges">
-            ${item.gdiScore ? `<span class="badge gdi-badge">${item.gdiScore}</span>` : ""}
+            ${item.gdiScore ? `<span class="badge gdi-badge">Score ${item.gdiScore}</span>` : ""}
+            <span class="badge">${item.successCount || 0} reuses</span>
+            ${item.failureCount ? `<span class="badge ev-warn">${item.gdiBreakdown?.winRate ?? 100}% win</span>` : ""}
             <span class="badge ${scopeClass}">${escapeHtml(item.scope || "local")}</span>
             ${item.repoScope && item.repoScope !== "*" ? `<span class="badge">${escapeHtml(item.repoScope)}</span>` : ""}
           </div>

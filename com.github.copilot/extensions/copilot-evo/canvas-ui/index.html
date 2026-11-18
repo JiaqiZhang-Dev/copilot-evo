@@ -8,13 +8,22 @@
   </head>
   <body>
     <div class="shell">
+      <div class="top-accent" aria-hidden="true"></div>
       <header class="topbar">
         <div class="brand">
-          <div class="brand-badge" aria-hidden="true">🧬</div>
+          <div class="brand-badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M7 4c0 4 10 4 10 8s-10 4-10 8" stroke="#1a7f37" stroke-width="2.1" stroke-linecap="round"/>
+              <path d="M17 4c0 4-10 4-10 8s10 4 10 8" stroke="#0969da" stroke-width="2.1" stroke-linecap="round"/>
+              <line x1="8.5" y1="7" x2="15.5" y2="7" stroke="#0969da" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+              <line x1="8.5" y1="17" x2="15.5" y2="17" stroke="#1a7f37" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+            </svg>
+          </div>
           <div class="brand-meta">
             <div class="brand-row">
               <h1>Copilot Evo</h1>
               <span class="proto-pill">EXP</span>
+              <span id="live-dot" class="live-dot" title="Live sync connected"></span>
             </div>
             <p id="repo-status" class="muted">Loading store...</p>
           </div>
@@ -27,22 +36,22 @@
       </header>
 
       <section class="kpi-strip" aria-label="Experience summary">
-        <div class="kpi-card">
+        <div class="kpi-card kpi-exp">
           <span class="kpi-label">Experiences</span>
           <strong id="kpi-total" class="kpi-value">0</strong>
           <span id="kpi-breakdown" class="kpi-sub">0 Rules · 0 Fixes</span>
         </div>
-        <div class="kpi-card">
+        <div class="kpi-card kpi-team">
           <span class="kpi-label">Team Shared</span>
           <strong id="kpi-team" class="kpi-value">0</strong>
           <span id="kpi-sub-team" class="kpi-sub">Sanitized for sync</span>
         </div>
-        <div class="kpi-card">
+        <div class="kpi-card kpi-hits">
           <span class="kpi-label">Reused Hits</span>
           <strong id="kpi-reuses" class="kpi-value">0</strong>
           <span class="kpi-sub">Total activations</span>
         </div>
-        <div class="kpi-card">
+        <div class="kpi-card kpi-events">
           <span class="kpi-label">Events</span>
           <strong id="kpi-events" class="kpi-value">0</strong>
           <span class="kpi-sub">Local only</span>
