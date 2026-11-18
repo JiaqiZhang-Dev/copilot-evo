@@ -367,9 +367,32 @@ export function detectSourceLabel(workingDirectory) {
   }
 }
 
+function detectGhLogin() {
+  const candidates = [
+    process.env.GH_CONFIG_DIR ? path.join(process.env.GH_CONFIG_DIR, "hosts.yml") : null,
+    process.env.APPDATA ? path.join(process.env.APPDATA, "GitHub CLI", "hosts.yml") : null,
+    path.join(os.homedir(), ".config", "gh", "hosts.yml"),
+  ].filter(Boolean);
+  for (const hostsFile of candidates) {
+    try {
+      if (!fs.existsSync(hostsFile)) continue;
+      const content = fs.readFileSync(hostsFile, "utf8");
+      const githubBlock = content.match(/^github\.com:\s*\r?\n((?:[ \t]+.*\r?\n?)*)/m);
+      const section = githubBlock ? githubBlock[1] : content;
+      const userMatch = section.match(/^\s+user:\s*([^\s#]+)/m);
+      if (userMatch?.[1]) return userMatch[1].trim().slice(0, 40);
+    } catch {
+      // Ignore unreadable gh config.
+    }
+  }
+  return "";
+}
+
 export function detectAuthorName(workingDirectory) {
   const envAuthor = (process.env.COPILOT_EVO_AUTHOR || "").trim();
   if (envAuthor) return envAuthor.slice(0, 40);
+  const ghUser = detectGhLogin();
+  if (ghUser) return ghUser;
   const tryGitUser = (args) => {
     try {
       return execFileSync("git", args, {

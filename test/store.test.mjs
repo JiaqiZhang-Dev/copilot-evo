@@ -436,6 +436,22 @@ test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
     assert.equal(detectSourceLabel(undefined), "chat");
     assert.ok(typeof detectAuthorName(process.cwd()) === "string");
 
+    const ghDir = makeTempDir();
+    const prevGhDir = process.env.GH_CONFIG_DIR;
+    const prevEvoAuthor = process.env.COPILOT_EVO_AUTHOR;
+    try {
+      delete process.env.COPILOT_EVO_AUTHOR;
+      process.env.GH_CONFIG_DIR = ghDir;
+      fs.writeFileSync(path.join(ghDir, "hosts.yml"), "github.com:\n    user: OctoDev\n", "utf8");
+      assert.equal(detectAuthorName(process.cwd()), "OctoDev");
+    } finally {
+      if (prevGhDir === undefined) delete process.env.GH_CONFIG_DIR;
+      else process.env.GH_CONFIG_DIR = prevGhDir;
+      if (prevEvoAuthor === undefined) delete process.env.COPILOT_EVO_AUTHOR;
+      else process.env.COPILOT_EVO_AUTHOR = prevEvoAuthor;
+      fs.rmSync(ghDir, { recursive: true, force: true });
+    }
+
     // Updating an experience with an ID longer than 48 chars must update in place, not truncate.
     const longId = "exp-very-long-experience-identifier-exceeding-forty-eight-chars-1234";
     solidifyAsset(
