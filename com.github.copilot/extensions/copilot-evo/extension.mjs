@@ -31,7 +31,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.11";
+const EXTENSION_VERSION = "0.10.18";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -384,12 +384,58 @@ const session = await joinSession({
         if (res.ok) {
           sessionState.solidifiedCount++;
           sessionState.lastSolidifyAt = Date.now();
-          sessionState.lastSolidifiedLocalId = res.asset.scope === "local" ? res.asset.id : "";
+          sessionState.lastSolidifiedLocalId = "";
+          if (res.asset.scope === "local") {
+            let promptedInUi = false;
+            try {
+              if (session.capabilities?.ui?.elicitation !== false && typeof session.ui?.select === "function") {
+                const msg = [
+                  `Saved locally: "${res.asset.title}" (${res.asset.type} · ${res.asset.repoScope && res.asset.repoScope !== "*" ? res.asset.repoScope : "Cross-repo"})`,
+                  res.asset.summary,
+                  "",
+                  "Share this experience with your team?",
+                ].join("\n");
+                const choice = await session.ui.select(msg, ["Keep local", "Share to Team"]);
+                promptedInUi = true;
+                if (choice === "Share to Team") {
+                  const promoted = manageAsset("promote_team", res.asset.id, { evoHome });
+                  if (promoted.ok) {
+                    res.asset = promoted.asset;
+                    res.preview = formatAssetPreview(promoted.asset);
+                    res.sharedToTeam = true;
+                    try {
+                      const pushRes = await syncRepoPush(evoHome);
+                      res.pushed = Boolean(pushRes?.pushed);
+                      if (!pushRes?.ok && pushRes?.error) res.syncError = pushRes.error;
+                    } catch (err) {
+                      res.pushed = false;
+                      res.syncError = err.message;
+                    }
+                    res.nextAction = res.pushed
+                      ? "Promoted to team and pushed to the team repository."
+                      : "Promoted to team locally (Git push did not complete).";
+                  } else {
+                    res.sharedToTeam = false;
+                    res.shareError = promoted.error;
+                  }
+                } else {
+                  res.sharedToTeam = false;
+                  res.nextAction = "Kept local per user selection.";
+                }
+              }
+            } catch {
+              promptedInUi = false;
+            }
+            if (!promptedInUi) {
+              sessionState.lastSolidifiedLocalId = res.asset.id;
+            }
+          }
           canvasServer.setViewState({
             tab: res.asset.scope === "local" ? "local" : "assets",
             filter: "all",
             assetId: res.asset.id,
           });
+          canvasServer.broadcastUpdate("solidify");
           try {
             await session.log(`Saved ${res.asset.type} ${res.asset.id} (${res.asset.scope})`);
           } catch {
