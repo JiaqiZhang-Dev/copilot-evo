@@ -21,7 +21,8 @@ flowchart LR
 ## Runtime Hooks (`extension.mjs`)
 
 - **`onSessionStart`**: Initializes `~/.copilot/evo/`, triggers a throttled background `maybeAutoPull` from the configured sync repository, detects the active repository slug (`owner/repo`), and injects the active protocol plus matching starter/team/local experiences.
-- **`onUserPromptSubmitted`**: Extracts intent signals and strategy cues from each user prompt, recalls top matching experiences filtered by `repoScope`, and watches for negative feedback cues to support automated downvoting or superseding.
+- **`onUserPromptSubmitted`**: Extracts intent signals and strategy cues from each user prompt, recalls top matching experiences filtered by `repoScope` (automatically including repo-scoped rules during PR reviews), and watches for negative feedback cues to support automated downvoting or superseding.
+- **`onSubagentStart`**: Injects matching repository and review experiences (or parent-turn active rules) into delegated subagents such as `code-review`, recording subagent recall events.
 - **`onPreToolUse`**: Evaluates `guardrail` patterns (such as Windows heredoc safety warnings) against tool arguments before execution.
 - **`onPostToolUseFailure`**: Filters trivial editor/file-lookup errors and 10-second duplicate bursts, appends a sanitized `tool_failure` event tagged with session metadata, and recalls relevant `Fix` or `Rule` experiences.
 - **`onPostToolUse`**: Detects recovery transitions after failures, tracks cross-turn revisions, emits silent `additionalContext` capture checks on substantive mutating turns (skipping read-only queries), and bridges `store_memory` saves into `evo_solidify` so durable preferences also enter the Experience store.

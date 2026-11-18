@@ -21,6 +21,7 @@ import {
   importBundle,
   initStore,
   isActionToolName,
+  isPrReviewCue,
   isTrivialToolFailure,
   loadStore,
   manageAsset,
@@ -37,7 +38,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.30";
+const EXTENSION_VERSION = "0.10.31";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -191,10 +192,21 @@ const session = await joinSession({
         .catch(() => {});
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
       const { rules, fixes, config } = loadStore(evoHome);
-      const signals = extractSignals(input.initialPrompt || "", [], { includePlatform: false });
-      const matched = signals.length
-        ? selectAssets({ signals, repo: currentRepo, rules, fixes, limit: config.autoInjectLimit || 3 })
-        : [];
+      const initialPrompt = input.initialPrompt || "";
+      const isReview = isPrReviewCue(initialPrompt);
+      const signals = extractSignals(initialPrompt, [], { includePlatform: false });
+      const matched =
+        signals.length || (isReview && currentRepo)
+          ? selectAssets({
+              signals,
+              query: initialPrompt,
+              repo: currentRepo,
+              isReview,
+              rules,
+              fixes,
+              limit: isReview ? Math.max(config.autoInjectLimit || 3, 5) : config.autoInjectLimit || 3,
+            })
+          : [];
       sessionState.protocolInjected = true;
       sessionState.activeAssets = matched.map((a) => a.id);
       sessionState.turnRecalledIds = matched.map((a) => a.id);
@@ -218,16 +230,18 @@ const session = await joinSession({
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
       const { rules, fixes, config } = loadStore(evoHome);
       const failureSignals = sessionState.recentFailures.flatMap((f) => f.signals);
+      const isReview = isPrReviewCue(input.prompt);
       const signals = extractSignals(input.prompt, failureSignals, { includePlatform: false });
       const matched =
-        signals.length || hasStrategyCue(input.prompt)
+        signals.length || hasStrategyCue(input.prompt) || (isReview && currentRepo)
           ? selectAssets({
               signals,
               query: input.prompt,
               repo: currentRepo,
+              isReview,
               rules,
               fixes,
-              limit: config.autoInjectLimit || 3,
+              limit: isReview ? Math.max(config.autoInjectLimit || 3, 5) : config.autoInjectLimit || 3,
             })
           : [];
 
@@ -433,6 +447,37 @@ const session = await joinSession({
           syncScoreDeltasOnly(evoHome).catch(() => {});
         }
       }
+    },
+
+    onSubagentStart: async (input) => {
+      const workDir = input.workingDirectory || lastWorkingDirectory;
+      const currentRepo = detectRepoSlug(workDir);
+      const { rules, fixes, config } = loadStore(evoHome);
+      const subText = [input.agentName, input.agentDisplayName, input.agentDescription].filter(Boolean).join(" ");
+      const isReview = /\b(?:code-review|review|audit|verifier|checker)\b/i.test(subText) || isPrReviewCue(subText);
+      const failureSignals = sessionState.recentFailures.flatMap((f) => f.signals);
+      const signals = extractSignals(subText, isReview ? [...failureSignals, "pr_review"] : failureSignals, {
+        includePlatform: false,
+      });
+      let matched = selectAssets({
+        signals,
+        query: subText,
+        repo: currentRepo,
+        isReview,
+        rules,
+        fixes,
+        limit: isReview ? Math.max(config.autoInjectLimit || 3, 5) : config.autoInjectLimit || 3,
+      });
+      if (!matched.length && sessionState.activeAssets.length) {
+        const byId = new Map([...rules, ...fixes].map((a) => [a.id, a]));
+        matched = sessionState.activeAssets.map((id) => byId.get(id)).filter(Boolean);
+      }
+      if (!matched.length) return;
+      sessionState.turnRecalledIds = Array.from(
+        new Set([...sessionState.turnRecalledIds, ...matched.map((a) => a.id)])
+      );
+      recordRecallEvent(matched, { trigger: "subagent", signals, toolName: input.agentName || "subagent" });
+      return { additionalContext: formatAssetsContext(matched) };
     },
 
     onSessionEnd: async (input) => {

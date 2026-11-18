@@ -21,6 +21,7 @@ import {
   importBundle,
   initStore,
   isActionToolName,
+  isPrReviewCue,
   isTrivialToolFailure,
   loadStore,
   manageAsset,
@@ -343,6 +344,20 @@ test("repoScope filters repo-specific assets and boosts exact repo matches", () 
     const inTspecRepo = selectAssets({ signals: ["build_error"], repo: "Azure/typespec-azure", rules, fixes, limit: 5 });
     assert.equal(inTspecRepo[0].id, "exp-tspec-only");
     assert.ok(inTspecRepo.some((a) => a.id === "exp-global"));
+
+    assert.equal(isPrReviewCue("review PR #17611"), true);
+    const reviewSignals = extractSignals("review PR #17611", [], { includePlatform: false });
+    assert.ok(reviewSignals.includes("pr_review"));
+    const reviewMatched = selectAssets({
+      signals: reviewSignals,
+      query: "review PR #17611",
+      repo: "Azure/typespec-azure",
+      isReview: true,
+      rules,
+      fixes,
+      limit: 5,
+    });
+    assert.ok(reviewMatched.some((a) => a.id === "exp-tspec-only"));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

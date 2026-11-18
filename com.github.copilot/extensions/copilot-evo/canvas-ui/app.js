@@ -161,6 +161,7 @@ function displayTypeWord(type) {
 function formatRecallTrigger(ev) {
   if (ev.trigger === "session_start") return "on session start";
   if (ev.trigger === "tool_failure") return `after ${ev.toolName || "tool"} failure`;
+  if (ev.trigger === "subagent") return `in ${ev.toolName || "subagent"} subagent`;
   if (ev.trigger === "search") return "via search";
   return "on prompt";
 }

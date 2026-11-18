@@ -454,6 +454,7 @@ const SIGNAL_PATTERNS = [
   ["type_error", /\b(?:TypeError|ReferenceError|TS\d{4})\b/i],
   ["share", /\b(?:share|sync|export|publish|team|push)\b/i],
   ["secret_leak", /\b(?:secret|token|password|api[_-]?key|redact|privacy)\b/i],
+  ["pr_review", /\b(?:pr\s*#?\d+|pull\s+request|code[\s-]?review|review\s+(?:this|the|a)?\s*(?:pr|diff|changes|branch|code)|reviewing\s+pr)\b|审查\s*PR|代码审查/i],
 ];
 
 const STRATEGY_CUE_RE = /(?:记住|以后|下次|踩坑|经验|策略|规范|沉淀|固化|避免|总是|不要再|应该|记得|\b(?:always|never|remember|pitfall|workaround|lesson|best practice|convention|we should|make sure to|don't forget to)\b)/i;
@@ -483,6 +484,15 @@ export function hasNegativeFeedbackCue(text) {
 
 export function hasCorrectionOrPitfallCue(text) {
   return typeof text === "string" && CORRECTION_OR_PITFALL_RE.test(text);
+}
+
+export function isPrReviewCue(text) {
+  return (
+    typeof text === "string" &&
+    /\b(?:pr\s*#?\d+|pull\s+request|code[\s-]?review|review\s+(?:this|the|a)?\s*(?:pr|diff|changes|branch|code)|reviewing\s+pr)\b|审查\s*PR|代码审查/i.test(
+      text
+    )
+  );
 }
 
 export function extractToolTargetKey(toolName, toolArgs) {
@@ -581,6 +591,7 @@ export function selectAssets({
   scope = "",
   kind = "",
   repo = "",
+  isReview = false,
   includeSuperseded = false,
   rules = [],
   fixes = [],
@@ -595,6 +606,7 @@ export function selectAssets({
   const supersededIds = new Set(all.map((a) => a.supersedes).filter(Boolean));
   const normalizedRepo = repo && repo !== "*" ? normalizeRepoSlug(repo) : "";
   const normalizedKind = kind ? normalizeAssetKind(kind) : "";
+  const reviewContext = Boolean(isReview || sigSet.has("pr_review"));
   const nowMs = Date.now();
 
   const scored = [];
@@ -615,6 +627,9 @@ export function selectAssets({
     const haystack = `${asset.id || ""} ${asset.title || ""} ${asset.summary || ""} ${assetSignals.join(" ")}`.toLowerCase();
     for (const term of terms) {
       if (haystack.includes(term)) relevance += 2;
+    }
+    if (reviewContext && normalizedRepo && assetRepo.toLowerCase() === normalizedRepo.toLowerCase()) {
+      relevance = Math.max(relevance, 2);
     }
     if (sigSet.size === 0 && terms.length === 0) {
       relevance = 1;
