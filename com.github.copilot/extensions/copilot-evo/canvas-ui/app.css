@@ -1282,6 +1282,35 @@ body {
   transition: width 0.25s ease;
 }
 
+.score-bar {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 6px;
+  border: none;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 4px;
+  background: var(--border);
+}
+
+.score-bar::-webkit-progress-bar {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.score-bar::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--accent), #54aeff);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.score-bar::-moz-progress-bar {
+  background: linear-gradient(90deg, var(--accent), #54aeff);
+  border-radius: 999px;
+}
+
 .bar-fill.gene {
   background: linear-gradient(90deg, var(--accent), #54aeff);
 }

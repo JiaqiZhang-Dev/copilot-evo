@@ -390,10 +390,10 @@ function renderDetail(item) {
     ${validation}
     <div class="section-label">Score Breakdown · Tier ${escapeHtml(item.gdiBreakdown?.tier || "B")} · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Pass Rate</div>
     <div class="detail-breakdown">
-      <div class="mini-dim">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.quality ?? 0}%"></div></div></div>
-      <div class="mini-dim">Reliability <strong>${item.gdiBreakdown?.reliability ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.reliability ?? 0}%"></div></div></div>
-      <div class="mini-dim">Lineage <strong>${item.gdiBreakdown?.lineage ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.lineage ?? 0}%"></div></div></div>
-      <div class="mini-dim">Freshness <strong>${item.gdiBreakdown?.freshness ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.freshness ?? 0}%"></div></div></div>
+      <div class="mini-dim">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.quality ?? 0)}"></progress></div>
+      <div class="mini-dim">Reliability <strong>${item.gdiBreakdown?.reliability ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.reliability ?? 0)}"></progress></div>
+      <div class="mini-dim">Lineage <strong>${item.gdiBreakdown?.lineage ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.lineage ?? 0)}"></progress></div>
+      <div class="mini-dim">Freshness <strong>${item.gdiBreakdown?.freshness ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.freshness ?? 0)}"></progress></div>
     </div>
     ${usageHtml}
     ${lineageHtml}
@@ -971,10 +971,10 @@ function renderContributorDetail(group) {
     </div>
     <div class="section-label">Average Quality Breakdown</div>
     <div class="detail-breakdown">
-      <div class="mini-dim">Quality <strong>${group.avgQuality}</strong><div class="bar-track"><div class="bar-fill" style="width:${group.avgQuality}%"></div></div></div>
-      <div class="mini-dim">Reliability <strong>${group.avgReliability}</strong><div class="bar-track"><div class="bar-fill" style="width:${group.avgReliability}%"></div></div></div>
-      <div class="mini-dim">Lineage <strong>${group.avgLineage}</strong><div class="bar-track"><div class="bar-fill" style="width:${group.avgLineage}%"></div></div></div>
-      <div class="mini-dim">Freshness <strong>${group.avgFreshness}</strong><div class="bar-track"><div class="bar-fill" style="width:${group.avgFreshness}%"></div></div></div>
+      <div class="mini-dim">Quality <strong>${group.avgQuality}</strong><progress class="score-bar" max="100" value="${Number(group.avgQuality || 0)}"></progress></div>
+      <div class="mini-dim">Reliability <strong>${group.avgReliability}</strong><progress class="score-bar" max="100" value="${Number(group.avgReliability || 0)}"></progress></div>
+      <div class="mini-dim">Lineage <strong>${group.avgLineage}</strong><progress class="score-bar" max="100" value="${Number(group.avgLineage || 0)}"></progress></div>
+      <div class="mini-dim">Freshness <strong>${group.avgFreshness}</strong><progress class="score-bar" max="100" value="${Number(group.avgFreshness || 0)}"></progress></div>
     </div>
     <div class="section-label">Top Experiences (Sorted by Quality)</div>
     <div class="contrib-exp-list">${expRows}</div>
