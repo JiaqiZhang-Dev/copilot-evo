@@ -588,18 +588,16 @@ function render() {
   const totalReuses = allAssets.reduce((sum, a) => sum + (a.successCount || 0), 0);
   const linkCount = collectGraphData(allAssets).length;
 
-  el("repo-status").textContent = state.syncRepoPath
-    ? `Sync repo: ${state.syncRepoPath}`
-    : `Auto-clone repo: ${state.config?.syncRepo || "JiaqiZhang-Dev/copilot-evo"}`;
-
-  el("kpi-total").textContent = String(allAssets.length);
-  el("kpi-breakdown").textContent = `${rules.length} Rules · ${fixes.length} Fixes`;
-  el("kpi-team").textContent = String(state.counts?.teamAssets || 0);
-  el("kpi-sub-team").textContent = state.config?.lastAutoPullAt
-    ? `Synced ${formatLocalTime(state.config.lastAutoPullAt).slice(11, 16)}`
-    : "Auto-syncs on start";
-  el("kpi-reuses").textContent = String(totalReuses);
-  el("kpi-events").textContent = String(state.counts?.events || 0);
+  const syncTime = state.config?.lastAutoPullAt
+    ? ` · synced ${formatLocalTime(state.config.lastAutoPullAt).slice(11, 16)}`
+    : "";
+  const tel = el("telemetry-line");
+  if (tel) {
+    tel.textContent = `${rules.length} rules · ${fixes.length} fixes · ${state.counts?.teamAssets || 0} shared · ${totalReuses} hits${syncTime}`;
+    tel.title = state.syncRepoPath
+      ? `Sync repo: ${state.syncRepoPath}`
+      : `Auto-clone repo: ${state.config?.syncRepo || "JiaqiZhang-Dev/copilot-evo"}`;
+  }
 
   el("count-assets").textContent = String(allAssets.length);
   el("count-arena").textContent = String(allAssets.length);
@@ -676,32 +674,29 @@ function render() {
 
   listPane.innerHTML = items
     .map((item) => {
-      const kindCls = item.type === "Fix" ? "kind-capsule" : "kind-gene";
-      const scopeClass = item.scope === "team" ? "scope-team" : "";
-      const sigs = (item.signals || []).slice(0, 4).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
-      const fixClass = item.type === "Fix" ? "card-fix" : "";
+      const isFix = item.type === "Fix";
+      const scopeLabel = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "Local";
+      const scopeCls = item.scope === "team" ? "row-scope-team" : "row-scope";
+      const repoTag = item.repoScope && item.repoScope !== "*" ? ` · ${escapeHtml(item.repoScope)}` : "";
       return `
-      <div class="card ${fixClass} ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
-        <div class="card-head">
-          <div class="card-title-wrap">
-            <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
-            <span class="card-title">${escapeHtml(item.title)}</span>
+      <div class="exp-row ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
+        <span class="exp-dot ${isFix ? "is-fix" : "is-rule"}" title="${isFix ? "Fix" : "Rule"}"></span>
+        <div class="exp-main">
+          <div class="exp-title-line">
+            <span class="exp-title">${escapeHtml(item.title)}</span>
+            <span class="${scopeCls}">${scopeLabel}${repoTag}</span>
           </div>
-          <div class="card-badges">
-            ${item.gdiScore ? `<span class="badge gdi-badge">Score ${item.gdiScore}</span>` : ""}
-            <span class="badge">${item.successCount || 0} reuses</span>
-            ${item.failureCount ? `<span class="badge ev-warn">${item.gdiBreakdown?.winRate ?? 100}% win</span>` : ""}
-            <span class="badge ${scopeClass}">${escapeHtml(item.scope || "local")}</span>
-            ${item.repoScope && item.repoScope !== "*" ? `<span class="badge">${escapeHtml(item.repoScope)}</span>` : ""}
-          </div>
+          <div class="exp-summary">${escapeHtml(item.summary)}</div>
         </div>
-        <div class="card-summary">${escapeHtml(item.summary)}</div>
-        <div class="badges">${sigs}</div>
+        <div class="exp-metrics">
+          <span class="exp-score">${item.gdiScore ?? "-"}</span>
+          <span class="exp-reuses">${item.successCount || 0}×</span>
+        </div>
       </div>`;
     })
     .join("");
 
-  listPane.querySelectorAll(".card").forEach((card) => {
+  listPane.querySelectorAll(".exp-row").forEach((card) => {
     card.addEventListener("click", () => {
       selectedId = selectedId === card.dataset.id ? "" : card.dataset.id;
       pendingDeleteId = "";
@@ -851,6 +846,14 @@ async function init() {
     splitter.addEventListener("pointerup", stopDrag);
     splitter.addEventListener("pointercancel", stopDrag);
   }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && selectedId) {
+      selectedId = "";
+      pendingDeleteId = "";
+      render();
+    }
+  });
 
   await loadState(true);
 

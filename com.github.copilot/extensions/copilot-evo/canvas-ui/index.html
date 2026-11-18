@@ -8,40 +8,39 @@
   </head>
   <body>
     <div class="shell">
-      <div class="top-accent" aria-hidden="true"></div>
       <header class="topbar">
         <div class="brand">
           <div class="brand-badge" aria-hidden="true">
             <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
               <defs>
-                <linearGradient id="evoGradA" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+                <linearGradient id="dnaA" x1="6" y1="3" x2="26" y2="29" gradientUnits="userSpaceOnUse">
                   <stop offset="0%" stop-color="#1a7f37"/>
-                  <stop offset="50%" stop-color="#0969da"/>
+                  <stop offset="100%" stop-color="#0969da"/>
+                </linearGradient>
+                <linearGradient id="dnaB" x1="26" y1="3" x2="6" y2="29" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#0969da"/>
                   <stop offset="100%" stop-color="#8250df"/>
                 </linearGradient>
-                <linearGradient id="evoGradB" x1="28" y1="4" x2="4" y2="28" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stop-color="#0969da"/>
-                  <stop offset="100%" stop-color="#2da44e"/>
-                </linearGradient>
               </defs>
-              <ellipse cx="16" cy="16" rx="11.5" ry="5.5" transform="rotate(-35 16 16)" stroke="url(#evoGradA)" stroke-width="1.9" stroke-linecap="round"/>
-              <ellipse cx="16" cy="16" rx="11.5" ry="5.5" transform="rotate(35 16 16)" stroke="url(#evoGradB)" stroke-width="1.9" stroke-linecap="round" opacity="0.85"/>
-              <path d="M16 9.5l1.6 4.4 4.4 1.6-4.4 1.6L16 21.5l-1.6-4.4-4.4-1.6 4.4-1.6L16 9.5Z" fill="url(#evoGradA)"/>
-              <circle cx="25" cy="9" r="2" fill="#0969da"/>
-              <circle cx="7" cy="23" r="2" fill="#1a7f37"/>
+              <line x1="10.5" y1="8" x2="21.5" y2="8" stroke="url(#dnaA)" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+              <line x1="12" y1="12" x2="20" y2="12" stroke="url(#dnaB)" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/>
+              <line x1="12" y1="20" x2="20" y2="20" stroke="url(#dnaA)" stroke-width="1.5" stroke-linecap="round" opacity="0.55"/>
+              <line x1="10.5" y1="24" x2="21.5" y2="24" stroke="url(#dnaB)" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/>
+              <path d="M9.5 4.5C9.5 10.5 22.5 11.5 22.5 16C22.5 20.5 9.5 21.5 9.5 27.5" stroke="url(#dnaA)" stroke-width="2.2" stroke-linecap="round"/>
+              <path d="M22.5 4.5C22.5 10.5 9.5 11.5 9.5 16C9.5 20.5 22.5 21.5 22.5 27.5" stroke="url(#dnaB)" stroke-width="2.2" stroke-linecap="round"/>
+              <circle cx="9.5" cy="4.5" r="2" fill="#1a7f37"/>
+              <circle cx="22.5" cy="4.5" r="2" fill="#0969da"/>
+              <circle cx="9.5" cy="27.5" r="2" fill="#0969da"/>
+              <circle cx="22.5" cy="27.5" r="2" fill="#8250df"/>
             </svg>
           </div>
           <div class="brand-meta">
-            <div class="brand-row">
-              <h1>Copilot Evo</h1>
-              <span class="proto-pill">EXP</span>
-              <span id="live-dot" class="live-dot" title="Live sync connected"></span>
-            </div>
-            <p id="repo-status" class="muted">Loading store...</p>
+            <h1>Copilot Evo</h1>
+            <p id="telemetry-line" class="telemetry" title="Loading store...">Loading...</p>
           </div>
         </div>
         <div class="actions">
-          <button id="btn-pull" class="btn btn-icon" type="button" title="Pull latest shared experiences and refresh">
+          <button id="btn-pull" class="btn btn-quiet btn-icon" type="button" title="Pull latest shared experiences and refresh">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -49,29 +48,6 @@
           </button>
         </div>
       </header>
-
-      <section class="kpi-strip" aria-label="Experience summary">
-        <div class="kpi-card kpi-exp">
-          <span class="kpi-label">Experiences</span>
-          <strong id="kpi-total" class="kpi-value">0</strong>
-          <span id="kpi-breakdown" class="kpi-sub">0 Rules · 0 Fixes</span>
-        </div>
-        <div class="kpi-card kpi-team">
-          <span class="kpi-label">Team Shared</span>
-          <strong id="kpi-team" class="kpi-value">0</strong>
-          <span id="kpi-sub-team" class="kpi-sub">Sanitized for sync</span>
-        </div>
-        <div class="kpi-card kpi-hits">
-          <span class="kpi-label">Reused Hits</span>
-          <strong id="kpi-reuses" class="kpi-value">0</strong>
-          <span class="kpi-sub">Total activations</span>
-        </div>
-        <div class="kpi-card kpi-events">
-          <span class="kpi-label">Events</span>
-          <strong id="kpi-events" class="kpi-value">0</strong>
-          <span class="kpi-sub">Local only</span>
-        </div>
-      </section>
 
       <div id="banner" class="banner hidden"></div>
 
