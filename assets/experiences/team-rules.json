@@ -173,5 +173,29 @@
     "updatedAt": "2026-11-18T07:32:24.075Z",
     "successCount": 1,
     "failureCount": 0
+  },
+  {
+    "id": "exp-leave-commit-shas-unwrapped-in-github-comments-mwlu4ckr",
+    "type": "Rule",
+    "title": "Leave commit SHAs unwrapped in GitHub comments",
+    "summary": "GitHub treats backtick-wrapped commit SHAs as inline code instead of auto-linking them in PR comments and review replies.",
+    "signals": [
+      "github",
+      "pr_comment",
+      "commit_sha",
+      "markdown"
+    ],
+    "strategy": [
+      "Write commit SHAs in GitHub issue and PR comments as bare hashes (e.g., 10d22aa28) without surrounding backticks so GitHub auto-links them.",
+      "Use explicit Markdown links when referencing commits from another repository."
+    ],
+    "solution": "",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "*",
+    "sourceProject": "chat",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-18T08:05:08.954Z",
+    "successCount": 1
   }
 ]
