@@ -923,11 +923,11 @@ function render() {
     el("chip-all").classList.toggle("hidden", activeTab === "local");
   }
   if (el("chip-team")) {
-    el("chip-team").textContent = `Team ${teamCount}`;
+    el("chip-team").textContent = `Team Shared ${teamCount}`;
     el("chip-team").classList.toggle("hidden", activeTab === "local");
   }
   if (el("chip-starter")) {
-    el("chip-starter").textContent = `Starter ${starterCount}`;
+    el("chip-starter").textContent = `Built-in ${starterCount}`;
     el("chip-starter").classList.toggle("hidden", activeTab === "local");
   }
 
@@ -1059,13 +1059,20 @@ function render() {
     ${items
       .map((item, idx) => {
         const isFix = item.type === "Fix";
-        const scopeLabel = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "";
-        const scopeCls = item.scope === "team" ? "row-scope-team" : "row-scope";
+        const originLabel =
+          item.scope === "team"
+            ? item.author
+              ? `Shared by ${escapeHtml(item.author)}`
+              : "Team Shared"
+            : item.scope === "starter"
+              ? "Built-in"
+              : "";
         const repoTag =
           item.repoScope && item.repoScope !== "*"
-            ? `${scopeLabel ? " · " : ""}${escapeHtml(item.repoScope)}`
+            ? `${originLabel ? " · " : ""}${escapeHtml(item.repoScope)}`
             : "";
-        const scopeText = `${scopeLabel}${repoTag}`;
+        const scopeText = `${originLabel}${repoTag}`;
+        const kindTooltip = isFix ? "Fix: verified bug resolution" : "Rule: reusable guideline";
         const uses = item.successCount || 0;
         const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
         const trophySvg = `<svg class="trophy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-label="Rank #1"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#0969da" fill-opacity="0.18" stroke="#0969da" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11" stroke="#0969da" stroke-width="1.2" stroke-linecap="round"/><path d="M8 8.7v2.8M5.8 13.5h4.4" stroke="#0969da" stroke-width="1.3" stroke-linecap="round"/></svg>`;
@@ -1084,8 +1091,8 @@ function render() {
           <div class="exp-main">
             <div class="exp-title-line">
               <span class="exp-title">${escapeHtml(item.title)}</span>
-              <span class="row-kind ${isFix ? "is-fix" : "is-rule"}">${isFix ? "Fix" : "Rule"}</span>
-              ${scopeText ? `<span class="${scopeCls}">${scopeText}</span>` : ""}
+              <span class="row-kind ${isFix ? "is-fix" : "is-rule"}" title="${kindTooltip}">${isFix ? "Fix" : "Rule"}</span>
+              ${scopeText ? `<span class="row-scope">${scopeText}</span>` : ""}
             </div>
             <div class="exp-summary">${escapeHtml(item.summary)}</div>
           </div>
