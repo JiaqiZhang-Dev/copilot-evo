@@ -25,6 +25,10 @@
 
 ---
 
+<p align="center">
+  <img src="docs/images/demo.gif" width="92%" alt="Copilot Evo Walkthrough" />
+</p>
+
 ## Highlights
 
 <table>
