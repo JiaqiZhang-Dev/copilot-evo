@@ -86,9 +86,16 @@ function getAllAssets() {
 function getFilteredAssets() {
   const q = searchQuery.trim().toLowerCase();
   const curRepo = (state?.currentRepo || "").toLowerCase();
+  const isLocalTab = activeTab === "local";
   return getAllAssets().filter((item) => {
+    const scope = item.scope || "local";
+    if (isLocalTab) {
+      if (scope !== "local") return false;
+    } else {
+      if (scope === "local") return false;
+      if (activeFilter !== "all" && scope !== activeFilter) return false;
+    }
     if (activeKind !== "all" && item.type !== activeKind) return false;
-    if (activeFilter !== "all" && item.scope !== activeFilter) return false;
     if (repoFilter === "matching") {
       const r = (item.repoScope || "*").toLowerCase();
       if (r !== "*" && (!curRepo || r !== curRepo)) return false;
@@ -332,7 +339,8 @@ function renderDetail(item) {
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
   pane.querySelectorAll("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      activeTab = "assets";
+      const target = getAllAssets().find((a) => a.id === btn.dataset.jump);
+      activeTab = target && (!target.scope || target.scope === "local") ? "local" : "assets";
       activeFilter = "all";
       activeKind = "all";
       repoFilter = "all";
@@ -808,7 +816,8 @@ function renderContributorDetail(group) {
   });
   pane.querySelectorAll("[data-jump-exp]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      activeTab = "assets";
+      const target = getAllAssets().find((a) => a.id === btn.dataset.jumpExp);
+      activeTab = target && (!target.scope || target.scope === "local") ? "local" : "assets";
       activeFilter = "all";
       activeKind = "all";
       repoFilter = "all";
@@ -895,21 +904,31 @@ function render() {
   }
 
   const contributorGroups = buildContributorStats(getAllAssets(), contribMode, contribScope);
+  const localCount = allAssets.filter((a) => !a.scope || a.scope === "local").length;
+  const teamCount = allAssets.filter((a) => a.scope === "team").length;
+  const starterCount = allAssets.filter((a) => a.scope === "starter").length;
+  const sharedCount = teamCount + starterCount;
 
-  el("count-assets").textContent = String(allAssets.length);
+  el("count-assets").textContent = String(sharedCount);
+  if (el("count-local")) el("count-local").textContent = String(localCount);
   el("count-contributors").textContent = String(contributorGroups.length);
   el("count-links").textContent = String(linkCount);
   el("count-events").textContent = String(state.counts?.events || 0);
 
-  const localCount = allAssets.filter((a) => !a.scope || a.scope === "local").length;
-  const teamCount = allAssets.filter((a) => a.scope === "team").length;
-  const starterCount = allAssets.filter((a) => a.scope === "starter").length;
-  if (el("chip-all")) el("chip-all").textContent = `All ${allAssets.length}`;
-  if (el("chip-local")) el("chip-local").textContent = `Local ${localCount}`;
-  if (el("chip-team")) el("chip-team").textContent = `Team ${teamCount}`;
-  if (el("chip-starter")) el("chip-starter").textContent = `Starter ${starterCount}`;
+  if (el("chip-all")) {
+    el("chip-all").textContent = `All ${sharedCount}`;
+    el("chip-all").classList.toggle("hidden", activeTab === "local");
+  }
+  if (el("chip-team")) {
+    el("chip-team").textContent = `Team ${teamCount}`;
+    el("chip-team").classList.toggle("hidden", activeTab === "local");
+  }
+  if (el("chip-starter")) {
+    el("chip-starter").textContent = `Starter ${starterCount}`;
+    el("chip-starter").classList.toggle("hidden", activeTab === "local");
+  }
 
-  const itemsForTab = activeTab === "assets" ? getFilteredAssets() : allAssets;
+  const itemsForTab = activeTab === "assets" || activeTab === "local" ? getFilteredAssets() : allAssets;
   if (selectedId && !itemsForTab.some((i) => i.id === selectedId)) {
     selectedId = "";
     pendingDeleteId = "";
@@ -918,12 +937,12 @@ function render() {
     selectedContribKey = "";
   }
 
-  el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets");
+  el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets" && activeTab !== "local");
   el("contributors-toolbar")?.classList.toggle("hidden", activeTab !== "contributors");
   el("rel-toolbar").classList.toggle("hidden", activeTab !== "relationships");
   el("events-toolbar").classList.toggle("hidden", activeTab !== "events");
   const hasDetail =
-    ((activeTab === "assets" || activeTab === "relationships") && Boolean(selectedId)) ||
+    ((activeTab === "assets" || activeTab === "local" || activeTab === "relationships") && Boolean(selectedId)) ||
     (activeTab === "contributors" && Boolean(selectedContribKey));
   el("content").classList.toggle("single-pane", !hasDetail);
   el("content").classList.toggle("graph-pane", activeTab === "relationships" && hasDetail);
@@ -1006,7 +1025,11 @@ function render() {
 
   const items = itemsForTab;
   if (!items.length) {
-    listPane.innerHTML = `<div class="empty">No experiences match the current filters.</div>`;
+    listPane.innerHTML = `<div class="empty">${
+      activeTab === "local"
+        ? "No local experiences right now. Copilot automatically captures reusable rules and verified fixes here."
+        : "No experiences match the current filters."
+    }</div>`;
     renderDetail(null);
     return;
   }
@@ -1032,7 +1055,7 @@ function render() {
             ? `<span class="exp-rank is-top" title="Rank #1">${trophySvg}</span>`
             : `<span class="exp-rank" title="Rank #${idx + 1}">${idx + 1}</span>`;
         const isSharing = sharingId === item.id;
-        const shareIconSvg = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 10.5V2.8m0 0L5.2 5.6M8 2.8l2.8 2.8M3.2 10.2v2.1a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1v-2.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+        const shareIconSvg = `<svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 10.8V2.6m0 0L5 5.6M8 2.6l3 3M3 10.4v2.1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
         const shareAction =
           !item.scope || item.scope === "local"
             ? `<button class="row-share-icon" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share to team repository" aria-label="Share to team repository">${shareIconSvg}</button>`
@@ -1079,8 +1102,8 @@ async function loadState(applyServerView = false) {
   state = await res.json();
   if (applyServerView && state.viewState) {
     const serverTab = state.viewState.tab === "arena" ? "contributors" : state.viewState.tab;
-    activeTab = serverTab || activeTab;
-    activeFilter = state.viewState.filter || activeFilter;
+    activeTab = state.viewState.filter === "local" ? "local" : serverTab || activeTab;
+    activeFilter = state.viewState.filter === "local" ? "all" : state.viewState.filter || activeFilter;
     if (state.viewState.assetId) selectedId = state.viewState.assetId;
   }
   render();

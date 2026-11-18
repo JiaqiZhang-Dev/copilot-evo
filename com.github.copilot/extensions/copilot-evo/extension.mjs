@@ -31,7 +31,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.9";
+const EXTENSION_VERSION = "0.10.11";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -385,7 +385,11 @@ const session = await joinSession({
           sessionState.solidifiedCount++;
           sessionState.lastSolidifyAt = Date.now();
           sessionState.lastSolidifiedLocalId = res.asset.scope === "local" ? res.asset.id : "";
-          canvasServer.setViewState({ tab: "assets", filter: "all", assetId: res.asset.id });
+          canvasServer.setViewState({
+            tab: res.asset.scope === "local" ? "local" : "assets",
+            filter: "all",
+            assetId: res.asset.id,
+          });
           try {
             await session.log(`Saved ${res.asset.type} ${res.asset.id} (${res.asset.scope})`);
           } catch {
@@ -493,7 +497,7 @@ const session = await joinSession({
       inputSchema: {
         type: "object",
         properties: {
-          tab: { type: "string", enum: ["assets", "contributors", "relationships", "events"] },
+          tab: { type: "string", enum: ["assets", "local", "contributors", "relationships", "events"] },
           filter: { type: "string", enum: ["all", "team", "local", "starter"] },
           assetId: { type: "string" },
         },
@@ -514,7 +518,7 @@ const session = await joinSession({
             type: "object",
             properties: {
               assetId: { type: "string" },
-              tab: { type: "string", enum: ["assets", "arena", "relationships", "events"] },
+              tab: { type: "string", enum: ["assets", "local", "contributors", "relationships", "events"] },
             },
             required: ["assetId"],
           },
