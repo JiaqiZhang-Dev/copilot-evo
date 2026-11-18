@@ -663,6 +663,71 @@ function hasNonEnglishText(asset) {
   return fields.some((item) => typeof item === "string" && CJK_SCRIPT_RE.test(item));
 }
 
+const STOP_WORDS = new Set([
+  "the", "and", "for", "with", "when", "that", "this", "into", "from", "use", "using",
+  "all", "not", "only", "across", "before", "after", "unless", "keep", "avoid", "always", "never",
+]);
+
+function tokenizeForSimilarity(text) {
+  const words = String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !STOP_WORDS.has(w))
+    .map((w) => (w.length >= 5 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w));
+  return new Set(words);
+}
+
+function jaccardSimilarity(setA, setB) {
+  if (!setA.size || !setB.size) return 0;
+  let intersection = 0;
+  for (const item of setA) {
+    if (setB.has(item)) intersection++;
+  }
+  const union = setA.size + setB.size - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+export function findSimilarAssets(candidate, existingAssets = [], options = {}) {
+  const threshold = options.threshold ?? 0.52;
+  const candType = normalizeAssetKind(candidate?.type || candidate?.kind);
+  const candRepo = normalizeRepoSlug(candidate?.repoScope || "*");
+  const candTitleTokens = tokenizeForSimilarity(candidate?.title || "");
+  const candTextTokens = tokenizeForSimilarity(`${candidate?.title || ""} ${candidate?.summary || ""}`);
+  const candSignals = new Set((candidate?.signals || []).map((s) => String(s).toLowerCase()).filter(Boolean));
+  const supersededIds = new Set(existingAssets.map((a) => a.supersedes).filter(Boolean));
+
+  const matches = [];
+  for (const existing of existingAssets) {
+    if (!existing?.id || existing.id === candidate?.id) continue;
+    if (supersededIds.has(existing.id)) continue;
+    if (normalizeAssetKind(existing.type) !== candType) continue;
+    const exRepo = normalizeRepoSlug(existing.repoScope || "*");
+    if (candRepo !== "*" && exRepo !== "*" && candRepo.toLowerCase() !== exRepo.toLowerCase()) continue;
+
+    const exTitleTokens = tokenizeForSimilarity(existing.title || "");
+    const exTextTokens = tokenizeForSimilarity(`${existing.title || ""} ${existing.summary || ""}`);
+    const exSignals = new Set((existing.signals || []).map((s) => String(s).toLowerCase()).filter(Boolean));
+
+    const titleSim = jaccardSimilarity(candTitleTokens, exTitleTokens);
+    const textSim = jaccardSimilarity(candTextTokens, exTextTokens);
+    const sigSim = jaccardSimilarity(candSignals, exSignals);
+    const score = titleSim * 0.45 + textSim * 0.3 + sigSim * 0.25;
+
+    if (score >= threshold || (titleSim >= 0.6 && sigSim >= 0.33)) {
+      matches.push({
+        id: existing.id,
+        title: existing.title,
+        scope: existing.scope || "local",
+        repoScope: existing.repoScope || "*",
+        similarity: Math.round(score * 100) / 100,
+        preview: formatAssetPreview(existing),
+      });
+    }
+  }
+  return matches.sort((a, b) => b.similarity - a.similarity).slice(0, options.limit || 2);
+}
+
 export function solidifyAsset(input, options = {}) {
   const evoHome = initStore(options);
   const kind = normalizeAssetKind(input.kind);
@@ -725,6 +790,21 @@ export function solidifyAsset(input, options = {}) {
   const targetFile = path.join(evoHome, kind === "Fix" ? "fixes.json" : "rules.json");
   const list = readJsonSafe(targetFile, []);
   const idx = list.findIndex((item) => item.id === cleanAsset.id);
+
+  if (idx < 0 && !input.allowDuplicate && !input.supersedes) {
+    const store = loadStore(evoHome);
+    const similarCandidates = findSimilarAssets(cleanAsset, [...store.rules, ...store.fixes]);
+    if (similarCandidates.length) {
+      const top = similarCandidates[0];
+      return {
+        ok: false,
+        duplicateDetected: true,
+        similarCandidates,
+        error: `Similar experience already exists: "${top.id}" (${top.title}, ${Math.round(top.similarity * 100)}% similar). Update it in place by passing its id, replace it via supersedes: "${top.id}", or pass allowDuplicate: true only if genuinely distinct.`,
+      };
+    }
+  }
+
   if (idx >= 0) {
     cleanAsset.successCount = (list[idx].successCount || 0) + 1;
     cleanAsset.pendingSuccessDelta = (list[idx].pendingSuccessDelta || 0) + 1;

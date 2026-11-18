@@ -38,7 +38,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.32";
+const EXTENSION_VERSION = "0.10.33";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -561,6 +561,7 @@ const session = await joinSession({
           ruleId: { type: "string", description: "For Fixes: ID of the Rule this fix applied" },
           parentId: { type: "string", description: "Optional ID of an earlier Rule or Fix this experience refines" },
           supersedes: { type: "string", description: "Optional ID of an outdated experience replaced by this one" },
+          allowDuplicate: { type: "boolean", description: "Set true only after reviewing similarCandidates to confirm this is genuinely distinct" },
         },
         required: ["kind", "title", "summary", "signals"],
       },

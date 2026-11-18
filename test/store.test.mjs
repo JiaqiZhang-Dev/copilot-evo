@@ -13,6 +13,7 @@ import {
   exportBundle,
   extractSignals,
   extractToolTargetKey,
+  findSimilarAssets,
   getAssetRelationships,
   getPendingScoreDeltaTotal,
   hasCorrectionOrPitfallCue,
@@ -521,6 +522,44 @@ test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
     );
     assert.equal(updated.asset.id, longId);
     assert.equal(loadStore(home).rules.filter((r) => r.id === longId).length, 1);
+
+    solidifyAsset(
+      {
+        kind: "Rule",
+        id: "exp-bare-sha-github",
+        title: "Leave commit SHAs unwrapped in GitHub comments",
+        summary: "GitHub treats backtick-wrapped commit SHAs as inline code instead of auto-linking them.",
+        signals: ["github", "pr_comment", "commit_sha"],
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+    const nearDup = solidifyAsset(
+      {
+        kind: "Rule",
+        title: "Do not wrap commit SHA in backticks in GitHub comments",
+        summary: "GitHub fails to link commit SHAs wrapped in backticks in PR comments.",
+        signals: ["github", "pr_comment", "commit_sha"],
+        scope: "local",
+      },
+      { evoHome: home, bundledDir }
+    );
+    assert.equal(nearDup.ok, false);
+    assert.equal(nearDup.duplicateDetected, true);
+    assert.equal(nearDup.similarCandidates[0].id, "exp-bare-sha-github");
+
+    const distinctRule = solidifyAsset(
+      {
+        kind: "Rule",
+        title: "Redeploy server when tenant prompts change",
+        summary: "ChatService loads tenant prompts at startup so server needs redeployment.",
+        signals: ["qa_bot", "deploy_dev", "tenant_prompts"],
+        scope: "local",
+      },
+      { evoHome: home, bundledDir }
+    );
+    assert.equal(distinctRule.ok, true);
+    assert.equal(findSimilarAssets({ type: "Rule", title: "Unrelated topic", signals: ["other"] }, loadStore(home).rules).length, 0);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });
