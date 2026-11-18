@@ -3,7 +3,7 @@ let canvasToken = "";
 let activeTab = "assets";
 let activeFilter = "all";
 let activeKind = "all";
-let repoViewMode = "only";
+let repoOnlyFilter = false;
 let contribMode = "author";
 let contribScope = "all";
 let eventFilter = "all";
@@ -93,22 +93,15 @@ function getFilteredAssets() {
   const q = searchQuery.trim().toLowerCase();
   const curRepo = (state?.currentRepo || "").toLowerCase();
   const isLocalTab = activeTab === "local";
-  const isRepoTab = activeTab === "repo";
   return getAllAssets().filter((item) => {
     const scope = item.scope || "local";
     if (isLocalTab) {
       if (scope !== "local") return false;
-    } else if (isRepoTab) {
-      const r = (item.repoScope || "*").toLowerCase();
-      if (repoViewMode === "only") {
-        if (!isRepoSpecificMatch(item, curRepo)) return false;
-      } else {
-        if (r !== "*" && (!curRepo || r !== curRepo)) return false;
-      }
     } else {
       if (scope === "local") return false;
       if (activeFilter !== "all" && scope !== activeFilter) return false;
     }
+    if (repoOnlyFilter && !isRepoSpecificMatch(item, curRepo)) return false;
     if (activeKind !== "all" && item.type !== activeKind) return false;
     if (!q) return true;
     const text = `${item.id} ${item.title} ${item.summary} ${item.solution || ""} ${item.repoScope || ""} ${(item.signals || []).join(" ")}`.toLowerCase();
@@ -917,15 +910,13 @@ function render() {
   const starterCount = allAssets.filter((a) => a.scope === "starter").length;
   const sharedCount = teamCount + starterCount;
   const curRepo = (state.currentRepo || "").toLowerCase();
-  const repoOnlyCount = allAssets.filter((a) => isRepoSpecificMatch(a, curRepo)).length;
-  const repoMatchingCount = allAssets.filter((a) => {
-    const r = (a.repoScope || "*").toLowerCase();
-    return r === "*" || !curRepo || r === curRepo;
-  }).length;
+  const tabAssets = allAssets.filter((a) =>
+    activeTab === "local" ? !a.scope || a.scope === "local" : a.scope && a.scope !== "local"
+  );
+  const repoOnlyCount = tabAssets.filter((a) => isRepoSpecificMatch(a, curRepo)).length;
 
   el("count-assets").textContent = String(sharedCount);
   if (el("count-local")) el("count-local").textContent = String(localCount);
-  if (el("count-repo")) el("count-repo").textContent = String(repoOnlyCount);
   el("count-contributors").textContent = String(contributorGroups.length);
   el("count-links").textContent = String(linkCount);
   el("count-events").textContent = String(state.counts?.events || 0);
@@ -939,16 +930,15 @@ function render() {
   if (el("chip-starter")) {
     el("chip-starter").textContent = `Built-in ${starterCount}`;
   }
-  if (el("chip-repo-only")) {
-    el("chip-repo-only").textContent = state.currentRepo
-      ? `Only ${state.currentRepo} (${repoOnlyCount})`
-      : `Repo-specific (${repoOnlyCount})`;
-  }
-  if (el("chip-repo-matching")) {
-    el("chip-repo-matching").textContent = `Include Cross-repo (${repoMatchingCount})`;
+  const repoOnlyBtn = el("chip-repo-only");
+  if (repoOnlyBtn) {
+    repoOnlyBtn.classList.toggle("active", repoOnlyFilter);
+    repoOnlyBtn.textContent = state.currentRepo
+      ? `${state.currentRepo} (${repoOnlyCount})`
+      : `Repo-scoped (${repoOnlyCount})`;
   }
 
-  const itemsForTab = activeTab === "assets" || activeTab === "local" || activeTab === "repo" ? getFilteredAssets() : allAssets;
+  const itemsForTab = activeTab === "assets" || activeTab === "local" ? getFilteredAssets() : allAssets;
   if (selectedId && !itemsForTab.some((i) => i.id === selectedId)) {
     selectedId = "";
     pendingDeleteId = "";
@@ -957,12 +947,12 @@ function render() {
     selectedContribKey = "";
   }
 
-  el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets" && activeTab !== "local" && activeTab !== "repo");
+  el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets" && activeTab !== "local");
   el("contributors-toolbar")?.classList.toggle("hidden", activeTab !== "contributors");
   el("rel-toolbar").classList.toggle("hidden", activeTab !== "relationships");
   el("events-toolbar").classList.toggle("hidden", activeTab !== "events");
   const hasDetail =
-    ((activeTab === "assets" || activeTab === "local" || activeTab === "repo" || activeTab === "relationships") && Boolean(selectedId)) ||
+    ((activeTab === "assets" || activeTab === "local" || activeTab === "relationships") && Boolean(selectedId)) ||
     (activeTab === "contributors" && Boolean(selectedContribKey));
   el("content").classList.toggle("single-pane", !hasDetail);
   el("content").classList.toggle("graph-pane", activeTab === "relationships" && hasDetail);
@@ -971,14 +961,12 @@ function render() {
 
   document.querySelectorAll(".tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === activeTab));
   document.querySelectorAll(".chip[data-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.filter === activeFilter));
-  document.querySelectorAll(".chip[data-repo-view]").forEach((btn) => btn.classList.toggle("active", btn.dataset.repoView === repoViewMode));
   document.querySelectorAll(".seg[data-kind]").forEach((btn) => btn.classList.toggle("active", btn.dataset.kind === activeKind));
   document.querySelectorAll(".seg[data-contrib-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribMode === contribMode));
   document.querySelectorAll(".chip[data-contrib-scope]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribScope === contribScope));
   document.querySelectorAll(".chip[data-event-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.eventFilter === eventFilter));
   document.querySelectorAll(".chip[data-rel-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.relMode === relMode));
   el("scope-filters")?.classList.toggle("hidden", activeTab !== "assets");
-  el("repo-tab-filters")?.classList.toggle("hidden", activeTab !== "repo");
 
   const listPane = el("list-pane");
 
@@ -1046,17 +1034,13 @@ function render() {
     const emptyMsg =
       activeTab === "local"
         ? "No local experiences right now. Copilot automatically captures reusable rules and verified fixes here."
-        : activeTab === "repo"
-          ? state.currentRepo
-            ? `No experiences scoped specifically to ${escapeHtml(state.currentRepo)} yet.`
-            : "No repo-specific experiences yet."
-          : "No experiences match the current filters.";
+        : "No experiences match the current filters.";
     listPane.innerHTML = `<div class="empty">${emptyMsg}</div>`;
     renderDetail(null);
     return;
   }
 
-  const showShareCol = activeTab === "local" || (activeTab === "repo" && items.some((i) => !i.scope || i.scope === "local"));
+  const showShareCol = activeTab === "local";
   listPane.innerHTML = `
     <div class="exp-header ${showShareCol ? "has-share" : ""}">
       <span class="col-rank">#</span>
@@ -1320,11 +1304,9 @@ async function init() {
     render();
   });
 
-  document.querySelectorAll(".chip[data-repo-view]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      repoViewMode = btn.dataset.repoView || "only";
-      render();
-    });
+  el("chip-repo-only")?.addEventListener("click", () => {
+    repoOnlyFilter = !repoOnlyFilter;
+    render();
   });
 
   el("search-input").addEventListener("input", (e) => {

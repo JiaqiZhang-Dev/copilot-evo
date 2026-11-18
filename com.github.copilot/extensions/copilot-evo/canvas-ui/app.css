@@ -493,6 +493,16 @@ body {
   font-weight: 600;
 }
 
+.chip-repo {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.chip-repo.active {
+  border-color: rgba(9, 105, 218, 0.35);
+}
+
 .content {
   flex: 1;
   min-height: 0;

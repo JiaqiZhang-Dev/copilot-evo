@@ -54,9 +54,8 @@
       <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
       <nav class="tabs" role="tablist">
-        <button class="tab active" data-tab="assets" type="button">Shared <span id="count-assets" class="pill">0</span></button>
+        <button class="tab active" data-tab="assets" type="button">Experiences <span id="count-assets" class="pill">0</span></button>
         <button class="tab" data-tab="local" type="button">Local <span id="count-local" class="pill">0</span></button>
-        <button class="tab" data-tab="repo" type="button">Repo <span id="count-repo" class="pill">0</span></button>
         <button class="tab" data-tab="contributors" type="button">Leaderboard <span id="count-contributors" class="pill">0</span></button>
         <button class="tab" data-tab="relationships" type="button">Relationships <span id="count-links" class="pill">0</span></button>
         <button class="tab" data-tab="events" type="button">Events <span id="count-events" class="pill">0</span></button>
@@ -77,10 +76,7 @@
             <button class="chip" data-filter="team" type="button" id="chip-team">Team</button>
             <button class="chip" data-filter="starter" type="button" id="chip-starter">Built-in</button>
           </div>
-          <div class="filters hidden" id="repo-tab-filters">
-            <button class="chip active" data-repo-view="only" type="button" id="chip-repo-only">Only This Repo</button>
-            <button class="chip" data-repo-view="matching" type="button" id="chip-repo-matching">Include Cross-repo</button>
-          </div>
+          <button class="chip chip-repo" id="chip-repo-only" type="button">Repo-only</button>
         </div>
       </section>
 

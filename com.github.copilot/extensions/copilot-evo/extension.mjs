@@ -31,7 +31,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.19";
+const EXTENSION_VERSION = "0.10.20";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -105,13 +105,14 @@ const sessionState = {
   recoveries: 0,
   solidifiedCount: 0,
   lastSolidifiedLocalId: "",
+  promptQueue: Promise.resolve(),
 };
 
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
-  "2. Auto-discover & solidify locally first (English only): When you resolve and verify a non-obvious error/failure (`kind: \"Fix\"`) or when the user states a reusable rule/preference (`kind: \"Rule\"`, even if also saved via `store_memory`), proactively call `evo_solidify` with `scope: \"local\"` (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
-  "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND call `ask_user` with choices `[\"Keep local (Recommended)\", \"Share to Team (promote & push)\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
+  "2. Auto-discover & solidify atomically locally first (English only): When you resolve and verify a non-obvious error/failure (`kind: \"Fix\"`) or when the user states/verifies reusable conventions (`kind: \"Rule\"`, even if also saved via `store_memory`), proactively call `evo_solidify` with `scope: \"local\"` (skip trivial typos). Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise steps); split distinct concerns (e.g., caching, linter testing, docs/build workflow) into separate `evo_solidify` calls instead of bundling them into one mega-entry. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
+  "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND, if `evo_solidify` did not already prompt via native UI (`sharedToTeam` is unset), call `ask_user` with choices `[\"Keep local (Recommended)\", \"Share to Team (promote & push)\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
 ].join("\n");
 
 function formatAssetsContext(assets) {
@@ -356,7 +357,7 @@ const session = await joinSession({
     },
     {
       name: "evo_solidify",
-      description: "Proactively record a verified reusable Rule (workflow strategy) or Fix (verified bug fix) in English into the Experience store with automatic secret/path sanitization. Default to scope: 'local'; show the preview and ask the user before promoting to 'team' or syncing via evo_sync_repo.",
+      description: "Proactively record ONE atomic, focused Rule (workflow strategy) or Fix (verified bug fix) in English into the Experience store with automatic secret/path sanitization. Never bundle multiple unrelated topics into a single experience—call evo_solidify once per distinct concern (2-4 signals, 1-3 steps). Default to scope: 'local'; confirm with the user before promoting to 'team' or syncing via evo_sync_repo.",
       parameters: {
         type: "object",
         properties: {
@@ -395,7 +396,11 @@ const session = await joinSession({
                   "",
                   "Share this experience with your team?",
                 ].join("\n");
-                const choice = await session.ui.select(msg, ["Keep local", "Share to Team"]);
+                const runSelect = sessionState.promptQueue.then(() =>
+                  session.ui.select(msg, ["Keep local", "Share to Team"])
+                );
+                sessionState.promptQueue = runSelect.catch(() => null);
+                const choice = await runSelect;
                 promptedInUi = true;
                 if (choice === "Share to Team") {
                   const promoted = manageAsset("promote_team", res.asset.id, { evoHome });
@@ -543,7 +548,7 @@ const session = await joinSession({
       inputSchema: {
         type: "object",
         properties: {
-          tab: { type: "string", enum: ["assets", "local", "repo", "contributors", "relationships", "events"] },
+          tab: { type: "string", enum: ["assets", "local", "contributors", "relationships", "events"] },
           filter: { type: "string", enum: ["all", "team", "local", "starter"] },
           assetId: { type: "string" },
         },
@@ -564,7 +569,7 @@ const session = await joinSession({
             type: "object",
             properties: {
               assetId: { type: "string" },
-              tab: { type: "string", enum: ["assets", "local", "repo", "contributors", "relationships", "events"] },
+              tab: { type: "string", enum: ["assets", "local", "contributors", "relationships", "events"] },
             },
             required: ["assetId"],
           },
