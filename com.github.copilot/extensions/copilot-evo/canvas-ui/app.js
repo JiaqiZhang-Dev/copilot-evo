@@ -264,8 +264,8 @@ function renderDetail(item) {
     }
   }
 
-  const scopeText = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "Local";
-  const repoText = item.repoScope && item.repoScope !== "*" ? item.repoScope : "Global";
+  const scopeText = item.scope === "team" ? "Team" : item.scope === "starter" ? "Built-in" : "Local";
+  const repoText = item.repoScope && item.repoScope !== "*" ? item.repoScope : "All repos";
   const refineHtml =
     item.scope !== "starter"
       ? `<div class="section-label">Refine with Copilot</div>
@@ -1059,19 +1059,18 @@ function render() {
     ${items
       .map((item, idx) => {
         const isFix = item.type === "Fix";
-        const originLabel =
+        const repoLabel =
+          item.repoScope && item.repoScope !== "*" ? escapeHtml(item.repoScope) : "All repos";
+        const footText =
           item.scope === "team"
             ? item.author
               ? `Shared by ${escapeHtml(item.author)}`
               : "Team Shared"
             : item.scope === "starter"
               ? "Built-in"
-              : "";
-        const repoTag =
-          item.repoScope && item.repoScope !== "*"
-            ? `${originLabel ? " · " : ""}${escapeHtml(item.repoScope)}`
-            : "";
-        const scopeText = `${originLabel}${repoTag}`;
+              : item.sourceProject
+                ? `From ${escapeHtml(item.sourceProject)}`
+                : "";
         const kindTooltip = isFix ? "Fix: verified bug resolution" : "Rule: reusable guideline";
         const uses = item.successCount || 0;
         const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
@@ -1092,9 +1091,10 @@ function render() {
             <div class="exp-title-line">
               <span class="exp-title">${escapeHtml(item.title)}</span>
               <span class="row-kind ${isFix ? "is-fix" : "is-rule"}" title="${kindTooltip}">${isFix ? "Fix" : "Rule"}</span>
-              ${scopeText ? `<span class="row-scope">${scopeText}</span>` : ""}
+              <span class="row-scope" title="Repository scope">${repoLabel}</span>
             </div>
             <div class="exp-summary">${escapeHtml(item.summary)}</div>
+            ${footText ? `<div class="exp-foot">${footText}</div>` : ""}
           </div>
           <span class="exp-score col-num" title="Composite score">${scoreVal}</span>
           <span class="exp-reuses col-num" title="Verified reuse count">${uses}</span>
