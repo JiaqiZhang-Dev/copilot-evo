@@ -138,6 +138,22 @@ function formatLocalTime(ts) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+function formatRelativeTime(ts) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  const diffSec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (diffSec < 60) return "just now";
+  const mins = Math.floor(diffSec / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function displayTypeWord(type) {
   return type === "Fix" ? "Fix" : type === "Rule" ? "Rule" : type || "Experience";
 }
@@ -1170,9 +1186,16 @@ function render() {
               )
               .join("")}${extraSignalCount ? `<span class="exp-label-more">+${extraSignalCount}</span>` : ""}</span>`
           : "";
+        const relTime = formatRelativeTime(item.updatedAt);
+        const timeBadge = relTime
+          ? `<span class="exp-origin" title="Updated ${escapeHtml(formatLocalTime(item.updatedAt))}">${escapeHtml(relTime)}</span>`
+          : "";
+        const footMeta = [footText ? `<span class="exp-origin">${footText}</span>` : "", timeBadge]
+          .filter(Boolean)
+          .join("<span>·</span>");
         const footHtml =
-          footText || labelsHtml
-            ? `<div class="exp-foot">${footText ? `<span class="exp-origin">${footText}</span>` : ""}${footText && labelsHtml ? `<span>·</span>` : ""}${labelsHtml}</div>`
+          footMeta || labelsHtml
+            ? `<div class="exp-foot">${footMeta}${footMeta && labelsHtml ? `<span>·</span>` : ""}${labelsHtml}</div>`
             : "";
         return `
         <div class="exp-row ${showShareCol ? "has-share" : ""} ${item.id === selectedId ? "selected" : ""} ${item.id === justSharedId ? "just-shared" : ""}" data-id="${escapeHtml(item.id)}">
