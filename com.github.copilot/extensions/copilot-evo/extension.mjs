@@ -5,6 +5,7 @@ import { createEvoCanvasServer } from "./canvas-server.mjs";
 import { sanitizePayload } from "./sanitize.mjs";
 import {
   appendEvent,
+  collectAssetsToCreditOnStop,
   countEvents,
   detectRepoSlug,
   detectSourceLabel,
@@ -36,7 +37,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.25";
+const EXTENSION_VERSION = "0.10.26";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -115,7 +116,10 @@ const sessionState = {
   turnActionTools: 0,
   turnHadRecovery: false,
   turnHadCorrection: false,
+  turnHadNegativeFeedback: false,
   turnHadStrategyCue: false,
+  turnRecalledIds: [],
+  creditedAssets: new Set(),
   solidifiedTurn: 0,
   lastStopPromptTurn: 0,
   pendingFailure: null,
@@ -193,6 +197,7 @@ const session = await joinSession({
         : [];
       sessionState.protocolInjected = true;
       sessionState.activeAssets = matched.map((a) => a.id);
+      sessionState.turnRecalledIds = matched.map((a) => a.id);
       if (matched.length) {
         recordRecallEvent(matched, { trigger: "session_start", signals });
       }
@@ -206,7 +211,9 @@ const session = await joinSession({
       sessionState.turnActionTools = 0;
       sessionState.turnHadRecovery = false;
       sessionState.turnHadCorrection = false;
+      sessionState.turnHadNegativeFeedback = hasNegativeFeedbackCue(input.prompt);
       sessionState.turnHadStrategyCue = hasStrategyCue(input.prompt);
+      sessionState.turnRecalledIds = [];
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
       const { rules, fixes, config } = loadStore(evoHome);
@@ -245,6 +252,7 @@ const session = await joinSession({
       }
       if (matched.length) {
         sessionState.activeAssets = matched.map((a) => a.id);
+        sessionState.turnRecalledIds = Array.from(new Set([...sessionState.turnRecalledIds, ...sessionState.activeAssets]));
         recordRecallEvent(matched, { trigger: "prompt", signals });
         parts.push(formatAssetsContext(matched));
       }
@@ -318,6 +326,7 @@ const session = await joinSession({
       });
       if (matched.length) {
         sessionState.activeAssets = matched.map((a) => a.id);
+        sessionState.turnRecalledIds = Array.from(new Set([...sessionState.turnRecalledIds, ...sessionState.activeAssets]));
         recordRecallEvent(matched, { trigger: "tool_failure", signals, toolName });
       }
       const hint = matched.length
@@ -390,6 +399,7 @@ const session = await joinSession({
       sessionState.recoveries++;
       sessionState.turnHadRecovery = true;
       if (sessionState.activeAssets.length) {
+        for (const id of sessionState.activeAssets) sessionState.creditedAssets.add(id);
         recordAssetOutcome(evoHome, sessionState.activeAssets, "success", "tool_recovery");
         canvasServer.broadcastUpdate("auto_outcome");
         if (getPendingScoreDeltaTotal(evoHome) >= 3) {
@@ -402,6 +412,15 @@ const session = await joinSession({
     },
 
     onAgentStop: async (input) => {
+      const toCredit = collectAssetsToCreditOnStop(sessionState, { stopHookActive: input?.stopHookActive });
+      if (toCredit.length) {
+        for (const id of toCredit) sessionState.creditedAssets.add(id);
+        recordAssetOutcome(evoHome, toCredit, "success", "applied_in_turn");
+        canvasServer.broadcastUpdate("auto_outcome");
+        if (getPendingScoreDeltaTotal(evoHome) >= 3) {
+          syncScoreDeltasOnly(evoHome).catch(() => {});
+        }
+      }
       if (!shouldRunStopReflection(sessionState, { stopHookActive: input?.stopHookActive })) {
         return;
       }

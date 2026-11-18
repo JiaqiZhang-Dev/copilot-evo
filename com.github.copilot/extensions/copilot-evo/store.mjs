@@ -535,6 +535,15 @@ export function shouldRunStopReflection(state, { stopHookActive = false } = {}) 
   );
 }
 
+export function collectAssetsToCreditOnStop(state, { stopHookActive = false } = {}) {
+  if (stopHookActive || !state) return [];
+  if ((state.turnActionTools || 0) <= 0) return [];
+  if (state.turnHadCorrection || state.turnHadNegativeFeedback) return [];
+  const recalled = Array.isArray(state.turnRecalledIds) ? state.turnRecalledIds : [];
+  const credited = state.creditedAssets instanceof Set ? state.creditedAssets : new Set();
+  return Array.from(new Set(recalled.filter((id) => id && !credited.has(id))));
+}
+
 export function extractSignals(text, extraSignals = [], options = {}) {
   const signals = new Set(extraSignals.map((s) => String(s).toLowerCase()).filter(Boolean));
   if (options.includePlatform && process.platform === "win32") {

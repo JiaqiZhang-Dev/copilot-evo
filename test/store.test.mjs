@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
+  collectAssetsToCreditOnStop,
   computeGdiBreakdown,
   computeGdiScore,
   detectAuthorName,
@@ -416,6 +417,25 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2 }, { stopHookActive: true }), false);
     assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2, lastStopPromptTurn: 1 }, {}), false);
     assert.equal(shouldRunStopReflection({ turnIndex: 2, turnHadCorrection: true }, {}), true);
+    assert.deepEqual(
+      collectAssetsToCreditOnStop({ turnActionTools: 0, turnRecalledIds: ["exp-a"] }, {}),
+      []
+    );
+    assert.deepEqual(
+      collectAssetsToCreditOnStop({ turnActionTools: 1, turnHadCorrection: true, turnRecalledIds: ["exp-a"] }, {}),
+      []
+    );
+    assert.deepEqual(
+      collectAssetsToCreditOnStop(
+        {
+          turnActionTools: 2,
+          turnRecalledIds: ["exp-a", "exp-b"],
+          creditedAssets: new Set(["exp-a"]),
+        },
+        {}
+      ),
+      ["exp-b"]
+    );
     assert.equal(isTrivialToolFailure("create", "File already exists"), true);
     assert.equal(isTrivialToolFailure("edit", "No match found: old_str not found"), true);
     assert.equal(isTrivialToolFailure("powershell", "npm ERR! code E401"), false);
