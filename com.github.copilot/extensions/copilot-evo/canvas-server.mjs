@@ -8,6 +8,7 @@ import {
   computeGdiBreakdown,
   countEvents,
   getAssetRelationships,
+  getPendingScoreDeltaTotal,
   loadStore,
   manageAsset,
   readRecentEvents,
@@ -15,6 +16,7 @@ import {
   runAssetValidation,
   syncRepoPull,
   syncRepoPush,
+  syncScoreDeltasOnly,
 } from "./store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -216,6 +218,9 @@ export function createEvoCanvasServer({
       } else if (reqUrl.pathname === "/api/assets/delete") {
         result = manageAsset("delete", body.id, { evoHome });
       } else if (reqUrl.pathname === "/api/sync/pull") {
+        if (getPendingScoreDeltaTotal(evoHome) > 0) {
+          await syncScoreDeltasOnly(evoHome).catch(() => {});
+        }
         result = await syncRepoPull(evoHome);
       } else if (reqUrl.pathname === "/api/sync/push") {
         result = await syncRepoPush(evoHome, { commitMessage: body.commitMessage });
