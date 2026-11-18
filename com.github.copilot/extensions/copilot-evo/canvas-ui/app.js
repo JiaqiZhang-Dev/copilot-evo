@@ -1032,9 +1032,10 @@ function render() {
             ? `<span class="exp-rank is-top" title="Rank #1">${trophySvg}</span>`
             : `<span class="exp-rank" title="Rank #${idx + 1}">${idx + 1}</span>`;
         const isSharing = sharingId === item.id;
+        const shareIconSvg = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 10.5V2.8m0 0L5.2 5.6M8 2.8l2.8 2.8M3.2 10.2v2.1a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1v-2.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
         const shareAction =
           !item.scope || item.scope === "local"
-            ? `<button class="row-share" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share to team repository">${isSharing ? "Sharing..." : "Share"}</button>`
+            ? `<button class="row-share-icon" data-quick-share="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Share to team repository" aria-label="Share to team repository">${shareIconSvg}</button>`
             : "";
         return `
         <div class="exp-row ${item.id === selectedId ? "selected" : ""} ${item.id === justSharedId ? "just-shared" : ""}" data-id="${escapeHtml(item.id)}">
