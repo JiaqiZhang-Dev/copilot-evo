@@ -24,7 +24,8 @@ flowchart LR
 - **`onUserPromptSubmitted`**: Extracts intent signals and strategy cues from each user prompt, recalls top matching experiences filtered by `repoScope`, and watches for negative feedback cues to support automated downvoting or superseding.
 - **`onPreToolUse`**: Evaluates `guardrail` patterns (such as Windows heredoc safety warnings) against tool arguments before execution.
 - **`onPostToolUseFailure`**: Filters trivial editor/file-lookup errors and 10-second duplicate bursts, appends a sanitized `tool_failure` event tagged with session metadata, and recalls relevant `Fix` or `Rule` experiences.
-- **`onPostToolUse`**: Detects recovery transitions after failures and bridges `store_memory` saves into `evo_solidify` so durable preferences also enter the Experience store. Updates `successCount` / `pendingSuccessDelta` on active experiences and triggers background score-delta syncs when pending deltas reach `3`.
+- **`onPostToolUse`**: Detects recovery transitions after failures, tracks cross-turn revisions, and bridges `store_memory` saves into `evo_solidify` so durable preferences also enter the Experience store. Updates `successCount` / `pendingSuccessDelta` on active experiences and triggers background score-delta syncs when pending deltas reach `3`.
+- **`onAgentStop`**: Performs a single-pass semantic reflection (guarded by `stopHookActive`) when a substantive turn finishes without calling `evo_solidify`, letting the model capture reusable engineering rules or non-obvious fixes while skipping routine Q&A or trivial edits.
 - **`onSessionEnd`**: Flushes remaining pending score deltas on team experiences and appends a `session_summary` event when failures or solidifications occurred.
 
 ## Data Model & Scoring (`store.mjs`)

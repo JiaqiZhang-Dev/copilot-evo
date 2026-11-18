@@ -19,6 +19,7 @@ import {
   hashProjectId,
   importBundle,
   initStore,
+  isActionToolName,
   isTrivialToolFailure,
   loadStore,
   manageAsset,
@@ -27,6 +28,7 @@ import {
   resolveSyncRepoPath,
   selectAssets,
   setEventSessionContext,
+  shouldRunStopReflection,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -34,7 +36,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.23";
+const EXTENSION_VERSION = "0.10.25";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -110,6 +112,12 @@ const canvasServer = createEvoCanvasServer({
 const sessionState = {
   protocolInjected: false,
   turnIndex: 0,
+  turnActionTools: 0,
+  turnHadRecovery: false,
+  turnHadCorrection: false,
+  turnHadStrategyCue: false,
+  solidifiedTurn: 0,
+  lastStopPromptTurn: 0,
   pendingFailure: null,
   pendingCorrection: null,
   activeAssets: [],
@@ -195,6 +203,10 @@ const session = await joinSession({
 
     onUserPromptSubmitted: async (input) => {
       sessionState.turnIndex++;
+      sessionState.turnActionTools = 0;
+      sessionState.turnHadRecovery = false;
+      sessionState.turnHadCorrection = false;
+      sessionState.turnHadStrategyCue = hasStrategyCue(input.prompt);
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
       const { rules, fixes, config } = loadStore(evoHome);
@@ -224,6 +236,7 @@ const session = await joinSession({
       }
       if (hasCorrectionOrPitfallCue(input.prompt)) {
         sessionState.pendingCorrection = { ts: Date.now() };
+        sessionState.turnHadCorrection = true;
         parts.push(
           "[copilot-evo pitfall/correction signal] The user reported an issue, missing behavior, or correction. After resolving and verifying it, proactively load `evo_solidify` via `tool_search_tool` (if needed) and record ONE atomic local `Rule` or `Fix` if this revealed a reusable platform, tool, rendering, or repository pitfall—without waiting for the user to ask."
         );
@@ -324,6 +337,10 @@ const session = await joinSession({
       }
       if (toolName.startsWith("evo_")) return;
 
+      if (isActionToolName(toolName)) {
+        sessionState.turnActionTools++;
+      }
+
       if (toolName === "store_memory" && Date.now() - sessionState.lastSolidifyAt > 15000) {
         return {
           additionalContext:
@@ -354,6 +371,7 @@ const session = await joinSession({
           now - prev.ts < 15 * 60 * 1000 &&
           now - sessionState.lastSolidifyAt > 15000
         ) {
+          sessionState.turnHadCorrection = true;
           return {
             additionalContext: `[copilot-evo revision check] You just revised \`${targetKey}\` across user turns. If this fixed a non-obvious mistake, rendering quirk, or missing convention that could recur, proactively call \`evo_solidify\` in English with \`scope: "local"\` now without waiting to be asked.`,
           };
@@ -370,6 +388,7 @@ const session = await joinSession({
       const resolvedSignals = sessionState.pendingFailure.signals;
       sessionState.pendingFailure = null;
       sessionState.recoveries++;
+      sessionState.turnHadRecovery = true;
       if (sessionState.activeAssets.length) {
         recordAssetOutcome(evoHome, sessionState.activeAssets, "success", "tool_recovery");
         canvasServer.broadcastUpdate("auto_outcome");
@@ -379,6 +398,18 @@ const session = await joinSession({
       }
       return {
         additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable, load \`evo_solidify\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` in English with \`scope: "local"\`, show the preview, and ask the user before promoting to \`team\` or syncing via \`evo_sync_repo\`.`,
+      };
+    },
+
+    onAgentStop: async (input) => {
+      if (!shouldRunStopReflection(sessionState, { stopHookActive: input?.stopHookActive })) {
+        return;
+      }
+      sessionState.lastStopPromptTurn = sessionState.turnIndex;
+      return {
+        decision: "block",
+        reason:
+          "[copilot-evo semantic reflection] Before finishing this turn, briefly assess whether your work uncovered a genuinely reusable engineering Rule (workflow, versioning/deployment convention, API/rendering quirk, or repo pattern) or verified non-obvious Fix. Skip trivial edits, routine doc/README tweaks, or already-stored rules (check `evo_search` if unsure). If yes, call `evo_solidify` atomically in English (`scope: \"local\"`, one focused topic per entry). Otherwise simply conclude without calling `evo_solidify`.",
       };
     },
 
@@ -471,6 +502,7 @@ const session = await joinSession({
         if (res.ok) {
           sessionState.solidifiedCount++;
           sessionState.lastSolidifyAt = Date.now();
+          sessionState.solidifiedTurn = sessionState.turnIndex;
           sessionState.pendingCorrection = null;
           sessionState.lastSolidifiedLocalId = "";
           if (res.asset.scope === "local") {

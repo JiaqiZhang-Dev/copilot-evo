@@ -24,8 +24,6 @@ const REDACT_PATTERNS = [
   /\/Users\/[^\s"',;)}\]]+/g,
   /[A-Z]:\\Users\\[^\s"',;)}\]]+/g,
   /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
-  /\.env\.[a-zA-Z]+\b/g,
-  /(?<=[\\/])\.env\b/g,
 ];
 
 const REDACT_ALLOWLIST = [

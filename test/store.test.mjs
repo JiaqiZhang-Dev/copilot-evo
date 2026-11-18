@@ -19,6 +19,7 @@ import {
   hasStrategyCue,
   importBundle,
   initStore,
+  isActionToolName,
   isTrivialToolFailure,
   loadStore,
   manageAsset,
@@ -29,6 +30,7 @@ import {
   runAssetValidation,
   selectAssets,
   setEventSessionContext,
+  shouldRunStopReflection,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -398,6 +400,7 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.deepEqual(updated, ["exp-derived-fix"]);
     assert.equal(hasNegativeFeedbackCue("这个方案不对，还是报错"), true);
     assert.equal(hasNegativeFeedbackCue("Looks good"), false);
+    assert.equal(hasStrategyCue("we should bump version across envs"), true);
     assert.equal(hasCorrectionOrPitfallCue("the commit can not show in comment"), true);
     assert.equal(hasCorrectionOrPitfallCue("这里看不到链接"), true);
     assert.equal(hasCorrectionOrPitfallCue("Looks good, thanks"), false);
@@ -405,6 +408,14 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(extractToolTargetKey("edit", { path: "C:\\repo\\README.md" }), "file:c:\\repo\\readme.md");
     assert.equal(extractToolTargetKey("reply_to_review_thread", { thread_id: "PRRT_123" }), "pr_thread:PRRT_123");
     assert.equal(extractToolTargetKey("powershell", { command: "gh api repos/o/r/pulls/comments/4610709428 -X PATCH" }), "gh_comment:4610709428");
+    assert.equal(isActionToolName("view"), false);
+    assert.equal(isActionToolName("edit"), true);
+    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 0 }, {}), false);
+    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2 }, {}), true);
+    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2, solidifiedTurn: 1 }, {}), false);
+    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2 }, { stopHookActive: true }), false);
+    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2, lastStopPromptTurn: 1 }, {}), false);
+    assert.equal(shouldRunStopReflection({ turnIndex: 2, turnHadCorrection: true }, {}), true);
     assert.equal(isTrivialToolFailure("create", "File already exists"), true);
     assert.equal(isTrivialToolFailure("edit", "No match found: old_str not found"), true);
     assert.equal(isTrivialToolFailure("powershell", "npm ERR! code E401"), false);

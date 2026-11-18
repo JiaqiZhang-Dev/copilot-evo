@@ -28,8 +28,8 @@ test("redactString masks tokens, user paths, emails, and basic auth", () => {
   assert.ok(!cleaned.includes("alice@company.com"));
 });
 
-test("redactString preserves allowlisted CI paths and noreply emails", () => {
-  const safe = "/home/runner/work/repo/file.js by 12345+bot@users.noreply.github.com";
+test("redactString preserves allowlisted CI paths, noreply emails, and benign env filenames", () => {
+  const safe = "/home/runner/work/repo/file.js by 12345+bot@users.noreply.github.com in .env.preprod and .env.prod";
   assert.equal(redactString(safe), safe);
 });
 

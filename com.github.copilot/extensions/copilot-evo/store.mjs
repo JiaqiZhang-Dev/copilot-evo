@@ -456,7 +456,7 @@ const SIGNAL_PATTERNS = [
   ["secret_leak", /\b(?:secret|token|password|api[_-]?key|redact|privacy)\b/i],
 ];
 
-const STRATEGY_CUE_RE = /(?:记住|以后|下次|踩坑|经验|策略|规范|沉淀|固化|避免|总是|不要再|\b(?:always|never|remember|pitfall|workaround|lesson|best practice|convention)\b)/i;
+const STRATEGY_CUE_RE = /(?:记住|以后|下次|踩坑|经验|策略|规范|沉淀|固化|避免|总是|不要再|应该|记得|\b(?:always|never|remember|pitfall|workaround|lesson|best practice|convention|we should|make sure to|don't forget to)\b)/i;
 const NEGATIVE_FEEDBACK_RE = /(?:不对|没用|无效|还是报错|不行|别这么做|错了|过时|\b(?:wrong|didn't work|did not work|doesn't work|still failing|not helpful|outdated|stop doing)\b)/i;
 const CORRECTION_OR_PITFALL_RE = /(?:不对|没用|无效|还是报错|不行|别这么做|错了|过时|看不到|没显示|显示不出来|不生效|没生效|漏了|打不开|\b(?:wrong|didn't work|did not work|doesn't work|not working|still failing|can\s*not\s+show|cannot\s+show|doesn't\s+show|not\s+showing|didn't\s+render|not\s+rendered|not\s+clickable|doesn't\s+link|broken|missing)\b)/i;
 
@@ -512,6 +512,27 @@ export function extractToolTargetKey(toolName, toolArgs) {
     if (/\bgh\s+api\b.*\bPATCH\b/i.test(cmd)) return "gh_api_patch";
   }
   return "";
+}
+
+export function isActionToolName(toolName) {
+  const tool = String(toolName || "").trim();
+  if (!tool || tool.startsWith("evo_")) return false;
+  return !/^(?:view|glob|grep|list_|get_|read_|tool_search_tool|ask_user|open_canvas|navigate_|skill|rename_session|store_memory|vote_memory)/i.test(
+    tool
+  );
+}
+
+export function shouldRunStopReflection(state, { stopHookActive = false } = {}) {
+  if (stopHookActive) return false;
+  if (!state || !state.turnIndex) return false;
+  if (state.lastStopPromptTurn === state.turnIndex) return false;
+  if (state.solidifiedTurn === state.turnIndex) return false;
+  return Boolean(
+    state.turnHadRecovery ||
+      state.turnHadCorrection ||
+      state.turnHadStrategyCue ||
+      (state.turnActionTools || 0) >= 2
+  );
 }
 
 export function extractSignals(text, extraSignals = [], options = {}) {
