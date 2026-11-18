@@ -23,5 +23,28 @@
     "updatedAt": "2026-11-18T03:57:38.521Z",
     "successCount": 1,
     "failureCount": 0
+  },
+  {
+    "id": "exp-write-docs-as-current-state-without-progress",
+    "type": "Rule",
+    "title": "Write docs as current state",
+    "summary": "Document the current state directly without narrating intermediate progress or past decisions.",
+    "signals": [
+      "documentation",
+      "readme",
+      "docs_style"
+    ],
+    "strategy": [
+      "Write features and usage in the present tense as the current state.",
+      "Omit intermediate progress, past decisions, and stale terminology."
+    ],
+    "solution": "",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "*",
+    "sourceProject": "chat",
+    "author": "Jiaqi Zhang",
+    "updatedAt": "2026-11-18T06:15:18.256Z",
+    "successCount": 1
   }
 ]
