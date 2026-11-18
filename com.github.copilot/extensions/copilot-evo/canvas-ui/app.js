@@ -113,8 +113,14 @@ function getFilteredEvents() {
   let events = state?.events || [];
   if (eventFilter === "signals") {
     events = events.filter((ev) => ev.event === "tool_failure");
+  } else if (eventFilter === "reuses") {
+    events = events.filter((ev) =>
+      ["recall", "auto_success", "auto_failure", "validation_pass", "validation_fail", "feedback_upvote", "feedback_downvote"].includes(ev.event)
+    );
   } else if (eventFilter === "evolution") {
-    events = events.filter((ev) => ev.event !== "tool_failure");
+    events = events.filter((ev) =>
+      ["solidify", "promote_team", "sync_push", "sync_pull", "sync_scores", "delete"].includes(ev.event)
+    );
   }
   const targetSession =
     eventSessionFilter === "current" ? state?.currentSession?.sessionId || "" : eventSessionFilter;
@@ -136,8 +142,24 @@ function displayTypeWord(type) {
   return type === "Fix" ? "Fix" : type === "Rule" ? "Rule" : type || "Experience";
 }
 
+function formatRecallTrigger(ev) {
+  if (ev.trigger === "session_start") return "on session start";
+  if (ev.trigger === "tool_failure") return `after ${ev.toolName || "tool"} failure`;
+  if (ev.trigger === "search") return "via search";
+  return "on prompt";
+}
+
 function formatEventMeta(ev) {
   switch (ev.event) {
+    case "recall": {
+      const names = (ev.assetTitles && ev.assetTitles.length ? ev.assetTitles : ev.assetIds || []).filter(Boolean);
+      const where = ev.repo || ev.project || "session";
+      return {
+        label: "Recalled",
+        cls: "ev-ok",
+        desc: `Applied ${formatRecallTrigger(ev)} in ${where}${names.length ? ` (${names.length})` : ""}`,
+      };
+    }
     case "solidify":
       return { label: "Solidified", cls: "ev-ok", desc: `${displayTypeWord(ev.assetType)}: ${ev.assetId || ""}` };
     case "sync_push":
@@ -280,6 +302,36 @@ function renderDetail(item) {
     `Updated: ${escapeHtml(item.updatedAt ? formatLocalTime(item.updatedAt) : "bundled")}`,
   ].filter(Boolean);
 
+  const usageEvents = (state?.events || [])
+    .filter(
+      (ev) =>
+        ["recall", "auto_success", "auto_failure", "validation_pass", "validation_fail"].includes(ev.event) &&
+        (ev.assetId === item.id || (ev.assetIds || []).includes(item.id))
+    )
+    .slice(0, 5);
+  const usageHtml = `<div class="section-label">Recent Usage</div>${
+    usageEvents.length
+      ? `<div class="usage-list">${usageEvents
+          .map((ev) => {
+            const actionText =
+              ev.event === "recall"
+                ? `Recalled ${formatRecallTrigger(ev)}`
+                : ev.event === "auto_success"
+                  ? "Verified reuse"
+                  : ev.event === "validation_pass"
+                    ? "Validation passed"
+                    : ev.event === "validation_fail"
+                      ? "Validation failed"
+                      : "Feedback";
+            const where = [ev.sessionName || (ev.sessionId ? ev.sessionId.slice(0, 8) : ""), ev.repo || ev.project || ""]
+              .filter(Boolean)
+              .join(" · ");
+            return `<div class="usage-item"><span><strong>${escapeHtml(actionText)}</strong>${where ? ` in ${escapeHtml(where)}` : ""}</span><span>${escapeHtml(formatLocalTime(ev.ts))}</span></div>`;
+          })
+          .join("")}</div>`
+      : `<p class="muted">No recall or verification events recorded yet.</p>`
+  }`;
+
   pane.innerHTML = `
     <div class="detail-head">
       <div class="detail-title-row">
@@ -318,6 +370,7 @@ function renderDetail(item) {
       <div class="mini-dim">Lineage <strong>${item.gdiBreakdown?.lineage ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.lineage ?? 0}%"></div></div></div>
       <div class="mini-dim">Freshness <strong>${item.gdiBreakdown?.freshness ?? 0}</strong><div class="bar-track"><div class="bar-fill" style="width:${item.gdiBreakdown?.freshness ?? 0}%"></div></div></div>
     </div>
+    ${usageHtml}
     ${lineageHtml}
     <div class="section-label">Provenance (Auto-scored from loop)</div>
     <p class="muted">${provenanceParts.join(" · ")}</p>
@@ -989,6 +1042,7 @@ function render() {
       sessionBtn.textContent = curSname ? `Session: ${curSname}` : curSid ? `Session: ${curSid.slice(0, 8)}` : "This Session";
     }
     const events = getFilteredEvents();
+    const assetById = new Map(allAssets.map((a) => [a.id, a]));
     listPane.innerHTML = events.length
       ? `<div class="timeline">${events
           .map((ev) => {
@@ -998,11 +1052,21 @@ function render() {
             const shortSid = ev.sessionId ? ev.sessionId.slice(0, 8) : "";
             const sessionLabel = ev.sessionName
               ? `${ev.sessionName}${shortSid ? ` · ${shortSid}` : ""}`
-              : shortSid || (ev.project ? ev.project : "");
+              : shortSid || "";
             const sessionBadge = ev.sessionId
               ? `<button class="event-session-pill" data-ev-session="${escapeHtml(ev.sessionId)}" type="button" title="Filter events from session ${escapeHtml(ev.sessionId)}">${escapeHtml(sessionLabel)}</button>`
-              : sessionLabel
-                ? `<span class="badge">${escapeHtml(sessionLabel)}</span>`
+              : "";
+            const placeLabel = ev.repo || ev.project || "";
+            const placeBadge = placeLabel ? `<span class="event-repo-pill" title="Workspace / repository">${escapeHtml(placeLabel)}</span>` : "";
+            const linkedIds = (ev.assetIds && ev.assetIds.length ? ev.assetIds : ev.assetId ? [ev.assetId] : []).filter(Boolean);
+            const assetChips =
+              linkedIds.length && ev.event !== "delete"
+                ? `<div class="event-asset-chips">${linkedIds
+                    .map((id, idx) => {
+                      const title = ev.assetTitles?.[idx] || assetById.get(id)?.title || id;
+                      return `<button class="event-asset-chip" data-ev-jump="${escapeHtml(id)}" type="button" title="Open ${escapeHtml(id)}">${escapeHtml(title)}</button>`;
+                    })
+                    .join("")}</div>`
                 : "";
             return `
             <div class="event-row ${isWarn ? "is-warn" : ""}">
@@ -1010,10 +1074,12 @@ function render() {
                 <div class="event-top-left">
                   <span class="badge ${meta.cls}">${escapeHtml(meta.label)}</span>
                   ${sessionBadge}
+                  ${placeBadge}
                 </div>
                 <span class="muted" title="${escapeHtml(ev.ts || "")}">${escapeHtml(formatLocalTime(ev.ts))}</span>
               </div>
               <div class="event-detail">${escapeHtml(meta.desc)}</div>
+              ${assetChips}
               ${sigs ? `<div class="badges">${sigs}</div>` : ""}
             </div>`;
           })
@@ -1023,6 +1089,18 @@ function render() {
       btn.addEventListener("click", () => {
         const sid = btn.dataset.evSession;
         eventSessionFilter = eventSessionFilter === sid ? "" : sid;
+        render();
+      });
+    });
+    listPane.querySelectorAll("[data-ev-jump]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = allAssets.find((a) => a.id === btn.dataset.evJump);
+        if (!target) return;
+        activeTab = !target.scope || target.scope === "local" ? "local" : "assets";
+        activeFilter = "all";
+        activeKind = "all";
+        selectedId = target.id;
+        pendingDeleteId = "";
         render();
       });
     });

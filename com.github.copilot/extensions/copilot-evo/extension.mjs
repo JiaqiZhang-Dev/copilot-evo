@@ -7,6 +7,7 @@ import {
   appendEvent,
   countEvents,
   detectRepoSlug,
+  detectSourceLabel,
   exportBundle,
   extractSignals,
   formatAssetPreview,
@@ -31,12 +32,19 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.20";
+const EXTENSION_VERSION = "0.10.21";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
 function getActiveSessionMeta() {
-  if (!activeSession?.sessionId) return {};
+  const repo = detectRepoSlug(lastWorkingDirectory);
+  const project = detectSourceLabel(lastWorkingDirectory);
+  if (!activeSession?.sessionId) {
+    return {
+      ...(repo ? { repo } : {}),
+      ...(project ? { project } : {}),
+    };
+  }
   let sessionName = "";
   const wsPath = activeSession.workspacePath;
   if (wsPath) {
@@ -56,6 +64,8 @@ function getActiveSessionMeta() {
   return {
     sessionId: activeSession.sessionId,
     ...(sessionName ? { sessionName } : {}),
+    ...(repo ? { repo } : {}),
+    ...(project ? { project } : {}),
   };
 }
 
@@ -100,6 +110,7 @@ const sessionState = {
   pendingFailure: null,
   activeAssets: [],
   recentFailureFingerprints: new Map(),
+  recentRecallAt: new Map(),
   lastSolidifyAt: 0,
   recentFailures: [],
   recoveries: 0,
@@ -107,6 +118,30 @@ const sessionState = {
   lastSolidifiedLocalId: "",
   promptQueue: Promise.resolve(),
 };
+
+const RECALL_LOG_COOLDOWN_MS = 5 * 60 * 1000;
+
+function recordRecallEvent(matched, { trigger, signals = [], toolName = "" } = {}) {
+  if (!Array.isArray(matched) || !matched.length) return;
+  const now = Date.now();
+  const toLog = matched.filter((asset) => {
+    const last = sessionState.recentRecallAt.get(asset.id) || 0;
+    return now - last >= RECALL_LOG_COOLDOWN_MS;
+  });
+  if (!toLog.length) return;
+  for (const asset of toLog) {
+    sessionState.recentRecallAt.set(asset.id, now);
+  }
+  appendEvent(evoHome, {
+    event: "recall",
+    trigger: trigger || "prompt",
+    ...(toolName ? { toolName } : {}),
+    assetIds: toLog.map((a) => a.id),
+    assetTitles: toLog.map((a) => a.title),
+    signals: signals.slice(0, 6),
+  });
+  canvasServer.broadcastUpdate("recall");
+}
 
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
@@ -145,6 +180,9 @@ const session = await joinSession({
         : [];
       sessionState.protocolInjected = true;
       sessionState.activeAssets = matched.map((a) => a.id);
+      if (matched.length) {
+        recordRecallEvent(matched, { trigger: "session_start", signals });
+      }
       const parts = [ACTIVE_PROTOCOL];
       if (matched.length) parts.push(formatAssetsContext(matched));
       return { additionalContext: parts.join("\n\n") };
@@ -180,6 +218,7 @@ const session = await joinSession({
       }
       if (matched.length) {
         sessionState.activeAssets = matched.map((a) => a.id);
+        recordRecallEvent(matched, { trigger: "prompt", signals });
         parts.push(formatAssetsContext(matched));
       }
       if (hasStrategyCue(input.prompt)) {
@@ -252,6 +291,7 @@ const session = await joinSession({
       });
       if (matched.length) {
         sessionState.activeAssets = matched.map((a) => a.id);
+        recordRecallEvent(matched, { trigger: "tool_failure", signals, toolName });
       }
       const hint = matched.length
         ? `${formatAssetsContext(matched)}\nOnce resolved and verified, proactively call \`evo_solidify\` with \`scope: "local"\`, show the preview, and ask before promoting to \`team\` or syncing.`
@@ -344,6 +384,9 @@ const session = await joinSession({
           fixes,
           limit: args.limit || 5,
         });
+        if (results.length && (args.query || (args.signals && args.signals.length))) {
+          recordRecallEvent(results, { trigger: "search", signals });
+        }
         return JSON.stringify(
           {
             count: results.length,

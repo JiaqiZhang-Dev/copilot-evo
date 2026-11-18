@@ -494,12 +494,18 @@ test("runAssetValidation executes whitelisted command and updates outcome", asyn
     const updated = loadStore(home).fixes.find((f) => f.id === "exp-arena-check");
     assert.equal(updated.successCount, 2);
 
-    setEventSessionContext(() => ({ sessionId: "623e92ec-test-session", sessionName: "Test Session" }));
+    setEventSessionContext(() => ({
+      sessionId: "623e92ec-test-session",
+      sessionName: "Test Session",
+      repo: "JiaqiZhang-Dev/copilot-evo",
+      project: "JiaqiZhang-Dev/copilot-evo",
+    }));
     try {
       recordAssetOutcome(home, ["exp-arena-check"], "success", "session_tag_check");
       const evs = readRecentEvents(home, 5);
       assert.equal(evs[0].sessionId, "623e92ec-test-session");
       assert.equal(evs[0].sessionName, "Test Session");
+      assert.equal(evs[0].repo, "JiaqiZhang-Dev/copilot-evo");
     } finally {
       setEventSessionContext(null);
     }

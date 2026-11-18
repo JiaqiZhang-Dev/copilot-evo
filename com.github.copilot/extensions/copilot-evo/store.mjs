@@ -153,6 +153,8 @@ function getEventSessionContext() {
     const out = {};
     if (raw.sessionId) out.sessionId = String(raw.sessionId).slice(0, 64);
     if (raw.sessionName) out.sessionName = String(raw.sessionName).slice(0, 60);
+    if (raw.repo) out.repo = String(raw.repo).slice(0, 120);
+    if (raw.project) out.project = String(raw.project).slice(0, 120);
     return out;
   } catch {
     return {};
