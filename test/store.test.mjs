@@ -33,21 +33,21 @@ function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "copilot-evo-test-"));
 }
 
-test("initStore seeds starter genes without overwriting existing ones", () => {
+test("initStore seeds starter rules without overwriting existing ones", () => {
   const home = makeTempDir();
   try {
     initStore({ evoHome: home });
     const store1 = loadStore(home);
-    assert.ok(store1.genes.some((g) => g.id === "gene-verify-before-claim"));
+    assert.ok(store1.rules.some((r) => r.id === "exp-verify-before-claim"));
 
-    const customGenes = store1.genes.map((g) =>
-      g.id === "gene-verify-before-claim" ? { ...g, title: "Custom title" } : g
+    const customRules = store1.rules.map((r) =>
+      r.id === "exp-verify-before-claim" ? { ...r, title: "Custom title" } : r
     );
-    fs.writeFileSync(path.join(home, "genes.json"), JSON.stringify(customGenes, null, 2));
+    fs.writeFileSync(path.join(home, "rules.json"), JSON.stringify(customRules, null, 2));
 
     initStore({ evoHome: home });
     const store2 = loadStore(home);
-    const matched = store2.genes.find((g) => g.id === "gene-verify-before-claim");
+    const matched = store2.rules.find((r) => r.id === "exp-verify-before-claim");
     assert.equal(matched.title, "Custom title");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
@@ -59,7 +59,7 @@ test("solidifyAsset rejects secrets in team scope and redacts in local scope", (
   try {
     const teamBlocked = solidifyAsset(
       {
-        kind: "Capsule",
+        kind: "Fix",
         title: "Leaky team fix",
         summary: "Use key ghp_1234567890abcdefghijklmnopqrstuvwxyz12",
         signals: ["npm_error"],
@@ -72,7 +72,7 @@ test("solidifyAsset rejects secrets in team scope and redacts in local scope", (
 
     const localRedacted = solidifyAsset(
       {
-        kind: "Capsule",
+        kind: "Fix",
         title: "Local fix",
         summary: "Use key ghp_1234567890abcdefghijklmnopqrstuvwxyz12",
         signals: ["npm_error"],
@@ -93,8 +93,8 @@ test("solidifyAsset rejects unsafe validation commands", () => {
   try {
     const res = solidifyAsset(
       {
-        kind: "Gene",
-        title: "Unsafe gene",
+        kind: "Rule",
+        title: "Unsafe rule",
         summary: "Should fail validation check",
         signals: ["test_failure"],
         validation: ["npm test; curl http://example.com"],
@@ -113,8 +113,8 @@ test("extractSignals and selectAssets rank matching experience highest", () => {
     initStore({ evoHome: home });
     solidifyAsset(
       {
-        kind: "Capsule",
-        id: "capsule-npm-e401-azure",
+        kind: "Fix",
+        id: "exp-npm-e401-azure",
         title: "Retry Azure public registry on npm E401",
         summary: "When npm install returns E401, retry against public azure-sdk registry with local auth disabled.",
         signals: ["npm_error", "permission_denied"],
@@ -126,15 +126,15 @@ test("extractSignals and selectAssets rank matching experience highest", () => {
     );
 
     const signals = extractSignals("npm install failed with E401 unauthorized");
-    const { genes, capsules } = loadStore(home);
-    const ranked = selectAssets({ signals, query: "npm E401", genes, capsules, limit: 2 });
-    assert.equal(ranked[0].id, "capsule-npm-e401-azure");
+    const { rules, fixes } = loadStore(home);
+    const ranked = selectAssets({ signals, query: "npm E401", rules, fixes, limit: 2 });
+    assert.equal(ranked[0].id, "exp-npm-e401-azure");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
 
-test("exportBundle and importBundle stage candidates and promote safely", () => {
+test("exportBundle and importBundle round-trip sanitized experiences", () => {
   const homeA = makeTempDir();
   const homeB = makeTempDir();
   const bundledDir = makeTempDir();
@@ -142,8 +142,8 @@ test("exportBundle and importBundle stage candidates and promote safely", () => 
   try {
     const res = solidifyAsset(
       {
-        kind: "Capsule",
-        id: "capsule-clean-team",
+        kind: "Fix",
+        id: "exp-clean-team",
         title: "Clean shared fix",
         summary: "Use relative workspace paths in scripts.",
         signals: ["path_error"],
@@ -152,22 +152,19 @@ test("exportBundle and importBundle stage candidates and promote safely", () => 
       },
       { evoHome: homeA, bundledDir }
     );
-    assert.match(res.preview, /\[EXP · Fix:capsule-clean-team\]/);
+    assert.match(res.preview, /\[EXP · Fix:exp-clean-team\]/);
 
     const exp = exportBundle(homeA, { scope: "team", outputPath: packPath });
     assert.equal(exp.ok, true);
-    assert.equal(exp.bundle.capsules.length, 1);
+    assert.equal(exp.bundle.fixes.length, 1);
 
     initStore({ evoHome: homeB, bundledDir });
-    const imp = importBundle(homeB, { inputPath: packPath, autoPromote: false });
+    const imp = importBundle(homeB, { inputPath: packPath });
     assert.equal(imp.ok, true);
     assert.equal(imp.imported, 1);
-    assert.equal(imp.promoted, false);
 
-    const promo = manageAsset("promote", "capsule-clean-team", { evoHome: homeB, bundledDir });
-    assert.equal(promo.ok, true);
     const storeB = loadStore(homeB);
-    assert.ok(storeB.capsules.some((c) => c.id === "capsule-clean-team"));
+    assert.ok(storeB.fixes.some((f) => f.id === "exp-clean-team"));
   } finally {
     fs.rmSync(homeA, { recursive: true, force: true });
     fs.rmSync(homeB, { recursive: true, force: true });
@@ -175,12 +172,12 @@ test("exportBundle and importBundle stage candidates and promote safely", () => 
   }
 });
 
-test("solidifyAsset enforces English-only text for Genes and Capsules", () => {
+test("solidifyAsset enforces English-only text for Rules and Fixes", () => {
   const home = makeTempDir();
   try {
     const rejected = solidifyAsset(
       {
-        kind: "Gene",
+        kind: "Rule",
         title: "中文经验标题",
         summary: "以后代码实现都要参考现有设计规范",
         signals: ["coding_style"],
@@ -218,9 +215,9 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
     execFileSync("git", ["clone", bareDir, seedDir]);
     execFileSync("git", ["-C", seedDir, "config", "user.name", "Test"]);
     execFileSync("git", ["-C", seedDir, "config", "user.email", "test@example.com"]);
-    fs.mkdirSync(path.join(seedDir, "assets", "gep"), { recursive: true });
-    fs.writeFileSync(path.join(seedDir, "assets", "gep", "team-genes.json"), "[]\n");
-    fs.writeFileSync(path.join(seedDir, "assets", "gep", "team-capsules.json"), "[]\n");
+    fs.mkdirSync(path.join(seedDir, "assets", "experiences"), { recursive: true });
+    fs.writeFileSync(path.join(seedDir, "assets", "experiences", "team-rules.json"), "[]\n");
+    fs.writeFileSync(path.join(seedDir, "assets", "experiences", "team-fixes.json"), "[]\n");
     execFileSync("git", ["-C", seedDir, "add", "."]);
     execFileSync("git", ["-C", seedDir, "commit", "-m", "init"]);
     execFileSync("git", ["-C", seedDir, "push", "-u", "origin", "main"]);
@@ -232,8 +229,8 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
 
     solidifyAsset(
       {
-        kind: "Gene",
-        id: "gene-synced-rule",
+        kind: "Rule",
+        id: "exp-synced-rule",
         title: "Synced team rule",
         summary: "Always validate before pushing.",
         signals: ["git_error"],
@@ -251,18 +248,18 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
     assert.equal(pullRes.ok, true);
     assert.equal(pullRes.imported, 1);
     const storeB = loadStore(homeB);
-    assert.ok(storeB.genes.some((g) => g.id === "gene-synced-rule"));
+    assert.ok(storeB.rules.some((r) => r.id === "exp-synced-rule"));
 
     // Both clones record local outcome deltas and merge without losing counts.
-    recordAssetOutcome(homeA, ["gene-synced-rule"], "success", "cloneA_hit");
-    recordAssetOutcome(homeB, ["gene-synced-rule"], "success", "cloneB_hit");
+    recordAssetOutcome(homeA, ["exp-synced-rule"], "success", "cloneA_hit");
+    recordAssetOutcome(homeB, ["exp-synced-rule"], "success", "cloneB_hit");
     await syncRepoPush(homeA, { repoPath: cloneA });
     const pushB2 = await syncRepoPush(homeB, { repoPath: cloneB });
     assert.equal(pushB2.pushed, true);
 
     await syncRepoPull(homeA, { repoPath: cloneA });
-    const afterA = loadStore(homeA).genes.find((g) => g.id === "gene-synced-rule");
-    const afterB = loadStore(homeB).genes.find((g) => g.id === "gene-synced-rule");
+    const afterA = loadStore(homeA).rules.find((r) => r.id === "exp-synced-rule");
+    const afterB = loadStore(homeB).rules.find((r) => r.id === "exp-synced-rule");
     assert.equal(afterA.successCount, 3);
     assert.equal(afterB.successCount, 3);
     assert.equal(afterA.pendingSuccessDelta, undefined);
@@ -279,7 +276,7 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
       },
       { evoHome: homeA, bundledDir }
     );
-    recordAssetOutcome(homeA, ["gene-synced-rule"], "success", "auto_hit");
+    recordAssetOutcome(homeA, ["exp-synced-rule"], "success", "auto_hit");
     assert.equal(getPendingScoreDeltaTotal(homeA), 1);
     const deltaPush = await syncScoreDeltasOnly(homeA, { repoPath: cloneA });
     assert.equal(deltaPush.pushed, true);
@@ -289,9 +286,9 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
     assert.equal(autoPull.ran, true);
     const throttledPull = await maybeAutoPull(homeB, { repoPath: cloneB, intervalMs: 60000 });
     assert.equal(throttledPull.ran, false);
-    const finalB = loadStore(homeB).genes;
-    assert.equal(finalB.find((g) => g.id === "gene-synced-rule").successCount, 4);
-    assert.ok(!finalB.some((g) => g.id === "exp-unpushed-draft"));
+    const finalB = loadStore(homeB).rules;
+    assert.equal(finalB.find((r) => r.id === "exp-synced-rule").successCount, 4);
+    assert.ok(!finalB.some((r) => r.id === "exp-unpushed-draft"));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -307,8 +304,8 @@ test("repoScope filters repo-specific assets and boosts exact repo matches", () 
 
     solidifyAsset(
       {
-        kind: "Gene",
-        id: "gene-global",
+        kind: "Rule",
+        id: "exp-global",
         title: "Global rule",
         summary: "Applies everywhere.",
         signals: ["build_error"],
@@ -319,8 +316,8 @@ test("repoScope filters repo-specific assets and boosts exact repo matches", () 
     );
     solidifyAsset(
       {
-        kind: "Gene",
-        id: "gene-tspec-only",
+        kind: "Rule",
+        id: "exp-tspec-only",
         title: "TypeSpec repo rule",
         summary: "Applies only in typespec-azure.",
         signals: ["build_error"],
@@ -330,27 +327,27 @@ test("repoScope filters repo-specific assets and boosts exact repo matches", () 
       { evoHome: home, bundledDir }
     );
 
-    const { genes, capsules } = loadStore(home);
-    const inOtherRepo = selectAssets({ signals: ["build_error"], repo: "Other/repo", genes, capsules, limit: 5 });
-    assert.deepEqual(inOtherRepo.map((a) => a.id), ["gene-global"]);
+    const { rules, fixes } = loadStore(home);
+    const inOtherRepo = selectAssets({ signals: ["build_error"], repo: "Other/repo", rules, fixes, limit: 5 });
+    assert.deepEqual(inOtherRepo.map((a) => a.id), ["exp-global"]);
 
-    const inTspecRepo = selectAssets({ signals: ["build_error"], repo: "Azure/typespec-azure", genes, capsules, limit: 5 });
-    assert.equal(inTspecRepo[0].id, "gene-tspec-only");
-    assert.ok(inTspecRepo.some((a) => a.id === "gene-global"));
+    const inTspecRepo = selectAssets({ signals: ["build_error"], repo: "Azure/typespec-azure", rules, fixes, limit: 5 });
+    assert.equal(inTspecRepo[0].id, "exp-tspec-only");
+    assert.ok(inTspecRepo.some((a) => a.id === "exp-global"));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });
   }
 });
 
-test("GDI rank, pin/vote feedback, and Gene/Capsule lineage work together", () => {
+test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => {
   const home = makeTempDir();
   const bundledDir = makeTempDir();
   try {
     solidifyAsset(
       {
-        kind: "Gene",
-        id: "gene-base-strategy",
+        kind: "Rule",
+        id: "exp-base-strategy",
         title: "Base strategy",
         summary: "Original approach.",
         signals: ["npm_error"],
@@ -360,12 +357,12 @@ test("GDI rank, pin/vote feedback, and Gene/Capsule lineage work together", () =
     );
     solidifyAsset(
       {
-        kind: "Capsule",
-        id: "capsule-derived-fix",
+        kind: "Fix",
+        id: "exp-derived-fix",
         title: "Derived fix",
         summary: "Concrete verified fix.",
         signals: ["npm_error"],
-        geneId: "gene-base-strategy",
+        ruleId: "exp-base-strategy",
         validation: ["npm test"],
         scope: "team",
       },
@@ -373,26 +370,26 @@ test("GDI rank, pin/vote feedback, and Gene/Capsule lineage work together", () =
     );
     solidifyAsset(
       {
-        kind: "Gene",
-        id: "gene-v2-strategy",
+        kind: "Rule",
+        id: "exp-v2-strategy",
         title: "Refined strategy v2",
         summary: "Supersedes base strategy.",
         signals: ["npm_error"],
-        parentId: "gene-base-strategy",
-        supersedes: "gene-base-strategy",
+        parentId: "exp-base-strategy",
+        supersedes: "exp-base-strategy",
         scope: "team",
       },
       { evoHome: home, bundledDir }
     );
 
-    const baseInspect = manageAsset("inspect", "gene-base-strategy", { evoHome: home, bundledDir });
+    const baseInspect = manageAsset("inspect", "exp-base-strategy", { evoHome: home, bundledDir });
     assert.equal(baseInspect.relationships.children.length, 2);
-    assert.equal(baseInspect.relationships.supersededBy[0].id, "gene-v2-strategy");
+    assert.equal(baseInspect.relationships.supersededBy[0].id, "exp-v2-strategy");
     assert.ok(baseInspect.relationships.sharedSignals.length >= 2);
     assert.equal(baseInspect.asset.successCount, 3);
 
-    const updated = recordAssetOutcome(home, ["capsule-derived-fix"], "success", "test_recovery");
-    assert.deepEqual(updated, ["capsule-derived-fix"]);
+    const updated = recordAssetOutcome(home, ["exp-derived-fix"], "success", "test_recovery");
+    assert.deepEqual(updated, ["exp-derived-fix"]);
     assert.equal(hasNegativeFeedbackCue("这个方案不对，还是报错"), true);
     assert.equal(hasNegativeFeedbackCue("Looks good"), false);
     assert.equal(isTrivialToolFailure("create", "File already exists"), true);
@@ -400,24 +397,24 @@ test("GDI rank, pin/vote feedback, and Gene/Capsule lineage work together", () =
     assert.equal(isTrivialToolFailure("powershell", "npm ERR! code E401"), false);
 
     const beforeScore = computeGdiScore(baseInspect.asset);
-    const pinned = manageAsset("pin", "capsule-derived-fix", { evoHome: home, bundledDir });
+    const pinned = manageAsset("pin", "exp-derived-fix", { evoHome: home, bundledDir });
     assert.ok(pinned.gdiScore > beforeScore);
 
-    const breakdown = computeGdiBreakdown(pinned.asset, loadStore(home).genes.concat(loadStore(home).capsules));
+    const breakdown = computeGdiBreakdown(pinned.asset, loadStore(home).rules.concat(loadStore(home).fixes));
     assert.ok(["S", "A", "B", "C"].includes(breakdown.tier));
     assert.equal(breakdown.winRate, 100);
 
-    const { genes, capsules } = loadStore(home);
-    const active = selectAssets({ signals: ["npm_error"], genes, capsules, limit: 5 });
-    assert.equal(active[0].id, "capsule-derived-fix");
-    assert.ok(!active.some((a) => a.id === "gene-base-strategy"));
+    const { rules, fixes } = loadStore(home);
+    const active = selectAssets({ signals: ["npm_error"], rules, fixes, limit: 5 });
+    assert.equal(active[0].id, "exp-derived-fix");
+    assert.ok(!active.some((a) => a.id === "exp-base-strategy"));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });
   }
 });
 
-test("solidifyAsset supports Rule/Fix aliases with exp- prefix", () => {
+test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
   const home = makeTempDir();
   const bundledDir = makeTempDir();
   try {
@@ -433,7 +430,7 @@ test("solidifyAsset supports Rule/Fix aliases with exp- prefix", () => {
     );
     assert.equal(rule.ok, true);
     assert.ok(rule.asset.id.startsWith("exp-"));
-    assert.equal(rule.asset.type, "Gene");
+    assert.equal(rule.asset.type, "Rule");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });
@@ -446,20 +443,20 @@ test("runAssetValidation executes whitelisted command and updates outcome", asyn
   try {
     solidifyAsset(
       {
-        kind: "Capsule",
-        id: "capsule-arena-check",
-        title: "Arena validation check",
-        summary: "Verify safe node command runs in Arena bench.",
+        kind: "Fix",
+        id: "exp-arena-check",
+        title: "Validation check",
+        summary: "Verify safe node command runs in validation bench.",
         signals: ["test_failure"],
         validation: ['node -e "process.exit(0)"'],
         scope: "team",
       },
       { evoHome: home, bundledDir }
     );
-    const res = await runAssetValidation(home, "capsule-arena-check", process.cwd());
+    const res = await runAssetValidation(home, "exp-arena-check", process.cwd());
     assert.equal(res.ok, true);
     assert.equal(res.passed, true);
-    const updated = loadStore(home).capsules.find((c) => c.id === "capsule-arena-check");
+    const updated = loadStore(home).fixes.find((f) => f.id === "exp-arena-check");
     assert.equal(updated.successCount, 2);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });

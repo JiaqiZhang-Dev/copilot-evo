@@ -28,7 +28,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.7.2";
+const EXTENSION_VERSION = "0.8.0";
 let lastWorkingDirectory = process.cwd();
 const canvasServer = createEvoCanvasServer({
   evoHome,
@@ -56,10 +56,9 @@ const ACTIVE_PROTOCOL = [
 function formatAssetsContext(assets) {
   if (!assets.length) return "";
   const lines = assets.map((a) => {
-    const kindLabel = a.type === "Capsule" ? "Fix" : "Rule";
     const steps = a.strategy?.length ? ` Steps: ${a.strategy.slice(0, 3).join(" -> ")}` : "";
     const fix = a.solution ? ` Fix: ${a.solution}` : "";
-    return `- [${kindLabel}:${a.id}] ${a.title}: ${a.summary}${fix}${steps}`;
+    return `- [${a.type}:${a.id}] ${a.title}: ${a.summary}${fix}${steps}`;
   });
   return `[copilot-evo recalled experiences]\n${lines.join("\n")}`;
 }
@@ -77,10 +76,10 @@ const session = await joinSession({
         })
         .catch(() => {});
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
-      const { genes, capsules, config } = loadStore(evoHome);
+      const { rules, fixes, config } = loadStore(evoHome);
       const signals = extractSignals(input.initialPrompt || "", [], { includePlatform: false });
       const matched = signals.length
-        ? selectAssets({ signals, repo: currentRepo, genes, capsules, limit: config.autoInjectLimit || 3 })
+        ? selectAssets({ signals, repo: currentRepo, rules, fixes, limit: config.autoInjectLimit || 3 })
         : [];
       sessionState.protocolInjected = true;
       sessionState.activeAssets = matched.map((a) => a.id);
@@ -92,7 +91,7 @@ const session = await joinSession({
     onUserPromptSubmitted: async (input) => {
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
-      const { genes, capsules, config } = loadStore(evoHome);
+      const { rules, fixes, config } = loadStore(evoHome);
       const failureSignals = sessionState.recentFailures.flatMap((f) => f.signals);
       const signals = extractSignals(input.prompt, failureSignals, { includePlatform: false });
       const matched =
@@ -101,8 +100,8 @@ const session = await joinSession({
               signals,
               query: input.prompt,
               repo: currentRepo,
-              genes,
-              capsules,
+              rules,
+              fixes,
               limit: config.autoInjectLimit || 3,
             })
           : [];
@@ -131,10 +130,10 @@ const session = await joinSession({
     },
 
     onPreToolUse: async (input) => {
-      const { genes, config } = loadStore(evoHome);
+      const { rules, config } = loadStore(evoHome);
       const argsText = typeof input.toolArgs === "string" ? input.toolArgs : JSON.stringify(input.toolArgs || "");
-      for (const gene of genes) {
-        const g = gene.guardrail;
+      for (const rule of rules) {
+        const g = rule.guardrail;
         if (!g?.pattern) continue;
         if (Array.isArray(g.toolNames) && g.toolNames.length && !g.toolNames.includes(input.toolName)) continue;
         const regex = new RegExp(g.pattern, "i");
@@ -142,11 +141,11 @@ const session = await joinSession({
         if (config.strictGuardrails && g.action === "deny") {
           return {
             permissionDecision: "deny",
-            permissionDecisionReason: `[copilot-evo ${gene.id}] ${g.reason || gene.summary}`,
+            permissionDecisionReason: `[copilot-evo ${rule.id}] ${g.reason || rule.summary}`,
           };
         }
         return {
-          additionalContext: `[copilot-evo guardrail ${gene.id}] ${g.reason || gene.summary}`,
+          additionalContext: `[copilot-evo guardrail ${rule.id}] ${g.reason || rule.summary}`,
         };
       }
     },
@@ -180,13 +179,13 @@ const session = await joinSession({
         canvasServer.broadcastUpdate("tool_failure");
       }
 
-      const { genes, capsules } = loadStore(evoHome);
+      const { rules, fixes } = loadStore(evoHome);
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
       const matched = selectAssets({
         signals,
         repo: detectRepoSlug(lastWorkingDirectory),
-        genes,
-        capsules,
+        rules,
+        fixes,
         limit: 2,
       });
       if (matched.length) {
@@ -257,13 +256,13 @@ const session = await joinSession({
           query: { type: "string", description: "Search keywords or error text (omit or empty to list)" },
           signals: { type: "array", items: { type: "string" }, description: "Signal tags such as test_failure, win32, npm_error" },
           scope: { type: "string", enum: ["", "local", "team", "starter"], description: "Optional scope filter" },
-          kind: { type: "string", enum: ["", "Rule", "Fix", "Gene", "Capsule"], description: "Optional experience kind filter" },
+          kind: { type: "string", enum: ["", "Rule", "Fix"], description: "Optional experience kind filter" },
           repo: { type: "string", description: "Optional owner/repo filter; defaults to current workspace repo when detected" },
           limit: { type: "number", description: "Maximum results (default 5)" },
         },
       },
       handler: async (args) => {
-        const { genes, capsules } = loadStore(evoHome);
+        const { rules, fixes } = loadStore(evoHome);
         const signals = extractSignals(args.query || "", args.signals || [], { includePlatform: false });
         const repo = args.repo || detectRepoSlug(lastWorkingDirectory);
         const results = selectAssets({
@@ -272,14 +271,14 @@ const session = await joinSession({
           scope: args.scope || "",
           kind: args.kind || "",
           repo,
-          genes,
-          capsules,
+          rules,
+          fixes,
           limit: args.limit || 5,
         });
         return JSON.stringify(
           {
             count: results.length,
-            assets: results,
+            experiences: results,
             previews: results.map((asset) => formatAssetPreview(asset)),
           },
           null,
@@ -293,7 +292,7 @@ const session = await joinSession({
       parameters: {
         type: "object",
         properties: {
-          kind: { type: "string", enum: ["Rule", "Fix", "Gene", "Capsule"], description: "Experience kind: Rule (strategy/convention) or Fix (verified solution)" },
+          kind: { type: "string", enum: ["Rule", "Fix"], description: "Experience kind: Rule (strategy/convention) or Fix (verified solution)" },
           id: { type: "string", description: "Optional kebab-case ID (updates existing if matched)" },
           title: { type: "string", description: "Short descriptive title in English" },
           summary: { type: "string", description: "Concise English explanation of the pattern or root cause" },
@@ -303,7 +302,7 @@ const session = await joinSession({
           validation: { type: "array", items: { type: "string" }, description: "Safe verification commands (node/npm/npx/pytest/dotnet/cargo/go test)" },
           scope: { type: "string", enum: ["local", "team"], description: "local stays on this machine; team stages sanitized experience for private repo sync" },
           repoScope: { type: "string", description: "Repository applicability: '*' for all repos (default), 'current' for the active Git repo, or 'owner/repo'" },
-          geneId: { type: "string", description: "For Fixes: ID of the Rule this fix applied" },
+          ruleId: { type: "string", description: "For Fixes: ID of the Rule this fix applied" },
           parentId: { type: "string", description: "Optional ID of an earlier Rule or Fix this experience refines" },
           supersedes: { type: "string", description: "Optional ID of an outdated experience replaced by this one" },
         },
@@ -332,7 +331,7 @@ const session = await joinSession({
       description: "Inspect copilot-evo store statistics, recent session signals, and private Git sync configuration.",
       parameters: { type: "object", properties: {} },
       handler: async () => {
-        const { genes, capsules, candidates, config } = loadStore(evoHome);
+        const { rules, fixes, config } = loadStore(evoHome);
         const syncRepoPath = resolveSyncRepoPath(evoHome);
         return JSON.stringify(
           {
@@ -340,11 +339,10 @@ const session = await joinSession({
             evoHome,
             currentRepo: detectRepoSlug(lastWorkingDirectory) || null,
             counts: {
-              genes: genes.length,
-              capsules: capsules.length,
-              teamGenes: genes.filter((g) => g.scope === "team").length,
-              teamCapsules: capsules.filter((c) => c.scope === "team").length,
-              candidates: candidates.length,
+              rules: rules.length,
+              fixes: fixes.length,
+              teamRules: rules.filter((r) => r.scope === "team").length,
+              teamFixes: fixes.filter((f) => f.scope === "team").length,
               events: countEvents(evoHome),
             },
             session: sessionState,
@@ -364,15 +362,15 @@ const session = await joinSession({
         properties: {
           action: {
             type: "string",
-            enum: ["inspect", "promote", "promote_team", "pin", "unpin", "upvote", "downvote", "delete", "list_candidates"],
+            enum: ["inspect", "promote_team", "pin", "unpin", "upvote", "downvote", "delete"],
           },
-          id: { type: "string", description: "Asset ID (required except for list_candidates)" },
+          id: { type: "string", description: "Experience ID" },
         },
-        required: ["action"],
+        required: ["action", "id"],
       },
       handler: async (args) => {
         const res = manageAsset(args.action, args.id, { evoHome });
-        if (res.ok && args.action !== "inspect" && args.action !== "list_candidates") {
+        if (res.ok && args.action !== "inspect") {
           canvasServer.broadcastUpdate(args.action);
           if ((args.action === "upvote" || args.action === "downvote") && getPendingScoreDeltaTotal(evoHome) >= 3) {
             syncScoreDeltasOnly(evoHome).catch(() => {});
@@ -392,18 +390,13 @@ const session = await joinSession({
           repo: { type: "string", description: "Optional GitHub owner/repo or git URL when cloning for the first time" },
           filePath: { type: "string", description: "Bundle path for export/import actions" },
           commitMessage: { type: "string", description: "Optional commit message for push" },
-          autoPromote: { type: "boolean", description: "Promote imported assets immediately (default true for pull, false for bundle import)" },
         },
         required: ["action"],
       },
       handler: async (args) => {
         let res;
         if (args.action === "pull") {
-          res = await syncRepoPull(evoHome, {
-            repoPath: args.repoPath,
-            repo: args.repo,
-            autoPromote: args.autoPromote ?? true,
-          });
+          res = await syncRepoPull(evoHome, { repoPath: args.repoPath, repo: args.repo });
         } else if (args.action === "push") {
           res = await syncRepoPush(evoHome, {
             repoPath: args.repoPath,
@@ -413,7 +406,7 @@ const session = await joinSession({
         } else if (args.action === "export") {
           res = exportBundle(evoHome, { scope: "team", outputPath: args.filePath });
         } else if (args.action === "import") {
-          res = importBundle(evoHome, { inputPath: args.filePath, autoPromote: args.autoPromote ?? true });
+          res = importBundle(evoHome, { inputPath: args.filePath });
         } else {
           res = { ok: false, error: `Unsupported action: ${args.action}` };
         }

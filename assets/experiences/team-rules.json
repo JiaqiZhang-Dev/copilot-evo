@@ -1,7 +1,7 @@
 [
   {
-    "id": "gene-follow-repo-design-conventions",
-    "type": "Gene",
+    "id": "exp-follow-repo-design-conventions",
+    "type": "Rule",
     "title": "Follow existing repository design conventions",
     "summary": "Before implementing or refactoring code, inspect existing patterns and design conventions in the repository and align with them rather than improvising ad-hoc designs.",
     "signals": [
@@ -17,7 +17,8 @@
     "solution": "",
     "validation": [],
     "scope": "team",
-    "sourceProject": "jiaqizhang-dev-glowing-broccoli-f10218c1",
+    "repoScope": "*",
+    "sourceProject": "proj-f10218c1",
     "updatedAt": "2026-11-18T03:57:38.521Z",
     "successCount": 1,
     "failureCount": 0

@@ -33,7 +33,7 @@ function escapeHtml(text) {
 
 function getAllAssets() {
   if (!state) return [];
-  return [...(state.genes || []), ...(state.capsules || [])].sort((a, b) => {
+  return [...(state.rules || []), ...(state.fixes || [])].sort((a, b) => {
     const scoreDiff = (b.gdiScore || 0) - (a.gdiScore || 0);
     if (scoreDiff !== 0) return scoreDiff;
     const reuseDiff = (b.successCount || 0) - (a.successCount || 0);
@@ -74,7 +74,7 @@ function formatLocalTime(ts) {
 }
 
 function displayTypeWord(type) {
-  return type === "Capsule" ? "Fix" : type === "Gene" ? "Rule" : type || "Experience";
+  return type === "Fix" ? "Fix" : type === "Rule" ? "Rule" : type || "Experience";
 }
 
 function formatEventMeta(ev) {
@@ -82,14 +82,17 @@ function formatEventMeta(ev) {
     case "solidify":
       return { label: "Solidified", cls: "ev-ok", desc: `${displayTypeWord(ev.assetType)}: ${ev.assetId || ""}` };
     case "sync_push":
-      return { label: "Team Push", cls: "ev-ok", desc: `Synced ${ev.genesCount || 0} Rules · ${ev.capsulesCount || 0} Fixes` };
+      return {
+        label: "Team Push",
+        cls: "ev-ok",
+        desc: `Synced ${ev.rulesCount ?? ev.genesCount ?? 0} Rules · ${ev.fixesCount ?? ev.capsulesCount ?? 0} Fixes`,
+      };
     case "sync_pull":
       return { label: "Team Pull", cls: "ev-ok", desc: `Imported ${ev.imported || 0} team experience(s)` };
     case "sync_scores":
       return { label: "Auto Score Sync", cls: "ev-ok", desc: "Synced team experience score deltas" };
-    case "promote":
     case "promote_team":
-      return { label: "Promoted", cls: "ev-ok", desc: `${displayTypeWord(ev.assetType)}: ${ev.assetId || ""}` };
+      return { label: "Shared to Team", cls: "ev-ok", desc: `${displayTypeWord(ev.assetType)}: ${ev.assetId || ""}` };
     case "auto_success":
     case "feedback_upvote":
       return {
@@ -118,7 +121,7 @@ function formatEventMeta(ev) {
 }
 
 function kindLabel(type) {
-  return type === "Capsule" ? "FIX" : "RULE";
+  return type === "Fix" ? "FIX" : "RULE";
 }
 
 function renderScoreRing(score, isFix) {
@@ -143,7 +146,7 @@ function renderDetail(item) {
     return;
   }
 
-  const kindCls = item.type === "Capsule" ? "kind-capsule" : "kind-gene";
+  const kindCls = item.type === "Fix" ? "kind-capsule" : "kind-gene";
   const signals = (item.signals || []).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
   const strategy = (item.strategy || []).length
     ? `<div class="section-label">Steps</div><ol class="steps">${item.strategy
@@ -168,10 +171,10 @@ function renderDetail(item) {
 
   const rel = item.relationships || {};
   const relLinks = [];
-  if (rel.gene) relLinks.push({ role: "Rule", item: rel.gene });
+  if (rel.rule) relLinks.push({ role: "Rule", item: rel.rule });
   if (rel.parent) relLinks.push({ role: "Parent", item: rel.parent });
   if (rel.supersedes) relLinks.push({ role: "Supersedes", item: rel.supersedes });
-  for (const child of rel.children || []) relLinks.push({ role: child.type === "Capsule" ? "Fix" : "Derived", item: child });
+  for (const child of rel.children || []) relLinks.push({ role: child.type === "Fix" ? "Fix" : "Derived", item: child });
   for (const rep of rel.supersededBy || []) relLinks.push({ role: "Replaced by", item: rep });
   for (const shared of rel.sharedSignals || []) {
     if (!relLinks.some((l) => l.item.id === shared.id)) {
@@ -201,7 +204,7 @@ function renderDetail(item) {
   pane.innerHTML = `
     <div class="detail-head">
       <div class="detail-title-row">
-        ${renderScoreRing(item.gdiScore, item.type === "Capsule")}
+        ${renderScoreRing(item.gdiScore, item.type === "Fix")}
         <div>
           <h2 class="detail-title">${escapeHtml(item.title)}</h2>
           <div class="detail-id">
@@ -268,8 +271,8 @@ function collectGraphData(assets) {
   const idSet = new Set(assets.map((a) => a.id));
 
   for (const a of assets) {
-    if (a.geneId && idSet.has(a.geneId)) {
-      edges.push({ from: a.geneId, to: a.id, kind: "gene", label: "applied by" });
+    if (a.ruleId && idSet.has(a.ruleId)) {
+      edges.push({ from: a.ruleId, to: a.id, kind: "rule", label: "applied by" });
     }
     if (a.parentId && idSet.has(a.parentId)) {
       edges.push({ from: a.parentId, to: a.id, kind: "parent", label: "refined" });
@@ -300,8 +303,8 @@ function renderRelationshipsView(listPane, allAssets) {
     selectedId = allAssets[0].id;
   }
 
-  const rules = allAssets.filter((a) => a.type !== "Capsule");
-  const fixes = allAssets.filter((a) => a.type === "Capsule");
+  const rules = allAssets.filter((a) => a.type !== "Fix");
+  const fixes = allAssets.filter((a) => a.type === "Fix");
   const edges = collectGraphData(allAssets);
   const showSignals = relMode === "all";
 
@@ -455,7 +458,7 @@ function renderRelationshipsView(listPane, allAssets) {
       if (!pos) return "";
       const selected = a.id === selectedId;
       const related = connectedIds.has(a.id);
-      const isCap = a.type === "Capsule";
+      const isCap = a.type === "Fix";
       const stroke = selected ? "var(--accent)" : "var(--border)";
       const fill = selected ? "var(--accent-muted)" : "var(--bg)";
       const dotColor = isCap ? "var(--accent)" : "var(--gene)";
@@ -514,7 +517,7 @@ function renderArenaView(listPane, allAssets) {
   const leaderboardHtml = allAssets
     .map((item, idx) => {
       const b = item.gdiBreakdown || {};
-      const kindCls = item.type === "Capsule" ? "kind-capsule" : "kind-gene";
+      const kindCls = item.type === "Fix" ? "kind-capsule" : "kind-gene";
       const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
       return `
       <div class="lb-row ${idx === 0 ? "rank-1" : ""}">
@@ -569,9 +572,9 @@ function renderArenaView(listPane, allAssets) {
 
 function render() {
   if (!state) return;
-  const genes = state.genes || [];
-  const capsules = state.capsules || [];
-  const allAssets = [...genes, ...capsules];
+  const rules = state.rules || [];
+  const fixes = state.fixes || [];
+  const allAssets = [...rules, ...fixes];
   const totalReuses = allAssets.reduce((sum, a) => sum + (a.successCount || 0), 0);
   const linkCount = collectGraphData(allAssets).length;
 
@@ -580,7 +583,7 @@ function render() {
     : `Auto-clone repo: ${state.config?.syncRepo || "JiaqiZhang-Dev/copilot-evo"}`;
 
   el("kpi-total").textContent = String(allAssets.length);
-  el("kpi-breakdown").textContent = `${genes.length} Rules · ${capsules.length} Fixes`;
+  el("kpi-breakdown").textContent = `${rules.length} Rules · ${fixes.length} Fixes`;
   el("kpi-team").textContent = String(state.counts?.teamAssets || 0);
   el("kpi-sub-team").textContent = state.config?.lastAutoPullAt
     ? `Synced ${formatLocalTime(state.config.lastAutoPullAt).slice(11, 16)}`
@@ -599,6 +602,7 @@ function render() {
   const isSinglePane = activeTab === "events" || activeTab === "arena";
   el("content").classList.toggle("single-pane", isSinglePane);
   el("content").classList.toggle("graph-pane", activeTab === "relationships");
+  el("pane-splitter")?.classList.toggle("hidden", isSinglePane);
   el("detail-pane").classList.toggle("hidden", isSinglePane);
 
   document.querySelectorAll(".tab").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === activeTab));
@@ -661,10 +665,10 @@ function render() {
 
   listPane.innerHTML = items
     .map((item) => {
-      const kindCls = item.type === "Capsule" ? "kind-capsule" : "kind-gene";
+      const kindCls = item.type === "Fix" ? "kind-capsule" : "kind-gene";
       const scopeClass = item.scope === "team" ? "scope-team" : "";
       const sigs = (item.signals || []).slice(0, 4).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
-      const fixClass = item.type === "Capsule" ? "card-fix" : "";
+      const fixClass = item.type === "Fix" ? "card-fix" : "";
       return `
       <div class="card ${fixClass} ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
         <div class="card-head">
@@ -726,7 +730,7 @@ async function mutate(endpoint, body) {
     if (!data.ok) {
       showBanner(data.error || "Operation failed.", true);
     } else if (endpoint === "/api/sync/pull") {
-      showBanner(`Pulled ${data.imported || 0} new and ${data.updated || 0} updated team experience(s).`);
+      showBanner(`Refreshed (${data.imported || 0} new, ${data.updated || 0} updated from team).`);
     } else if (endpoint === "/api/assets/promote") {
       showBanner(`Promoted ${data.asset?.id || "experience"}.`);
     } else if (endpoint === "/api/assets/promote-team") {
@@ -810,6 +814,32 @@ async function init() {
   });
 
   el("btn-pull")?.addEventListener("click", () => mutate("/api/sync/pull", {}));
+
+  const splitter = el("pane-splitter");
+  const content = el("content");
+  if (splitter && content) {
+    let dragging = false;
+    splitter.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      splitter.classList.add("dragging");
+      splitter.setPointerCapture(e.pointerId);
+    });
+    splitter.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const rect = content.getBoundingClientRect();
+      if (!rect.height) return;
+      const pct = Math.max(20, Math.min(76, ((e.clientY - rect.top) / rect.height) * 100));
+      const prop = activeTab === "relationships" ? "--split-top-graph" : "--split-top";
+      content.style.setProperty(prop, `${pct.toFixed(1)}%`);
+    });
+    const stopDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      splitter.classList.remove("dragging");
+    };
+    splitter.addEventListener("pointerup", stopDrag);
+    splitter.addEventListener("pointercancel", stopDrag);
+  }
 
   await loadState(true);
 

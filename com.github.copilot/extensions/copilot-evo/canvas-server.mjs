@@ -81,7 +81,7 @@ export function createEvoCanvasServer({
   function buildSnapshot() {
     const store = loadStore(evoHome);
     const events = readRecentEvents(evoHome, 60);
-    const allAssets = [...store.genes, ...store.capsules];
+    const allAssets = [...store.rules, ...store.fixes];
     const nowMs = Date.now();
     const enrich = (item) => {
       const gdi = computeGdiBreakdown(item, allAssets, nowMs);
@@ -93,25 +93,23 @@ export function createEvoCanvasServer({
         relationships: getAssetRelationships(item, allAssets),
       };
     };
-    const genes = store.genes.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
-    const capsules = store.capsules.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
+    const rules = store.rules.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
+    const fixes = store.fixes.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
 
     return {
       evoHome,
       currentRepo: getCurrentRepo(),
       syncRepoPath: resolveSyncRepoPath(evoHome),
       config: store.config,
-      genes,
-      capsules,
-      candidates: store.candidates,
+      rules,
+      fixes,
       events,
       counts: {
-        genes: store.genes.length,
-        capsules: store.capsules.length,
+        rules: store.rules.length,
+        fixes: store.fixes.length,
         teamAssets:
-          store.genes.filter((g) => g.scope === "team").length +
-          store.capsules.filter((c) => c.scope === "team").length,
-        candidates: store.candidates.length,
+          store.rules.filter((r) => r.scope === "team").length +
+          store.fixes.filter((f) => f.scope === "team").length,
         events: countEvents(evoHome),
       },
       viewState,
@@ -179,9 +177,7 @@ export function createEvoCanvasServer({
       }
       const body = await readJsonBody(req);
       let result;
-      if (reqUrl.pathname === "/api/assets/promote") {
-        result = manageAsset("promote", body.id, { evoHome });
-      } else if (reqUrl.pathname === "/api/assets/promote-team") {
+      if (reqUrl.pathname === "/api/assets/promote-team") {
         result = manageAsset("promote_team", body.id, { evoHome });
         if (result?.ok && body.push !== false && resolveSyncRepoPath(evoHome)) {
           try {
@@ -291,7 +287,7 @@ export function createEvoCanvasServer({
     broadcastUpdate("open");
     return {
       title: "Copilot Evo",
-      status: `${loadStore(evoHome).genes.length} Rules · ${loadStore(evoHome).capsules.length} Fixes`,
+      status: `${loadStore(evoHome).rules.length} Rules · ${loadStore(evoHome).fixes.length} Fixes`,
       url: `${entry.url}?open=${randomBytes(6).toString("hex")}`,
     };
   }

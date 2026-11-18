@@ -1,7 +1,7 @@
 [
   {
-    "id": "gene-verify-before-claim",
-    "type": "Gene",
+    "id": "exp-verify-before-claim",
+    "type": "Rule",
     "title": "Verify with targeted checks after fixing failures",
     "summary": "After resolving a build, lint, or test failure, run the smallest targeted verification command before concluding and solidify the verified fix as a Fix experience.",
     "signals": ["test_failure", "build_error", "lint_error", "recovery"],
@@ -15,8 +15,8 @@
     "scope": "starter"
   },
   {
-    "id": "gene-windows-path-safety",
-    "type": "Gene",
+    "id": "exp-windows-path-safety",
+    "type": "Rule",
     "title": "Handle Windows paths and PowerShell syntax safely",
     "summary": "On Windows, use backslash paths, avoid bash heredocs, and wrap cmd.exe .bat scripts in a single subshell.",
     "signals": ["win32", "powershell_error", "path_error", "enoent"],
@@ -35,8 +35,8 @@
     "scope": "starter"
   },
   {
-    "id": "gene-sanitize-before-share",
-    "type": "Gene",
+    "id": "exp-sanitize-before-share",
+    "type": "Rule",
     "title": "Sanitize secrets and local paths before sharing experiences",
     "summary": "Never persist tokens, private keys, internal IPs, or personal filesystem paths in shared Rules or Fixes.",
     "signals": ["secret_leak", "share", "sync", "privacy"],

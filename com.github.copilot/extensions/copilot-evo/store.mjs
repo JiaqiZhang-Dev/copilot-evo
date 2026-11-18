@@ -8,7 +8,11 @@ import { fullLeakCheck, isValidationCommandAllowed, sanitizePayload } from "./sa
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(__dirname, "..", "..", "..");
-const BUNDLED_GEP_DIR = path.join(PLUGIN_ROOT, "assets", "gep");
+const BUNDLED_EXP_DIR = path.join(PLUGIN_ROOT, "assets", "experiences");
+
+function normalizeExperienceType(rawType) {
+  return rawType === "Fix" ? "Fix" : "Rule";
+}
 
 export function getEvoHome(overrideHome) {
   return overrideHome || process.env.COPILOT_EVO_HOME || path.join(os.homedir(), ".copilot", "evo");
@@ -83,31 +87,27 @@ function getDefaultSyncRepoSlug() {
 
 export function initStore(options = {}) {
   const evoHome = getEvoHome(options.evoHome);
-  const bundledDir = options.bundledDir || BUNDLED_GEP_DIR;
+  const bundledDir = options.bundledDir || BUNDLED_EXP_DIR;
   fs.mkdirSync(evoHome, { recursive: true });
 
-  const genesPath = path.join(evoHome, "genes.json");
-  const capsulesPath = path.join(evoHome, "capsules.json");
-  const candidatesPath = path.join(evoHome, "candidates.json");
+  const rulesPath = path.join(evoHome, "rules.json");
+  const fixesPath = path.join(evoHome, "fixes.json");
   const configPath = path.join(evoHome, "config.json");
 
-  const starterGenes = readJsonSafe(path.join(bundledDir, "starter-genes.json"), []);
-  const teamGenes = readJsonSafe(path.join(bundledDir, "team-genes.json"), []);
-  const teamCapsules = readJsonSafe(path.join(bundledDir, "team-capsules.json"), []);
+  const starterRules = readJsonSafe(path.join(bundledDir, "starter-rules.json"), []);
+  const teamRules = readJsonSafe(path.join(bundledDir, "team-rules.json"), []);
+  const teamFixes = readJsonSafe(path.join(bundledDir, "team-fixes.json"), []);
 
-  const currentGenes = readJsonSafe(genesPath, []);
-  const currentCapsules = readJsonSafe(capsulesPath, []);
-  const { merged: mergedGenes } = mergeById(currentGenes, [...starterGenes, ...teamGenes]);
-  const { merged: mergedCapsules } = mergeById(currentCapsules, teamCapsules);
+  const currentRules = readJsonSafe(rulesPath, []);
+  const currentFixes = readJsonSafe(fixesPath, []);
+  const { merged: mergedRules } = mergeById(currentRules, [...starterRules, ...teamRules]);
+  const { merged: mergedFixes } = mergeById(currentFixes, teamFixes);
 
-  if (!fs.existsSync(genesPath) || mergedGenes.length !== currentGenes.length) {
-    writeJson(genesPath, mergedGenes);
+  if (!fs.existsSync(rulesPath) || mergedRules.length !== currentRules.length) {
+    writeJson(rulesPath, mergedRules);
   }
-  if (!fs.existsSync(capsulesPath) || mergedCapsules.length !== currentCapsules.length) {
-    writeJson(capsulesPath, mergedCapsules);
-  }
-  if (!fs.existsSync(candidatesPath)) {
-    writeJson(candidatesPath, []);
+  if (!fs.existsSync(fixesPath) || mergedFixes.length !== currentFixes.length) {
+    writeJson(fixesPath, mergedFixes);
   }
   if (!fs.existsSync(configPath)) {
     writeJson(configPath, {
@@ -122,9 +122,8 @@ export function initStore(options = {}) {
 
 export function loadStore(evoHome) {
   return {
-    genes: readJsonSafe(path.join(evoHome, "genes.json"), []),
-    capsules: readJsonSafe(path.join(evoHome, "capsules.json"), []),
-    candidates: readJsonSafe(path.join(evoHome, "candidates.json"), []),
+    rules: readJsonSafe(path.join(evoHome, "rules.json"), []),
+    fixes: readJsonSafe(path.join(evoHome, "fixes.json"), []),
     config: readJsonSafe(path.join(evoHome, "config.json"), {
       syncRepoPath: "",
       syncRepo: getDefaultSyncRepoSlug(),
@@ -177,14 +176,15 @@ export function readRecentEvents(evoHome, limit = 50) {
 
 export function formatAssetPreview(asset) {
   if (!asset) return "";
-  const kindLabel = asset.type === "Capsule" ? "Fix" : "Rule";
+  const kindLabel = normalizeExperienceType(asset.type);
   const repoLabel = asset.repoScope && asset.repoScope !== "*" ? ` repo:${asset.repoScope}` : " repo:*";
   const lines = [
     `[EXP · ${kindLabel}:${asset.id}] (${asset.scope}${repoLabel}) ${asset.title}`,
     `Summary: ${asset.summary}`,
     `Signals: ${(asset.signals || []).join(", ") || "none"}`,
   ];
-  if (asset.geneId) lines.push(`Derived from Rule: ${asset.geneId}`);
+  const ruleRef = asset.ruleId;
+  if (ruleRef) lines.push(`Derived from Rule: ${ruleRef}`);
   if (asset.parentId) lines.push(`Parent Experience: ${asset.parentId}`);
   if (asset.supersedes) lines.push(`Supersedes: ${asset.supersedes}`);
   if (asset.solution) lines.push(`Solution: ${asset.solution}`);
@@ -252,8 +252,10 @@ export function computeGdiBreakdown(asset, allAssets = [], nowMs = Date.now()) {
 
   // 3. Lineage & Evolution Signal (20%): links + team promotion + derivations.
   let lineage = asset?.scope === "team" ? 40 : asset?.scope === "starter" ? 30 : 20;
-  if (asset?.geneId || asset?.parentId || asset?.supersedes) lineage += 25;
-  const hasChildren = allAssets.some((a) => a.id !== asset?.id && (a.geneId === asset?.id || a.parentId === asset?.id));
+  if (asset?.ruleId || asset?.parentId || asset?.supersedes) lineage += 25;
+  const hasChildren = allAssets.some(
+    (a) => a.id !== asset?.id && (a.ruleId === asset?.id || a.parentId === asset?.id)
+  );
   if (hasChildren) lineage += 25;
   if (asset?.pinned) lineage += 10;
   lineage = Math.min(100, lineage);
@@ -280,7 +282,7 @@ export function computeGdiScore(asset, allAssets = [], nowMs = Date.now()) {
 }
 
 export function getAssetRelationships(asset, allAssets) {
-  if (!asset) return { parent: null, gene: null, supersedes: null, children: [], supersededBy: [], sharedSignals: [] };
+  if (!asset) return { parent: null, rule: null, supersedes: null, children: [], supersededBy: [], sharedSignals: [] };
   const byId = new Map(allAssets.map((item) => [item.id, item]));
   const pickSummary = (item) => (item ? { id: item.id, type: item.type, title: item.title, scope: item.scope } : null);
   const mySignals = new Set((asset.signals || []).map((s) => String(s).toLowerCase()));
@@ -296,11 +298,11 @@ export function getAssetRelationships(asset, allAssets) {
     sharedSignals.sort((a, b) => b.overlap.length - a.overlap.length);
   }
   return {
-    gene: asset.geneId ? pickSummary(byId.get(asset.geneId)) : null,
+    rule: asset.ruleId ? pickSummary(byId.get(asset.ruleId)) : null,
     parent: asset.parentId ? pickSummary(byId.get(asset.parentId)) : null,
     supersedes: asset.supersedes ? pickSummary(byId.get(asset.supersedes)) : null,
     children: allAssets
-      .filter((item) => item.id !== asset.id && (item.parentId === asset.id || item.geneId === asset.id))
+      .filter((item) => item.id !== asset.id && (item.parentId === asset.id || item.ruleId === asset.id))
       .map(pickSummary),
     supersededBy: allAssets
       .filter((item) => item.id !== asset.id && item.supersedes === asset.id)
@@ -312,14 +314,14 @@ export function getAssetRelationships(asset, allAssets) {
 export function recordAssetOutcome(evoHome, assetIds = [], outcome = "success", reason = "auto") {
   const uniqueIds = Array.from(new Set(assetIds.filter(Boolean)));
   if (!uniqueIds.length) return [];
-  const genesPath = path.join(evoHome, "genes.json");
-  const capsulesPath = path.join(evoHome, "capsules.json");
-  const genes = readJsonSafe(genesPath, []);
-  const capsules = readJsonSafe(capsulesPath, []);
+  const rulesPath = path.join(evoHome, "rules.json");
+  const fixesPath = path.join(evoHome, "fixes.json");
+  const rules = readJsonSafe(rulesPath, []);
+  const fixes = readJsonSafe(fixesPath, []);
   const idSet = new Set(uniqueIds);
   const updated = [];
-  let genesDirty = false;
-  let capsulesDirty = false;
+  let rulesDirty = false;
+  let fixesDirty = false;
 
   const apply = (list, markDirty) => {
     for (let i = 0; i < list.length; i++) {
@@ -339,10 +341,10 @@ export function recordAssetOutcome(evoHome, assetIds = [], outcome = "success", 
     }
   };
 
-  apply(genes, () => { genesDirty = true; });
-  apply(capsules, () => { capsulesDirty = true; });
-  if (genesDirty) writeJson(genesPath, genes);
-  if (capsulesDirty) writeJson(capsulesPath, capsules);
+  apply(rules, () => { rulesDirty = true; });
+  apply(fixes, () => { fixesDirty = true; });
+  if (rulesDirty) writeJson(rulesPath, rules);
+  if (fixesDirty) writeJson(fixesPath, fixes);
   if (updated.length) {
     appendEvent(evoHome, { event: `auto_${outcome}`, assetIds: updated, reason });
   }
@@ -411,8 +413,7 @@ export function extractSignals(text, extraSignals = [], options = {}) {
 }
 
 function normalizeAssetKind(raw) {
-  if (raw === "Capsule" || raw === "Fix") return "Capsule";
-  return "Gene";
+  return normalizeExperienceType(raw);
 }
 
 export function selectAssets({
@@ -422,8 +423,8 @@ export function selectAssets({
   kind = "",
   repo = "",
   includeSuperseded = false,
-  genes = [],
-  capsules = [],
+  rules = [],
+  fixes = [],
   limit = 3,
 }) {
   const sigSet = new Set(signals.map((s) => String(s).toLowerCase()));
@@ -431,7 +432,7 @@ export function selectAssets({
     .toLowerCase()
     .split(/\s+/)
     .filter((t) => t.length >= 2);
-  const all = [...genes, ...capsules];
+  const all = [...rules, ...fixes];
   const supersededIds = new Set(all.map((a) => a.supersedes).filter(Boolean));
   const normalizedRepo = repo && repo !== "*" ? normalizeRepoSlug(repo) : "";
   const normalizedKind = kind ? normalizeAssetKind(kind) : "";
@@ -523,7 +524,7 @@ export function solidifyAsset(input, options = {}) {
     validation,
     scope,
     repoScope: resolvedRepoScope,
-    ...(input.geneId ? { geneId: slugify(input.geneId) } : {}),
+    ...(input.ruleId ? { ruleId: slugify(input.ruleId) } : {}),
     ...(input.parentId ? { parentId: slugify(input.parentId) } : {}),
     ...(input.supersedes ? { supersedes: slugify(input.supersedes) } : {}),
     sourceProject: hashProjectId(input.workingDirectory),
@@ -533,7 +534,7 @@ export function solidifyAsset(input, options = {}) {
   if (hasNonEnglishText(rawAsset)) {
     return {
       ok: false,
-      error: "All solidified Genes and Capsules must be written in English. Translate title, summary, signals, strategy, and solution into English and retry evo_solidify.",
+      error: "All solidified Rules and Fixes must be written in English. Translate title, summary, signals, strategy, and solution into English and retry evo_solidify.",
     };
   }
 
@@ -541,13 +542,13 @@ export function solidifyAsset(input, options = {}) {
   if (scope === "team" && leakCheck.found) {
     return {
       ok: false,
-      error: "Team asset rejected: sensitive pattern or environment secret detected. Replace secrets/paths with placeholders before solidifying as team scope.",
+      error: "Team experience rejected: sensitive pattern or environment secret detected. Replace secrets/paths with placeholders before solidifying as team scope.",
       leaks: leakCheck.leaks,
     };
   }
 
   const cleanAsset = sanitizePayload(rawAsset);
-  const targetFile = path.join(evoHome, kind === "Capsule" ? "capsules.json" : "genes.json");
+  const targetFile = path.join(evoHome, kind === "Fix" ? "fixes.json" : "rules.json");
   const list = readJsonSafe(targetFile, []);
   const idx = list.findIndex((item) => item.id === cleanAsset.id);
   if (idx >= 0) {
@@ -561,12 +562,12 @@ export function solidifyAsset(input, options = {}) {
   }
   writeJson(targetFile, list);
 
-  if (cleanAsset.geneId || cleanAsset.parentId) {
+  if (cleanAsset.ruleId || cleanAsset.parentId) {
     recordAssetOutcome(
       evoHome,
-      [cleanAsset.geneId, cleanAsset.parentId].filter(Boolean),
+      [cleanAsset.ruleId, cleanAsset.parentId].filter(Boolean),
       "success",
-      "derived_asset"
+      "derived_experience"
     );
   }
 
@@ -593,22 +594,16 @@ export function solidifyAsset(input, options = {}) {
 
 export function manageAsset(action, id, options = {}) {
   const evoHome = initStore(options);
-  const genesPath = path.join(evoHome, "genes.json");
-  const capsulesPath = path.join(evoHome, "capsules.json");
-  const candidatesPath = path.join(evoHome, "candidates.json");
+  const rulesPath = path.join(evoHome, "rules.json");
+  const fixesPath = path.join(evoHome, "fixes.json");
 
-  const genes = readJsonSafe(genesPath, []);
-  const capsules = readJsonSafe(capsulesPath, []);
-  const candidates = readJsonSafe(candidatesPath, []);
-
-  if (action === "list_candidates") {
-    return { ok: true, candidates };
-  }
+  const rules = readJsonSafe(rulesPath, []);
+  const fixes = readJsonSafe(fixesPath, []);
 
   if (action === "inspect") {
-    const allAssets = [...genes, ...capsules];
-    const found = [...allAssets, ...candidates].find((a) => a.id === id);
-    if (!found) return { ok: false, error: `Asset not found: ${id}` };
+    const allAssets = [...rules, ...fixes];
+    const found = allAssets.find((a) => a.id === id);
+    if (!found) return { ok: false, error: `Experience not found: ${id}` };
     return {
       ok: true,
       asset: found,
@@ -618,9 +613,9 @@ export function manageAsset(action, id, options = {}) {
   }
 
   if (action === "pin" || action === "unpin" || action === "upvote" || action === "downvote") {
-    const targetList = genes.some((a) => a.id === id) ? genes : capsules;
+    const targetList = rules.some((a) => a.id === id) ? rules : fixes;
     const idx = targetList.findIndex((a) => a.id === id);
-    if (idx < 0) return { ok: false, error: `Asset not found: ${id}` };
+    if (idx < 0) return { ok: false, error: `Experience not found: ${id}` };
     const current = { ...targetList[idx] };
     if (action === "pin") current.pinned = true;
     if (action === "unpin") current.pinned = false;
@@ -634,36 +629,15 @@ export function manageAsset(action, id, options = {}) {
     }
     current.updatedAt = new Date().toISOString();
     targetList[idx] = current;
-    writeJson(targetList === genes ? genesPath : capsulesPath, targetList);
+    writeJson(targetList === rules ? rulesPath : fixesPath, targetList);
     appendEvent(evoHome, { event: `feedback_${action}`, assetId: current.id, assetType: current.type });
     return { ok: true, asset: current, gdiScore: computeGdiScore(current) };
   }
 
-  if (action === "promote") {
-    const idx = candidates.findIndex((a) => a.id === id);
-    if (idx < 0) return { ok: false, error: `Candidate not found: ${id}` };
-    const candidate = sanitizePayload(candidates[idx]);
-    for (const cmd of candidate.validation || []) {
-      if (!isValidationCommandAllowed(cmd)) {
-        return { ok: false, error: `Candidate blocked due to unsafe validation command: ${cmd}` };
-      }
-    }
-    const targetPath = candidate.type === "Capsule" ? capsulesPath : genesPath;
-    const list = readJsonSafe(targetPath, []);
-    if (!list.some((a) => a.id === candidate.id)) {
-      list.push(candidate);
-      writeJson(targetPath, list);
-    }
-    candidates.splice(idx, 1);
-    writeJson(candidatesPath, candidates);
-    appendEvent(evoHome, { event: "promote", assetId: candidate.id, assetType: candidate.type });
-    return { ok: true, asset: candidate };
-  }
-
   if (action === "promote_team") {
-    const targetList = genes.some((a) => a.id === id) ? genes : capsules;
+    const targetList = rules.some((a) => a.id === id) ? rules : fixes;
     const idx = targetList.findIndex((a) => a.id === id);
-    if (idx < 0) return { ok: false, error: `Asset not found: ${id}` };
+    if (idx < 0) return { ok: false, error: `Experience not found: ${id}` };
     const candidate = { ...targetList[idx], scope: "team", updatedAt: new Date().toISOString() };
     const leaks = fullLeakCheck(candidate);
     if (leaks.found) {
@@ -676,23 +650,18 @@ export function manageAsset(action, id, options = {}) {
     }
     const clean = sanitizePayload(candidate);
     targetList[idx] = clean;
-    writeJson(targetList === genes ? genesPath : capsulesPath, targetList);
+    writeJson(targetList === rules ? rulesPath : fixesPath, targetList);
     appendEvent(evoHome, { event: "promote_team", assetId: clean.id, assetType: clean.type });
     return { ok: true, asset: clean };
   }
 
   if (action === "delete") {
-    const nextGenes = genes.filter((a) => a.id !== id);
-    const nextCapsules = capsules.filter((a) => a.id !== id);
-    const nextCandidates = candidates.filter((a) => a.id !== id);
-    const changed =
-      nextGenes.length !== genes.length ||
-      nextCapsules.length !== capsules.length ||
-      nextCandidates.length !== candidates.length;
-    if (!changed) return { ok: false, error: `Asset not found: ${id}` };
-    writeJson(genesPath, nextGenes);
-    writeJson(capsulesPath, nextCapsules);
-    writeJson(candidatesPath, nextCandidates);
+    const nextRules = rules.filter((a) => a.id !== id);
+    const nextFixes = fixes.filter((a) => a.id !== id);
+    const changed = nextRules.length !== rules.length || nextFixes.length !== fixes.length;
+    if (!changed) return { ok: false, error: `Experience not found: ${id}` };
+    writeJson(rulesPath, nextRules);
+    writeJson(fixesPath, nextFixes);
     appendEvent(evoHome, { event: "delete", assetId: id });
     return { ok: true, deletedId: id };
   }
@@ -701,16 +670,16 @@ export function manageAsset(action, id, options = {}) {
 }
 
 export function exportBundle(evoHome, { scope = "team", outputPath }) {
-  const { genes, capsules } = loadStore(evoHome);
+  const { rules, fixes } = loadStore(evoHome);
   const filterFn = (item) => (scope === "all" ? item.scope !== "starter" : item.scope === scope);
-  const selectedGenes = genes.filter(filterFn).map((g) => sanitizePayload(stripLocalSyncFields(g)));
-  const selectedCapsules = capsules.filter(filterFn).map((c) => sanitizePayload(stripLocalSyncFields(c)));
+  const selectedRules = rules.filter(filterFn).map((r) => sanitizePayload(stripLocalSyncFields(r)));
+  const selectedFixes = fixes.filter(filterFn).map((f) => sanitizePayload(stripLocalSyncFields(f)));
 
   const bundle = {
     schema: "copilot-evo/bundle@1",
     exportedAt: new Date().toISOString(),
-    genes: selectedGenes,
-    capsules: selectedCapsules,
+    rules: selectedRules,
+    fixes: selectedFixes,
   };
   const leaks = fullLeakCheck(bundle);
   if (leaks.found) {
@@ -722,14 +691,14 @@ export function exportBundle(evoHome, { scope = "team", outputPath }) {
   return { ok: true, bundle, outputPath };
 }
 
-export function importBundle(evoHome, { inputPath, bundleData, autoPromote = false }) {
+export function importBundle(evoHome, { inputPath, bundleData }) {
   const bundle = bundleData || readJsonSafe(inputPath, null);
-  if (!bundle || (!Array.isArray(bundle.genes) && !Array.isArray(bundle.capsules))) {
-    return { ok: false, error: "Invalid evolution bundle." };
+  if (!bundle || (!Array.isArray(bundle.rules) && !Array.isArray(bundle.fixes))) {
+    return { ok: false, error: "Invalid experience bundle." };
   }
   const incoming = [
-    ...(bundle.genes || []).map((g) => sanitizePayload({ ...g, type: "Gene" })),
-    ...(bundle.capsules || []).map((c) => sanitizePayload({ ...c, type: "Capsule" })),
+    ...(bundle.rules || []).map((r) => sanitizePayload({ ...r, type: "Rule" })),
+    ...(bundle.fixes || []).map((f) => sanitizePayload({ ...f, type: "Fix" })),
   ];
 
   const valid = [];
@@ -743,26 +712,22 @@ export function importBundle(evoHome, { inputPath, bundleData, autoPromote = fal
     valid.push(item);
   }
 
-  if (autoPromote) {
-    const genesPath = path.join(evoHome, "genes.json");
-    const capsulesPath = path.join(evoHome, "capsules.json");
-    const gRes = mergeById(readJsonSafe(genesPath, []), valid.filter((a) => a.type === "Gene"), { updateExisting: true });
-    const cRes = mergeById(readJsonSafe(capsulesPath, []), valid.filter((a) => a.type === "Capsule"), { updateExisting: true });
-    writeJson(genesPath, gRes.merged);
-    writeJson(capsulesPath, cRes.merged);
-    return {
-      ok: true,
-      imported: gRes.added + cRes.added,
-      updated: gRes.updated + cRes.updated,
-      promoted: true,
-      rejected,
-    };
-  }
-
-  const candidatesPath = path.join(evoHome, "candidates.json");
-  const candRes = mergeById(readJsonSafe(candidatesPath, []), valid);
-  writeJson(candidatesPath, candRes.merged);
-  return { ok: true, imported: candRes.added, promoted: false, rejected };
+  const rulesPath = path.join(evoHome, "rules.json");
+  const fixesPath = path.join(evoHome, "fixes.json");
+  const rRes = mergeById(readJsonSafe(rulesPath, []), valid.filter((a) => a.type === "Rule"), {
+    updateExisting: true,
+  });
+  const fRes = mergeById(readJsonSafe(fixesPath, []), valid.filter((a) => a.type === "Fix"), {
+    updateExisting: true,
+  });
+  writeJson(rulesPath, rRes.merged);
+  writeJson(fixesPath, fRes.merged);
+  return {
+    ok: true,
+    imported: rRes.added + fRes.added,
+    updated: rRes.updated + fRes.updated,
+    rejected,
+  };
 }
 
 function runCmd(cmd, args, cwd) {
@@ -815,12 +780,19 @@ async function ensureSyncRepo(evoHome, { repoPath, repo } = {}) {
   return cloneDir;
 }
 
-export async function syncRepoPull(evoHome, { repoPath, repo, autoPromote = true } = {}) {
+function readTeamFilesFromRepo(targetRepo) {
+  const expDir = path.join(targetRepo, "assets", "experiences");
+  return {
+    rules: readJsonSafe(path.join(expDir, "team-rules.json"), []),
+    fixes: readJsonSafe(path.join(expDir, "team-fixes.json"), []),
+  };
+}
+
+export async function syncRepoPull(evoHome, { repoPath, repo } = {}) {
   const targetRepo = await ensureSyncRepo(evoHome, { repoPath, repo });
   await runGit(targetRepo, ["pull", "--ff-only"]);
-  const genes = readJsonSafe(path.join(targetRepo, "assets", "gep", "team-genes.json"), []);
-  const capsules = readJsonSafe(path.join(targetRepo, "assets", "gep", "team-capsules.json"), []);
-  const res = importBundle(evoHome, { bundleData: { genes, capsules }, autoPromote });
+  const { rules, fixes } = readTeamFilesFromRepo(targetRepo);
+  const res = importBundle(evoHome, { bundleData: { rules, fixes } });
   saveConfig(evoHome, { lastAutoPullAt: new Date().toISOString() });
   appendEvent(evoHome, { event: "sync_pull", imported: res.imported || 0 });
   return { ...res, repoPath: targetRepo };
@@ -858,32 +830,31 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
   await runGit(targetRepo, ["pull", "--rebase", "--autostash"]);
 
   const store = loadStore(evoHome);
-  const localTeamGenes = store.genes.filter((g) => g.scope === "team");
-  const localTeamCapsules = store.capsules.filter((c) => c.scope === "team");
+  const localTeamRules = store.rules.filter((r) => r.scope === "team");
+  const localTeamFixes = store.fixes.filter((f) => f.scope === "team");
 
   const leakCheckLocal = fullLeakCheck({
-    genes: localTeamGenes.map(stripLocalSyncFields),
-    capsules: localTeamCapsules.map(stripLocalSyncFields),
+    rules: localTeamRules.map(stripLocalSyncFields),
+    fixes: localTeamFixes.map(stripLocalSyncFields),
   });
   if (leakCheckLocal.found) {
-    return { ok: false, error: "Push aborted: sensitive content detected in team assets.", leaks: leakCheckLocal.leaks };
+    return { ok: false, error: "Push aborted: sensitive content detected in team experiences.", leaks: leakCheckLocal.leaks };
   }
 
-  const teamGenesPath = path.join(targetRepo, "assets", "gep", "team-genes.json");
-  const teamCapsulesPath = path.join(targetRepo, "assets", "gep", "team-capsules.json");
-  const existingGenes = readJsonSafe(teamGenesPath, []);
-  const existingCapsules = readJsonSafe(teamCapsulesPath, []);
+  const teamRulesPath = path.join(targetRepo, "assets", "experiences", "team-rules.json");
+  const teamFixesPath = path.join(targetRepo, "assets", "experiences", "team-fixes.json");
+  const existing = readTeamFilesFromRepo(targetRepo);
 
-  const mergedGenes = mergeTeamAssetsForPush(existingGenes, localTeamGenes);
-  const mergedCapsules = mergeTeamAssetsForPush(existingCapsules, localTeamCapsules);
+  const mergedRules = mergeTeamAssetsForPush(existing.rules, localTeamRules);
+  const mergedFixes = mergeTeamAssetsForPush(existing.fixes, localTeamFixes);
 
-  const leakCheck = fullLeakCheck({ genes: mergedGenes, capsules: mergedCapsules });
+  const leakCheck = fullLeakCheck({ rules: mergedRules, fixes: mergedFixes });
   if (leakCheck.found) {
-    return { ok: false, error: "Push aborted: leak check failed on merged team assets.", leaks: leakCheck.leaks };
+    return { ok: false, error: "Push aborted: leak check failed on merged team experiences.", leaks: leakCheck.leaks };
   }
 
-  writeJson(teamGenesPath, mergedGenes);
-  writeJson(teamCapsulesPath, mergedCapsules);
+  writeJson(teamRulesPath, mergedRules);
+  writeJson(teamFixesPath, mergedFixes);
 
   const syncBackLocalDeltas = (filePath, remoteMerged) => {
     const remoteById = new Map(remoteMerged.map((a) => [a.id, a]));
@@ -902,28 +873,28 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
     if (changed) writeJson(filePath, nextList);
   };
 
-  const status = await runGit(targetRepo, ["status", "--porcelain", "assets/gep/team-genes.json", "assets/gep/team-capsules.json"]);
+  const status = await runGit(targetRepo, ["status", "--porcelain", "assets/experiences/team-rules.json", "assets/experiences/team-fixes.json"]);
   if (!status) {
-    syncBackLocalDeltas(path.join(evoHome, "genes.json"), mergedGenes);
-    syncBackLocalDeltas(path.join(evoHome, "capsules.json"), mergedCapsules);
-    return { ok: true, pushed: false, message: "Team assets are already up to date.", repoPath: targetRepo };
+    syncBackLocalDeltas(path.join(evoHome, "rules.json"), mergedRules);
+    syncBackLocalDeltas(path.join(evoHome, "fixes.json"), mergedFixes);
+    return { ok: true, pushed: false, message: "Team experiences are already up to date.", repoPath: targetRepo };
   }
 
-  await runGit(targetRepo, ["add", "assets/gep/team-genes.json", "assets/gep/team-capsules.json"]);
-  await runGit(targetRepo, ["commit", "-m", commitMessage || "chore(evo): sync sanitized team genes and capsules"]);
+  await runGit(targetRepo, ["add", "assets/experiences/team-rules.json", "assets/experiences/team-fixes.json"]);
+  await runGit(targetRepo, ["commit", "-m", commitMessage || "chore(evo): sync sanitized team rules and fixes"]);
   await runGit(targetRepo, ["push"]);
-  syncBackLocalDeltas(path.join(evoHome, "genes.json"), mergedGenes);
-  syncBackLocalDeltas(path.join(evoHome, "capsules.json"), mergedCapsules);
+  syncBackLocalDeltas(path.join(evoHome, "rules.json"), mergedRules);
+  syncBackLocalDeltas(path.join(evoHome, "fixes.json"), mergedFixes);
   appendEvent(evoHome, {
     event: "sync_push",
-    genesCount: mergedGenes.length,
-    capsulesCount: mergedCapsules.length,
+    rulesCount: mergedRules.length,
+    fixesCount: mergedFixes.length,
   });
   return {
     ok: true,
     pushed: true,
-    genesCount: mergedGenes.length,
-    capsulesCount: mergedCapsules.length,
+    rulesCount: mergedRules.length,
+    fixesCount: mergedFixes.length,
     repoPath: targetRepo,
   };
 }
@@ -931,9 +902,9 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
 const DEFAULT_AUTO_PULL_INTERVAL_MS = 30 * 60 * 1000;
 
 export function getPendingScoreDeltaTotal(evoHome) {
-  const { genes, capsules } = loadStore(evoHome);
+  const { rules, fixes } = loadStore(evoHome);
   let total = 0;
-  for (const item of [...genes, ...capsules]) {
+  for (const item of [...rules, ...fixes]) {
     if (item.scope !== "team") continue;
     total += (item.pendingSuccessDelta || 0) + (item.pendingFailureDelta || 0);
   }
@@ -949,7 +920,7 @@ export async function maybeAutoPull(evoHome, { repoPath, intervalMs = DEFAULT_AU
     return { ok: true, ran: false, reason: "throttled" };
   }
   saveConfig(evoHome, { lastAutoPullAt: new Date().toISOString() });
-  const res = await syncRepoPull(evoHome, { repoPath: targetRepo, autoPromote: true });
+  const res = await syncRepoPull(evoHome, { repoPath: targetRepo });
   return { ...res, ran: true };
 }
 
@@ -959,12 +930,11 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
   if (!targetRepo) return { ok: true, pushed: false, reason: "no_local_sync_repo" };
 
   const store = loadStore(evoHome);
-  const teamGenesPath = path.join(targetRepo, "assets", "gep", "team-genes.json");
-  const teamCapsulesPath = path.join(targetRepo, "assets", "gep", "team-capsules.json");
+  const teamRulesPath = path.join(targetRepo, "assets", "experiences", "team-rules.json");
+  const teamFixesPath = path.join(targetRepo, "assets", "experiences", "team-fixes.json");
 
   await runGit(targetRepo, ["pull", "--rebase", "--autostash"]);
-  const remoteGenes = readJsonSafe(teamGenesPath, []);
-  const remoteCapsules = readJsonSafe(teamCapsulesPath, []);
+  const existing = readTeamFilesFromRepo(targetRepo);
 
   const mergeScoresOnly = (remoteList, localList) => {
     const localById = new Map(localList.filter((x) => x.scope === "team").map((x) => [x.id, x]));
@@ -985,18 +955,18 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
     return { nextRemote, dirty };
   };
 
-  const gMerge = mergeScoresOnly(remoteGenes, store.genes);
-  const cMerge = mergeScoresOnly(remoteCapsules, store.capsules);
-  if (!gMerge.dirty && !cMerge.dirty) {
+  const rMerge = mergeScoresOnly(existing.rules, store.rules);
+  const fMerge = mergeScoresOnly(existing.fixes, store.fixes);
+  if (!rMerge.dirty && !fMerge.dirty) {
     return { ok: true, pushed: false, reason: "no_pending_deltas" };
   }
 
-  writeJson(teamGenesPath, gMerge.nextRemote);
-  writeJson(teamCapsulesPath, cMerge.nextRemote);
+  writeJson(teamRulesPath, rMerge.nextRemote);
+  writeJson(teamFixesPath, fMerge.nextRemote);
 
-  const status = await runGit(targetRepo, ["status", "--porcelain", "assets/gep/team-genes.json", "assets/gep/team-capsules.json"]);
+  const status = await runGit(targetRepo, ["status", "--porcelain", "assets/experiences/team-rules.json", "assets/experiences/team-fixes.json"]);
   if (status) {
-    await runGit(targetRepo, ["add", "assets/gep/team-genes.json", "assets/gep/team-capsules.json"]);
+    await runGit(targetRepo, ["add", "assets/experiences/team-rules.json", "assets/experiences/team-fixes.json"]);
     await runGit(targetRepo, ["commit", "-m", "chore(evo): sync experience score deltas"]);
     await runGit(targetRepo, ["push"]);
   }
@@ -1015,8 +985,8 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
     if (changed) writeJson(filePath, nextList);
   };
 
-  clearLocalDeltas(path.join(evoHome, "genes.json"), gMerge.nextRemote);
-  clearLocalDeltas(path.join(evoHome, "capsules.json"), cMerge.nextRemote);
+  clearLocalDeltas(path.join(evoHome, "rules.json"), rMerge.nextRemote);
+  clearLocalDeltas(path.join(evoHome, "fixes.json"), fMerge.nextRemote);
   appendEvent(evoHome, { event: "sync_scores", reason: "auto_delta_push" });
   return { ok: true, pushed: true, repoPath: targetRepo };
 }
@@ -1046,8 +1016,8 @@ function splitArgs(command) {
 }
 
 export async function runAssetValidation(evoHome, id, workingDirectory) {
-  const { genes, capsules } = loadStore(evoHome);
-  const asset = [...genes, ...capsules].find((a) => a.id === id);
+  const { rules, fixes } = loadStore(evoHome);
+  const asset = [...rules, ...fixes].find((a) => a.id === id);
   if (!asset) return { ok: false, error: `Asset not found: ${id}` };
   const commands = Array.isArray(asset.validation) ? asset.validation.filter(Boolean) : [];
   if (!commands.length) {

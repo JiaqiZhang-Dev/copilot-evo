@@ -14,10 +14,10 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     initStore({ evoHome });
     solidifyAsset(
       {
-        kind: "Gene",
-        id: "gene-canvas-preview",
-        title: "Previewable gene",
-        summary: "Verify canvas snapshot exposes stored genes.",
+        kind: "Rule",
+        id: "exp-canvas-preview",
+        title: "Previewable rule",
+        summary: "Verify canvas snapshot exposes stored rules.",
         signals: ["preview"],
         scope: "team",
       },
@@ -38,13 +38,13 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     const stateRes = await fetch(`${baseUrl}/api/state`);
     assert.equal(stateRes.status, 200);
     const state = await stateRes.json();
-    assert.ok(state.genes.some((g) => g.id === "gene-canvas-preview"));
+    assert.ok(state.rules.some((r) => r.id === "exp-canvas-preview"));
     assert.equal(state.viewState.filter, "team");
 
     const unauthDelete = await fetch(`${baseUrl}/api/assets/delete`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: "gene-canvas-preview" }),
+      body: JSON.stringify({ id: "exp-canvas-preview" }),
     });
     assert.equal(unauthDelete.status, 403);
 
@@ -57,7 +57,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
         "Content-Type": "application/json",
         "X-Evo-Token": canvasToken,
       },
-      body: JSON.stringify({ id: "gene-canvas-preview" }),
+      body: JSON.stringify({ id: "exp-canvas-preview" }),
     });
     assert.equal(authDelete.status, 200);
     const delBody = await authDelete.json();
@@ -65,10 +65,10 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
 
     solidifyAsset(
       {
-        kind: "Capsule",
-        id: "capsule-local-promote",
-        title: "Local capsule to promote",
-        summary: "Verify promote-team upgrades clean local assets.",
+        kind: "Fix",
+        id: "exp-local-promote",
+        title: "Local fix to promote",
+        summary: "Verify promote-team upgrades clean local experiences.",
         signals: ["test_failure"],
         scope: "local",
       },
@@ -80,7 +80,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
         "Content-Type": "application/json",
         "X-Evo-Token": canvasToken,
       },
-      body: JSON.stringify({ id: "capsule-local-promote", push: false }),
+      body: JSON.stringify({ id: "exp-local-promote", push: false }),
     });
     assert.equal(promoteTeam.status, 200);
     const promoteBody = await promoteTeam.json();
@@ -92,7 +92,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
         "Content-Type": "application/json",
         "X-Evo-Token": canvasToken,
       },
-      body: JSON.stringify({ id: "capsule-local-promote", action: "pin" }),
+      body: JSON.stringify({ id: "exp-local-promote", action: "pin" }),
     });
     assert.equal(feedbackRes.status, 200);
     const feedbackBody = await feedbackRes.json();
