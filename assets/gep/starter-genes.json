@@ -3,7 +3,7 @@
     "id": "gene-verify-before-claim",
     "type": "Gene",
     "title": "Verify with targeted checks after fixing failures",
-    "summary": "After resolving a build, lint, or test failure, run the smallest targeted verification command before concluding and solidify the verified fix as a Capsule.",
+    "summary": "After resolving a build, lint, or test failure, run the smallest targeted verification command before concluding and solidify the verified fix as a Fix experience.",
     "signals": ["test_failure", "build_error", "lint_error", "recovery"],
     "strategy": [
       "Run the narrowest failing test or build command first to reproduce.",
@@ -37,8 +37,8 @@
   {
     "id": "gene-sanitize-before-share",
     "type": "Gene",
-    "title": "Sanitize secrets and local paths before sharing assets",
-    "summary": "Never persist tokens, private keys, internal IPs, or personal filesystem paths in shared Genes or Capsules.",
+    "title": "Sanitize secrets and local paths before sharing experiences",
+    "summary": "Never persist tokens, private keys, internal IPs, or personal filesystem paths in shared Rules or Fixes.",
     "signals": ["secret_leak", "share", "sync", "privacy"],
     "strategy": [
       "Replace literal credentials with environment variable names such as process.env.GITHUB_TOKEN.",

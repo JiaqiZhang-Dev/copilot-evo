@@ -28,7 +28,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.7.1";
+const EXTENSION_VERSION = "0.7.2";
 let lastWorkingDirectory = process.cwd();
 const canvasServer = createEvoCanvasServer({
   evoHome,
@@ -250,7 +250,7 @@ const session = await joinSession({
   tools: [
     {
       name: "evo_search",
-      description: "Search or list local and team-synced GEP Genes and Capsules by keywords, signals, kind, or scope.",
+      description: "Search or list local and team-synced Experiences (Rules and Fixes) by keywords, signals, kind, or scope.",
       parameters: {
         type: "object",
         properties: {
@@ -299,13 +299,13 @@ const session = await joinSession({
           summary: { type: "string", description: "Concise English explanation of the pattern or root cause" },
           signals: { type: "array", items: { type: "string" }, description: "English lowercase trigger signals (e.g. test_failure, win32, enoent)" },
           strategy: { type: "array", items: { type: "string" }, description: "Ordered actionable steps in English" },
-          solution: { type: "string", description: "Concrete fix summary in English (especially for Capsules)" },
+          solution: { type: "string", description: "Concrete fix summary in English (especially for Fix experiences)" },
           validation: { type: "array", items: { type: "string" }, description: "Safe verification commands (node/npm/npx/pytest/dotnet/cargo/go test)" },
-          scope: { type: "string", enum: ["local", "team"], description: "local stays on this machine; team stages sanitized asset for private repo sync" },
+          scope: { type: "string", enum: ["local", "team"], description: "local stays on this machine; team stages sanitized experience for private repo sync" },
           repoScope: { type: "string", description: "Repository applicability: '*' for all repos (default), 'current' for the active Git repo, or 'owner/repo'" },
-          geneId: { type: "string", description: "For Capsules: ID of the Gene strategy this fix applied" },
-          parentId: { type: "string", description: "Optional ID of an earlier Gene or Capsule this asset refines" },
-          supersedes: { type: "string", description: "Optional ID of an outdated asset replaced by this one" },
+          geneId: { type: "string", description: "For Fixes: ID of the Rule this fix applied" },
+          parentId: { type: "string", description: "Optional ID of an earlier Rule or Fix this experience refines" },
+          supersedes: { type: "string", description: "Optional ID of an outdated experience replaced by this one" },
         },
         required: ["kind", "title", "summary", "signals"],
       },
@@ -358,7 +358,7 @@ const session = await joinSession({
     },
     {
       name: "evo_manage_asset",
-      description: "Inspect, promote, pin, vote on, or delete a local Gene/Capsule by ID.",
+      description: "Inspect, promote, pin, vote on, or delete a local Experience (Rule or Fix) by ID.",
       parameters: {
         type: "object",
         properties: {
@@ -383,7 +383,7 @@ const session = await joinSession({
     },
     {
       name: "evo_sync_repo",
-      description: "Pull or push sanitized team Genes/Capsules directly to the private Git repo (no PR), or export/import offline .evopack.json bundles. Auto-clones the configured repo if not present locally.",
+      description: "Pull or push sanitized team Experiences (Rules and Fixes) directly to the private Git repo (no PR), or export/import offline .evopack.json bundles. Auto-clones the configured repo if not present locally.",
       parameters: {
         type: "object",
         properties: {
@@ -439,7 +439,7 @@ const session = await joinSession({
       actions: [
         {
           name: "refresh",
-          description: "Refresh the Copilot Evo canvas view from the local GEP store.",
+          description: "Refresh the Copilot Evo canvas view from the local Experience store.",
           handler: async () => {
             canvasServer.broadcastUpdate("manual_refresh");
             return canvasServer.buildSnapshot().counts;
@@ -447,7 +447,7 @@ const session = await joinSession({
         },
         {
           name: "select_asset",
-          description: "Focus and preview a specific Gene or Capsule by ID in the Copilot Evo canvas.",
+          description: "Focus and preview a specific Rule or Fix by ID in the Copilot Evo canvas.",
           inputSchema: {
             type: "object",
             properties: {

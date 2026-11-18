@@ -1,18 +1,18 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "copilot-evo",
-  "description": "Self-evolving GEP (Genes, Capsules, EvolutionEvents) memory and private Git-synced experience sharing plugin for GitHub Copilot.",
-  "version": "0.7.1",
+  "description": "Self-evolving Experience (Rules & Fixes) memory and private Git-synced team sharing plugin for GitHub Copilot.",
+  "version": "0.7.2",
   "author": {
     "name": "JiaqiZhang-Dev",
     "url": "https://github.com/JiaqiZhang-Dev"
   },
   "keywords": [
     "self-evolution",
-    "gep",
+    "experiences",
+    "rules",
+    "fixes",
     "memory",
-    "genes",
-    "capsules",
     "copilot-plugin"
   ]
 }

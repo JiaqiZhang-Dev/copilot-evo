@@ -285,7 +285,7 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
     assert.equal(deltaPush.pushed, true);
     assert.equal(getPendingScoreDeltaTotal(homeA), 0);
 
-    const autoPull = await maybeAutoPull(homeB, { repoPath: cloneB, intervalMs: 60000 });
+    const autoPull = await maybeAutoPull(homeB, { repoPath: cloneB, intervalMs: 0 });
     assert.equal(autoPull.ran, true);
     const throttledPull = await maybeAutoPull(homeB, { repoPath: cloneB, intervalMs: 60000 });
     assert.equal(throttledPull.ran, false);

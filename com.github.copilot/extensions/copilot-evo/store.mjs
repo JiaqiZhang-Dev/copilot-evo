@@ -821,6 +821,7 @@ export async function syncRepoPull(evoHome, { repoPath, repo, autoPromote = true
   const genes = readJsonSafe(path.join(targetRepo, "assets", "gep", "team-genes.json"), []);
   const capsules = readJsonSafe(path.join(targetRepo, "assets", "gep", "team-capsules.json"), []);
   const res = importBundle(evoHome, { bundleData: { genes, capsules }, autoPromote });
+  saveConfig(evoHome, { lastAutoPullAt: new Date().toISOString() });
   appendEvent(evoHome, { event: "sync_pull", imported: res.imported || 0 });
   return { ...res, repoPath: targetRepo };
 }

@@ -167,6 +167,12 @@ body {
   background: linear-gradient(135deg, var(--accent), #0550ae);
 }
 
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .btn-danger {
   color: var(--danger);
   border-color: var(--danger-muted);

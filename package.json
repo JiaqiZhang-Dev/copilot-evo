@@ -1,9 +1,9 @@
 {
   "name": "copilot-evo",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": true,
   "type": "module",
-  "description": "Self-evolving GEP plugin for GitHub Copilot App and CLI",
+  "description": "Self-evolving Experience (Rules & Fixes) plugin for GitHub Copilot App and CLI",
   "scripts": {
     "test": "node --test test/*.test.mjs"
   },

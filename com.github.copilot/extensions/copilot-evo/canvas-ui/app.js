@@ -582,6 +582,9 @@ function render() {
   el("kpi-total").textContent = String(allAssets.length);
   el("kpi-breakdown").textContent = `${genes.length} Rules · ${capsules.length} Fixes`;
   el("kpi-team").textContent = String(state.counts?.teamAssets || 0);
+  el("kpi-sub-team").textContent = state.config?.lastAutoPullAt
+    ? `Synced ${formatLocalTime(state.config.lastAutoPullAt).slice(11, 16)}`
+    : "Auto-syncs on start";
   el("kpi-reuses").textContent = String(totalReuses);
   el("kpi-events").textContent = String(state.counts?.events || 0);
 
@@ -692,7 +695,7 @@ function render() {
   });
 
   const selected = items.find((i) => i.id === selectedId) || items[0];
-  renderDetail(selected, activeTab === "candidates");
+  renderDetail(selected);
 }
 
 async function loadState(applyServerView = false) {
