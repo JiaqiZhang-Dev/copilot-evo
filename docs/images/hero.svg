@@ -1,22 +1,22 @@
-<svg width="380" height="72" viewBox="0 0 380 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="292" height="72" viewBox="0 0 292 72" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="helixBack" x1="20" y1="16" x2="60" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="helixBack" x1="16" y1="16" x2="56" y2="56" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#54aeff"/>
       <stop offset="100%" stop-color="#0969da"/>
     </linearGradient>
-    <linearGradient id="helixFront" x1="60" y1="16" x2="20" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="helixFront" x1="56" y1="16" x2="16" y2="56" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#0550ae"/>
       <stop offset="100%" stop-color="#218bff"/>
     </linearGradient>
-    <filter id="cardShadow" x="0" y="0" width="80" height="72" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+    <filter id="cardShadow" x="0" y="0" width="72" height="72" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.08"/>
     </filter>
   </defs>
-  <rect x="8" y="4" width="64" height="64" rx="16" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5" filter="url(#cardShadow)"/>
-  <g transform="translate(18 14) scale(1.8333) rotate(35 12 12)">
+  <rect x="4" y="4" width="64" height="64" rx="16" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5" filter="url(#cardShadow)"/>
+  <g transform="translate(14 14) scale(1.8333) rotate(35 12 12)">
     <path d="M8.5 3.5C8.5 8.5 15.5 9.5 15.5 12C15.5 14.5 8.5 15.5 8.5 20.5" stroke="url(#helixBack)" stroke-width="2.5" stroke-linecap="round"/>
     <path d="M15.5 3.5C15.5 8.5 8.5 9.5 8.5 12C8.5 14.5 15.5 15.5 15.5 20.5" stroke="#ffffff" stroke-width="4.4" stroke-linecap="round"/>
     <path d="M15.5 3.5C15.5 8.5 8.5 9.5 8.5 12C8.5 14.5 15.5 15.5 15.5 20.5" stroke="url(#helixFront)" stroke-width="2.5" stroke-linecap="round"/>
   </g>
-  <text x="90" y="47" fill="#1f2328" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="36" font-weight="700" letter-spacing="-0.6">Copilot Evo</text>
+  <text x="84" y="47" fill="#1f2328" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="36" font-weight="700" letter-spacing="-0.6">Copilot Evo</text>
 </svg>

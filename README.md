@@ -3,7 +3,7 @@
 <p>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.svg" />
-    <img src="docs/images/hero.svg" width="340" alt="Copilot Evo" />
+    <img src="docs/images/hero.svg" width="280" alt="Copilot Evo" />
   </picture>
 </p>
 
@@ -29,6 +29,8 @@
 </div>
 
 ---
+
+> **Copilot Evo** captures verified debugging fixes and engineering conventions automatically, recalls the right rule when similar tasks or errors arise, and syncs sanitized team knowledge via a private Git repository.
 
 <p align="center">
   <img src="docs/images/demo.gif" width="92%" alt="Copilot Evo Walkthrough" />
