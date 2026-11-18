@@ -20,7 +20,7 @@
     "repoScope": "*",
     "sourceProject": "JiaqiZhang-Dev/copilot-evo",
     "author": "JiaqiZhang-Dev",
-    "updatedAt": "2026-11-18T09:14:16.017Z",
+    "updatedAt": "2026-11-18T09:53:53.698Z",
     "successCount": 3,
     "failureCount": 0
   },
@@ -44,7 +44,7 @@
     "repoScope": "*",
     "sourceProject": "chat",
     "author": "JiaqiZhang-Dev",
-    "updatedAt": "2026-11-18T06:24:00.000Z",
+    "updatedAt": "2026-11-18T09:53:53.698Z",
     "successCount": 2,
     "failureCount": 0
   },
@@ -170,7 +170,7 @@
     "repoScope": "Azure/azure-sdk-tools",
     "sourceProject": "Azure/azure-sdk-tools",
     "author": "JiaqiZhang-Dev",
-    "updatedAt": "2026-11-18T07:32:24.075Z",
+    "updatedAt": "2026-11-18T09:53:53.698Z",
     "successCount": 2,
     "failureCount": 0
   },
@@ -195,7 +195,7 @@
     "repoScope": "*",
     "sourceProject": "chat",
     "author": "JiaqiZhang-Dev",
-    "updatedAt": "2026-11-18T09:14:16.017Z",
+    "updatedAt": "2026-11-18T09:53:53.698Z",
     "successCount": 3,
     "failureCount": 0
   },
@@ -253,17 +253,18 @@
   {
     "id": "exp-bump-qa-bot-backend-and-env-versions-on-changes-mwlvygo9",
     "type": "Rule",
-    "title": "Bump chatbot backend and env deployment versions together",
-    "summary": "When releasing changes to a chatbot project in azure-sdk-tools, bump both the chatbot backend version and all tracked environment deployment tags together.",
+    "title": "Bump chatbot versions, env tags, and changelog together",
+    "summary": "When changing or reviewing a chatbot project in azure-sdk-tools, ensure the backend version, tracked environment deployment tags, and CHANGELOG.md are all updated.",
     "signals": [
       "chatbot",
       "qa_bot",
       "version_bump",
-      "deploy"
+      "changelog",
+      "pr_review"
     ],
     "strategy": [
-      "When modifying a chatbot service (such as azure-sdk-qa-bot-agent), bump its backend version (e.g., _version.py).",
-      "Update DOCKER_IMAGE_TAG consistently across tracked chatbot environment files (such as .env.preprod and .env.prod) before deploying."
+      "When modifying a chatbot service (such as azure-sdk-qa-bot-agent), bump its backend version (e.g., _version.py), update DOCKER_IMAGE_TAG across tracked env files (.env.preprod, .env.prod), and add a CHANGELOG.md entry.",
+      "During PR reviews of chatbot changes, flag missing version bumps, env tag updates, or CHANGELOG.md entries as review findings."
     ],
     "solution": "",
     "validation": [],
@@ -271,8 +272,8 @@
     "repoScope": "Azure/azure-sdk-tools",
     "sourceProject": "chat",
     "author": "JiaqiZhang-Dev",
-    "updatedAt": "2026-11-18T09:14:16.017Z",
-    "successCount": 3,
+    "updatedAt": "2026-11-18T09:58:08.192Z",
+    "successCount": 4,
     "failureCount": 0
   },
   {
@@ -298,6 +299,7 @@
     "sourceProject": "Azure/typespec-azure",
     "author": "JiaqiZhang-Dev",
     "updatedAt": "2026-11-18T09:37:28.377Z",
-    "successCount": 1
+    "successCount": 1,
+    "failureCount": 0
   }
 ]
