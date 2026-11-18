@@ -1552,6 +1552,12 @@ body {
   color: var(--muted);
 }
 
+.mini-dim[title],
+.exp-score[title],
+.score-ring-wrap[title] {
+  cursor: help;
+}
+
 .detail-head {
   display: flex;
   align-items: flex-start;

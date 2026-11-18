@@ -230,18 +230,84 @@ function kindLabel(type) {
   return type === "Fix" ? "FIX" : "RULE";
 }
 
-function renderScoreRing(score) {
+function renderScoreRing(score, titleText = "") {
   const val = Math.max(0, Math.min(100, Number(score || 0)));
   const r = 17;
   const circ = 2 * Math.PI * r;
   const dash = ((val / 100) * circ).toFixed(1);
-  return `
+  const svg = `
     <svg class="score-ring" viewBox="0 0 44 44" aria-label="Score ${val}">
       <circle cx="22" cy="22" r="${r}" fill="none" stroke="rgba(9, 105, 218, 0.15)" stroke-width="3.5" />
       <circle cx="22" cy="22" r="${r}" fill="none" stroke="var(--accent)" stroke-width="3.5"
         stroke-linecap="round" stroke-dasharray="${dash} ${circ.toFixed(1)}" transform="rotate(-90 22 22)" />
       <text x="22" y="25.5" text-anchor="middle" fill="var(--accent)" font-size="11" font-weight="700" font-family="Consolas, monospace">${Math.round(val)}</text>
     </svg>`;
+  return titleText
+    ? `<span class="score-ring-wrap" title="${escapeHtml(titleText)}">${svg}</span>`
+    : svg;
+}
+
+function buildScoreTooltips(item) {
+  const b = item.gdiBreakdown || {};
+  const q = b.quality ?? 0;
+  const rel = b.reliability ?? 0;
+  const lin = b.lineage ?? 0;
+  const fr = b.freshness ?? 0;
+  const pinnedLine = item.pinned ? "\n+ Pinned bonus (+15)" : "";
+  const totalTip = [
+    `Score ${item.gdiScore ?? "-"} (Tier ${b.tier || "B"})`,
+    `= Quality ${q}×35% (${(q * 0.35).toFixed(1)})`,
+    `+ Reliability ${rel}×30% (${(rel * 0.3).toFixed(1)})`,
+    `+ Lineage ${lin}×20% (${(lin * 0.2).toFixed(1)})`,
+    `+ Freshness ${fr}×15% (${(fr * 0.15).toFixed(1)})${pinnedLine}`,
+  ].join("\n");
+
+  const hasTitle = String(item.title || "").trim().length >= 8;
+  const hasSummary = String(item.summary || "").trim().length >= 20;
+  const hasSignals = Array.isArray(item.signals) && item.signals.length >= 2;
+  const hasSteps =
+    (Array.isArray(item.strategy) && item.strategy.length >= 2) ||
+    String(item.solution || "").trim().length >= 15;
+  const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
+  const qualityTip = [
+    `Quality ${q}/100 (35% weight)`,
+    `Base: 25`,
+    `Title >=8 chars: ${hasTitle ? "+15" : "+0"}`,
+    `Summary >=20 chars: ${hasSummary ? "+15" : "+0"}`,
+    `>=2 Signals: ${hasSignals ? "+15" : "+0"}`,
+    `>=2 Steps or Solution: ${hasSteps ? "+15" : "+0"}`,
+    `Validation cmds: ${hasVal ? "+15" : "+0"}`,
+  ].join("\n");
+
+  const succ = Math.max(0, Number(item.successCount || 0));
+  const fail = Math.max(0, Number(item.failureCount || 0));
+  const reliabilityTip = [
+    `Reliability ${rel}/100 (30% weight)`,
+    `Reuses: ${succ} (log2 growth, max 60)`,
+    `Pass rate: ${b.winRate ?? 100}% (max 35, 20 if 0 runs)`,
+    `Failures: ${fail} (-12 each, max -35)`,
+    ...(item.priority ? [`Priority bonus: +${Math.min(10, Number(item.priority))}`] : []),
+  ].join("\n");
+
+  const scopeBase = item.scope === "team" ? 40 : item.scope === "starter" ? 30 : 20;
+  const hasUpstream = Boolean(item.ruleId || item.parentId || item.supersedes);
+  const hasChildren = Boolean(item.relationships?.children?.length);
+  const lineageTip = [
+    `Lineage ${lin}/100 (20% weight)`,
+    `Scope (${item.scope || "local"}): +${scopeBase}`,
+    `Upstream link: ${hasUpstream ? "+25" : "+0"}`,
+    `Derived children: ${hasChildren ? "+25" : "+0"}`,
+    `Pinned: ${item.pinned ? "+10" : "+0"}`,
+  ].join("\n");
+
+  const freshnessTip = [
+    `Freshness ${fr}/100 (15% weight)`,
+    item.updatedAt
+      ? `100 / (1 + ageDays / 14)\nUpdated: ${formatLocalTime(item.updatedAt)}`
+      : "Default 55 (no updatedAt timestamp)",
+  ].join("\n");
+
+  return { totalTip, qualityTip, reliabilityTip, lineageTip, freshnessTip };
 }
 
 function renderDetail(item) {
@@ -357,16 +423,18 @@ function renderDetail(item) {
       : `<p class="muted">No recall or verification events recorded yet.</p>`
   }`;
 
+  const scoreTips = buildScoreTooltips(item);
+
   pane.innerHTML = `
     <div class="detail-head">
       <div class="detail-title-row">
-        ${renderScoreRing(item.gdiScore)}
+        ${renderScoreRing(item.gdiScore, scoreTips.totalTip)}
         <div>
           <h2 class="detail-title">${escapeHtml(item.title)}</h2>
           <div class="detail-meta-line">
             <span class="detail-meta-pill">${escapeHtml(item.type === "Fix" ? "Fix" : "Rule")}</span>
             <span>·</span>
-            <span>Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
+            <span title="${escapeHtml(scoreTips.totalTip)}">Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
             <span>·</span>
             <span>${item.successCount || 0} used</span>
             <span>·</span>
@@ -388,12 +456,12 @@ function renderDetail(item) {
     ${strategy}
     ${guardrail}
     ${validation}
-    <div class="section-label">Score Breakdown · Tier ${escapeHtml(item.gdiBreakdown?.tier || "B")} · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Pass Rate</div>
+    <div class="section-label" title="${escapeHtml(scoreTips.totalTip)}">Score Breakdown · Tier ${escapeHtml(item.gdiBreakdown?.tier || "B")} · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Pass Rate</div>
     <div class="detail-breakdown">
-      <div class="mini-dim">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.quality ?? 0)}"></progress></div>
-      <div class="mini-dim">Reliability <strong>${item.gdiBreakdown?.reliability ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.reliability ?? 0)}"></progress></div>
-      <div class="mini-dim">Lineage <strong>${item.gdiBreakdown?.lineage ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.lineage ?? 0)}"></progress></div>
-      <div class="mini-dim">Freshness <strong>${item.gdiBreakdown?.freshness ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.freshness ?? 0)}"></progress></div>
+      <div class="mini-dim" title="${escapeHtml(scoreTips.qualityTip)}">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.quality ?? 0)}"></progress></div>
+      <div class="mini-dim" title="${escapeHtml(scoreTips.reliabilityTip)}">Reliability <strong>${item.gdiBreakdown?.reliability ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.reliability ?? 0)}"></progress></div>
+      <div class="mini-dim" title="${escapeHtml(scoreTips.lineageTip)}">Lineage <strong>${item.gdiBreakdown?.lineage ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.lineage ?? 0)}"></progress></div>
+      <div class="mini-dim" title="${escapeHtml(scoreTips.freshnessTip)}">Freshness <strong>${item.gdiBreakdown?.freshness ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.freshness ?? 0)}"></progress></div>
     </div>
     ${usageHtml}
     ${lineageHtml}
@@ -1333,7 +1401,7 @@ function render() {
             <div class="exp-summary">${escapeHtml(item.summary)}</div>
             ${footHtml}
           </div>
-          <span class="exp-score col-num" title="Composite score">${scoreVal}</span>
+          <span class="exp-score col-num" title="${escapeHtml(buildScoreTooltips(item).totalTip)}">${scoreVal}</span>
           <span class="exp-reuses col-num" title="Verified reuse count">${uses}</span>
           ${shareCell}
         </div>`;
