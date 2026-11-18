@@ -145,6 +145,32 @@
     "sourceProject": "Azure/typespec-azure",
     "author": "JiaqiZhang-Dev",
     "updatedAt": "2026-11-18T07:11:30.651Z",
+    "successCount": 1,
+    "failureCount": 0
+  },
+  {
+    "id": "exp-put-channel-specific-pr-intent-rules-in-tenant-p-mwlsz4mu",
+    "type": "Rule",
+    "title": "Put channel-specific PR intent rules in tenant prompts",
+    "summary": "In azure-sdk-qa-bot-agent, encode channel-specific PR review intent (e.g., TypeSpec PR design review vs. merge-readiness) in prompts/tenants/<tenant>.md and tenant_skills.py rather than hardcoding channel rules in shared instruction.md or pr-review/SKILL.md.",
+    "signals": [
+      "qa_bot",
+      "channel_routing",
+      "tenant_prompts",
+      "pr_review"
+    ],
+    "strategy": [
+      "Keep shared instruction.md and helper skills (like pr-review) general rather than hardcoding channel-specific rules.",
+      "Put channel-specific PR intent disambiguation in prompts/tenants/<tenant>.md so it only applies to that channel.",
+      "Reflect domain-owned PR review scope in skills/tenant_skills.py so the model does not switch to api-spec-review."
+    ],
+    "solution": "",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "Azure/azure-sdk-tools",
+    "sourceProject": "Azure/azure-sdk-tools",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-18T07:32:24.075Z",
     "successCount": 1
   }
 ]
