@@ -31,7 +31,7 @@ import {
   runAssetValidation,
   selectAssets,
   setEventSessionContext,
-  shouldRunStopReflection,
+  shouldNudgePostToolUse,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -411,12 +411,12 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(extractToolTargetKey("powershell", { command: "gh api repos/o/r/pulls/comments/4610709428 -X PATCH" }), "gh_comment:4610709428");
     assert.equal(isActionToolName("view"), false);
     assert.equal(isActionToolName("edit"), true);
-    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 0 }, {}), false);
-    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2 }, {}), true);
-    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2, solidifiedTurn: 1 }, {}), false);
-    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2 }, { stopHookActive: true }), false);
-    assert.equal(shouldRunStopReflection({ turnIndex: 1, turnActionTools: 2, lastStopPromptTurn: 1 }, {}), false);
-    assert.equal(shouldRunStopReflection({ turnIndex: 2, turnHadCorrection: true }, {}), true);
+    assert.equal(isActionToolName("powershell", { command: "gh pr diff 17611" }), false);
+    assert.equal(isActionToolName("powershell", { command: "npm test" }), true);
+    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 0 }), false);
+    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 2 }), true);
+    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 2, solidifiedTurn: 1 }), false);
+    assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 2, lastNudgeTurn: 1 }), false);
     assert.deepEqual(
       collectAssetsToCreditOnStop({ turnActionTools: 0, turnRecalledIds: ["exp-a"] }, {}),
       []

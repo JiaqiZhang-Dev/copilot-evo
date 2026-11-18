@@ -29,7 +29,7 @@ import {
   resolveSyncRepoPath,
   selectAssets,
   setEventSessionContext,
-  shouldRunStopReflection,
+  shouldNudgePostToolUse,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -37,7 +37,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.26";
+const EXTENSION_VERSION = "0.10.27";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -121,7 +121,7 @@ const sessionState = {
   turnRecalledIds: [],
   creditedAssets: new Set(),
   solidifiedTurn: 0,
-  lastStopPromptTurn: 0,
+  lastNudgeTurn: 0,
   pendingFailure: null,
   pendingCorrection: null,
   activeAssets: [],
@@ -346,7 +346,8 @@ const session = await joinSession({
       }
       if (toolName.startsWith("evo_")) return;
 
-      if (isActionToolName(toolName)) {
+      const isAction = isActionToolName(toolName, input.toolArgs);
+      if (isAction) {
         sessionState.turnActionTools++;
       }
 
@@ -358,12 +359,13 @@ const session = await joinSession({
       }
 
       if (
+        isAction &&
         sessionState.pendingCorrection &&
         Date.now() - sessionState.pendingCorrection.ts < 10 * 60 * 1000 &&
-        Date.now() - sessionState.lastSolidifyAt > 10000 &&
-        !/^(?:view|glob|grep|list_|get_|read_|tool_search_tool)/i.test(toolName)
+        Date.now() - sessionState.lastSolidifyAt > 10000
       ) {
         sessionState.pendingCorrection = null;
+        sessionState.lastNudgeTurn = sessionState.turnIndex;
         return {
           additionalContext: `[copilot-evo auto-capture check] You just completed \`${toolName}\` while resolving a user-reported issue or correction. If this revealed a reusable pitfall or rule (for example, GitHub/Markdown rendering quirks, API/CLI behavior, or repo conventions), proactively call \`evo_solidify\` in English with \`scope: "local"\` now instead of waiting for the user to remind you.`,
         };
@@ -381,34 +383,44 @@ const session = await joinSession({
           now - sessionState.lastSolidifyAt > 15000
         ) {
           sessionState.turnHadCorrection = true;
+          sessionState.lastNudgeTurn = sessionState.turnIndex;
           return {
             additionalContext: `[copilot-evo revision check] You just revised \`${targetKey}\` across user turns. If this fixed a non-obvious mistake, rendering quirk, or missing convention that could recur, proactively call \`evo_solidify\` in English with \`scope: "local"\` now without waiting to be asked.`,
           };
         }
       }
 
-      if (!sessionState.pendingFailure) return;
-
-      const isVerificationOrAction =
-        toolName === sessionState.pendingFailure.toolName ||
-        /^(?:powershell|bash|shell|edit|create|apply_patch)$/i.test(toolName);
-      if (!isVerificationOrAction) return;
-
-      const resolvedSignals = sessionState.pendingFailure.signals;
-      sessionState.pendingFailure = null;
-      sessionState.recoveries++;
-      sessionState.turnHadRecovery = true;
-      if (sessionState.activeAssets.length) {
-        for (const id of sessionState.activeAssets) sessionState.creditedAssets.add(id);
-        recordAssetOutcome(evoHome, sessionState.activeAssets, "success", "tool_recovery");
-        canvasServer.broadcastUpdate("auto_outcome");
-        if (getPendingScoreDeltaTotal(evoHome) >= 3) {
-          syncScoreDeltasOnly(evoHome).catch(() => {});
+      if (sessionState.pendingFailure) {
+        const isVerificationOrAction =
+          toolName === sessionState.pendingFailure.toolName ||
+          /^(?:powershell|bash|shell|edit|create|apply_patch)$/i.test(toolName);
+        if (isVerificationOrAction) {
+          const resolvedSignals = sessionState.pendingFailure.signals;
+          sessionState.pendingFailure = null;
+          sessionState.recoveries++;
+          sessionState.turnHadRecovery = true;
+          sessionState.lastNudgeTurn = sessionState.turnIndex;
+          if (sessionState.activeAssets.length) {
+            for (const id of sessionState.activeAssets) sessionState.creditedAssets.add(id);
+            recordAssetOutcome(evoHome, sessionState.activeAssets, "success", "tool_recovery");
+            canvasServer.broadcastUpdate("auto_outcome");
+            if (getPendingScoreDeltaTotal(evoHome) >= 3) {
+              syncScoreDeltasOnly(evoHome).catch(() => {});
+            }
+          }
+          return {
+            additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable, load \`evo_solidify\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` in English with \`scope: "local"\`, show the preview, and ask the user before promoting to \`team\` or syncing via \`evo_sync_repo\`.`,
+          };
         }
       }
-      return {
-        additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable, load \`evo_solidify\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` in English with \`scope: "local"\`, show the preview, and ask the user before promoting to \`team\` or syncing via \`evo_sync_repo\`.`,
-      };
+
+      if (isAction && shouldNudgePostToolUse(sessionState)) {
+        sessionState.lastNudgeTurn = sessionState.turnIndex;
+        return {
+          additionalContext:
+            "[copilot-evo semantic check] Multiple changes or action commands ran in this turn. If this work uncovered a genuinely reusable engineering Rule or verified non-obvious Fix (skip routine edits and one-off typos), proactively call `evo_solidify` atomically in English (`scope: \"local\"`).",
+        };
+      }
     },
 
     onAgentStop: async (input) => {
@@ -421,15 +433,6 @@ const session = await joinSession({
           syncScoreDeltasOnly(evoHome).catch(() => {});
         }
       }
-      if (!shouldRunStopReflection(sessionState, { stopHookActive: input?.stopHookActive })) {
-        return;
-      }
-      sessionState.lastStopPromptTurn = sessionState.turnIndex;
-      return {
-        decision: "block",
-        reason:
-          "[copilot-evo semantic reflection] Before finishing this turn, briefly assess whether your work uncovered a genuinely reusable engineering Rule (workflow, versioning/deployment convention, API/rendering quirk, or repo pattern) or verified non-obvious Fix. Skip trivial edits, routine doc/README tweaks, or already-stored rules (check `evo_search` if unsure). If yes, call `evo_solidify` atomically in English (`scope: \"local\"`, one focused topic per entry). Otherwise simply conclude without calling `evo_solidify`.",
-      };
     },
 
     onSessionEnd: async (input) => {

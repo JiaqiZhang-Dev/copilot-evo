@@ -514,25 +514,39 @@ export function extractToolTargetKey(toolName, toolArgs) {
   return "";
 }
 
-export function isActionToolName(toolName) {
+const READ_ONLY_SHELL_RE = /^\s*(?:git\s+(?:status|log|diff|show|branch|rev-parse|remote|config\s+--get)|gh\s+(?:pr|issue|run|repo)\s+(?:view|diff|list|status|checks)|Get-Content|Get-ChildItem|Select-String|Test-Path|cat|ls|rg|head|tail)\b/i;
+
+export function isActionToolName(toolName, toolArgs) {
   const tool = String(toolName || "").trim();
   if (!tool || tool.startsWith("evo_")) return false;
-  return !/^(?:view|glob|grep|list_|get_|read_|tool_search_tool|ask_user|open_canvas|navigate_|skill|rename_session|store_memory|vote_memory)/i.test(
-    tool
-  );
+  if (/^(?:view|glob|grep|list_|get_|read_|tool_search_tool|ask_user|open_canvas|navigate_|skill|rename_session|store_memory|vote_memory|extensions_list|github-mcp-server-get_|github-mcp-server-list_|github-mcp-server-search_)/i.test(tool)) {
+    return false;
+  }
+  if (/^(?:powershell|bash|shell)$/i.test(tool)) {
+    let cmd = "";
+    if (typeof toolArgs === "string") {
+      try {
+        const parsed = JSON.parse(toolArgs);
+        cmd = String(parsed?.command || parsed?.cmd || toolArgs);
+      } catch {
+        cmd = toolArgs;
+      }
+    } else if (toolArgs && typeof toolArgs === "object") {
+      cmd = String(toolArgs.command || toolArgs.cmd || "");
+    }
+    const clean = cmd.trim();
+    if (clean && READ_ONLY_SHELL_RE.test(clean) && !/[|;&><`]|\$\(/.test(clean)) {
+      return false;
+    }
+  }
+  return true;
 }
 
-export function shouldRunStopReflection(state, { stopHookActive = false } = {}) {
-  if (stopHookActive) return false;
+export function shouldNudgePostToolUse(state) {
   if (!state || !state.turnIndex) return false;
-  if (state.lastStopPromptTurn === state.turnIndex) return false;
+  if (state.lastNudgeTurn === state.turnIndex) return false;
   if (state.solidifiedTurn === state.turnIndex) return false;
-  return Boolean(
-    state.turnHadRecovery ||
-      state.turnHadCorrection ||
-      state.turnHadStrategyCue ||
-      (state.turnActionTools || 0) >= 2
-  );
+  return (state.turnActionTools || 0) >= 2;
 }
 
 export function collectAssetsToCreditOnStop(state, { stopHookActive = false } = {}) {
