@@ -37,7 +37,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.28";
+const EXTENSION_VERSION = "0.10.29";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -531,19 +531,25 @@ const session = await joinSession({
             let promptedInUi = false;
             try {
               if (session.capabilities?.ui?.elicitation !== false && typeof session.ui?.select === "function") {
+                const scopeLabel =
+                  res.asset.repoScope && res.asset.repoScope !== "*" ? res.asset.repoScope : "Cross-repo";
                 const msg = [
-                  `Saved locally: "${res.asset.title}" (${res.asset.type} · ${res.asset.repoScope && res.asset.repoScope !== "*" ? res.asset.repoScope : "Cross-repo"})`,
-                  res.asset.summary,
+                  `Saved "${res.asset.title}" to your local library.`,
                   "",
-                  "Share this experience with your team?",
+                  `Type: ${res.asset.type} · Scope: ${scopeLabel}`,
+                  `Summary: ${res.asset.summary}`,
+                  "",
+                  "Would you like to share this experience with your team?",
                 ].join("\n");
+                const keepLabel = "Keep local (only visible to me)";
+                const shareLabel = "Share with team (sanitize & sync)";
                 const runSelect = sessionState.promptQueue.then(() =>
-                  session.ui.select(msg, ["Keep local", "Share to Team"])
+                  session.ui.select(msg, [keepLabel, shareLabel])
                 );
                 sessionState.promptQueue = runSelect.catch(() => null);
                 const choice = await runSelect;
                 promptedInUi = true;
-                if (choice === "Share to Team") {
+                if (choice === shareLabel) {
                   const promoted = manageAsset("promote_team", res.asset.id, { evoHome });
                   if (promoted.ok) {
                     res.asset = promoted.asset;
