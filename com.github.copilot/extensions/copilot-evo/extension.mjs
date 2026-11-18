@@ -37,7 +37,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.29";
+const EXTENSION_VERSION = "0.10.30";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -164,7 +164,7 @@ const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
   "2. Auto-discover & solidify atomically locally first (English only): Proactively call `evo_solidify` with `scope: \"local\"` whenever you resolve a non-obvious error (`kind: \"Fix\"`), fix a user-reported mistake or platform/rendering quirk (even when no tool errored), or when the user states/verifies reusable conventions (`kind: \"Rule\"`, even if also saved via `store_memory`). Skip trivial typos. Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise steps); split distinct concerns into separate `evo_solidify` calls instead of bundling them into one mega-entry. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
-  "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND, if `evo_solidify` did not already prompt via native UI (`sharedToTeam` is unset), call `ask_user` with choices `[\"Keep local (Recommended)\", \"Share to Team (promote & push)\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
+  "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND, if `evo_solidify` did not already prompt via native UI (`sharedToTeam` is unset and `needsRefinement` is unset), call `ask_user` with choices `[\"Keep local\", \"Share with team\", \"Refine this experience\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
 ].join("\n");
 
 function formatAssetsContext(assets) {
@@ -341,7 +341,7 @@ const session = await joinSession({
         const localId = sessionState.lastSolidifiedLocalId;
         sessionState.lastSolidifiedLocalId = "";
         return {
-          additionalContext: `[copilot-evo share confirmation required] You just saved "${localId}" with scope: "local". In this turn, present the concise preview AND immediately call \`ask_user\` asking whether to share it to the team, with choices ["Keep local (Recommended)", "Share to Team (promote & push)"].`,
+          additionalContext: `[copilot-evo share confirmation required] You just saved "${localId}" with scope: "local". In this turn, present the concise preview AND immediately call \`ask_user\` asking whether to keep, share, or refine it, with choices ["Keep local", "Share with team", "Refine this experience"].`,
         };
       }
       if (toolName.startsWith("evo_")) return;
@@ -541,10 +541,11 @@ const session = await joinSession({
                   "",
                   "Would you like to share this experience with your team?",
                 ].join("\n");
-                const keepLabel = "Keep local (only visible to me)";
-                const shareLabel = "Share with team (sanitize & sync)";
+                const keepLabel = "Keep local";
+                const shareLabel = "Share with team";
+                const refineLabel = "Refine this experience";
                 const runSelect = sessionState.promptQueue.then(() =>
-                  session.ui.select(msg, [keepLabel, shareLabel])
+                  session.ui.select(msg, [keepLabel, shareLabel, refineLabel])
                 );
                 sessionState.promptQueue = runSelect.catch(() => null);
                 const choice = await runSelect;
@@ -569,6 +570,30 @@ const session = await joinSession({
                   } else {
                     res.sharedToTeam = false;
                     res.shareError = promoted.error;
+                  }
+                } else if (choice === refineLabel) {
+                  res.sharedToTeam = false;
+                  res.needsRefinement = true;
+                  let feedback = "";
+                  try {
+                    if (typeof session.ui?.input === "function") {
+                      const runInput = sessionState.promptQueue.then(() =>
+                        session.ui.input("How should Copilot refine this experience?", {
+                          title: "Refine experience",
+                          description: "Describe what to change (e.g. scope, wording, signals, or steps).",
+                        })
+                      );
+                      sessionState.promptQueue = runInput.catch(() => null);
+                      feedback = String((await runInput) || "").trim();
+                    }
+                  } catch {
+                    feedback = "";
+                  }
+                  if (feedback) {
+                    res.refinementFeedback = feedback;
+                    res.nextAction = `User requested refinement: "${feedback}". Update experience "${res.asset.id}" in place by calling evo_solidify with the same id and scope "local".`;
+                  } else {
+                    res.nextAction = `User wants to refine experience "${res.asset.id}". Ask what they want to adjust and call evo_solidify with the same id to update it in place.`;
                   }
                 } else {
                   res.sharedToTeam = false;
