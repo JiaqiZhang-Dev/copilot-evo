@@ -221,6 +221,32 @@
     "sourceProject": "Azure/azure-sdk-tools",
     "author": "JiaqiZhang-Dev",
     "updatedAt": "2026-11-18T08:24:17.104Z",
+    "successCount": 1,
+    "failureCount": 0
+  },
+  {
+    "id": "tcgc-context-caching-and-usage",
+    "type": "Rule",
+    "title": "Manage TCGCContext caches and UsageFlags consistently",
+    "summary": "Keep TCGC caches on TCGCContext, key versioned/template state on semantic Types, and propagate UsageFlags/Access in types.ts for all result and finalStep models.",
+    "signals": [
+      "tcgc",
+      "cache",
+      "usage_flags",
+      "versioning"
+    ],
+    "strategy": [
+      "Manage TCGCContext caches inside the resolving helper using .has() when undefined is cached so diagnostics do not duplicate.",
+      "Key versioned or template state on semantic Type objects rather than reused AST nodes.",
+      "Update UsageFlags and Access in types.ts for all method/LRO result and finalStep response models."
+    ],
+    "solution": "Handle per-run caches on TCGCContext inside the resolving helper using semantic Types, and sync UsageFlags/Access in types.ts.",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "Azure/typespec-azure",
+    "sourceProject": "Azure/typespec-azure",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-18T08:36:01.249Z",
     "successCount": 1
   }
 ]
