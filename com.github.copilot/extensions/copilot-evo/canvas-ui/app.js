@@ -529,11 +529,15 @@ function renderArenaView(listPane, allAssets) {
       const b = item.gdiBreakdown || {};
       const kindCls = item.type === "Fix" ? "kind-capsule" : "kind-gene";
       const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
+      const rankBadge =
+        idx === 0
+          ? `<span class="badge" title="Rank #1"><svg class="trophy-icon" width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#d29922" fill-opacity="0.25" stroke="#bf8700" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11M8 8.7v2.8M5.8 13.5h4.4" stroke="#bf8700" stroke-width="1.2" stroke-linecap="round"/></svg></span>`
+          : `<span class="badge">#${idx + 1}</span>`;
       return `
       <div class="lb-row ${idx === 0 ? "rank-1" : ""}">
         <div class="lb-top">
           <div class="card-title-wrap">
-            <span class="badge">#${idx + 1}</span>
+            ${rankBadge}
             <span class="tier-badge tier-${escapeHtml(b.tier || "B")}">${escapeHtml(b.tier || "B")}</span>
             <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
             <span class="card-title">${escapeHtml(item.title)}</span>
@@ -672,38 +676,42 @@ function render() {
     return;
   }
 
-  listPane.innerHTML = items
-    .map((item, idx) => {
-      const isFix = item.type === "Fix";
-      const scopeLabel = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "Local";
-      const scopeCls = item.scope === "team" ? "row-scope-team" : "row-scope";
-      const repoTag = item.repoScope && item.repoScope !== "*" ? ` · ${escapeHtml(item.repoScope)}` : "";
-      const uses = item.successCount || 0;
-      const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
-      return `
-      <div class="exp-row ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
-        <span class="exp-rank ${idx === 0 ? "is-top" : ""}" title="Rank #${idx + 1}">${idx + 1}</span>
-        <div class="exp-main">
-          <div class="exp-title-line">
-            <span class="exp-title">${escapeHtml(item.title)}</span>
-            <span class="row-kind ${isFix ? "is-fix" : "is-rule"}">${isFix ? "Fix" : "Rule"}</span>
-            <span class="${scopeCls}">${scopeLabel}${repoTag}</span>
+  listPane.innerHTML = `
+    <div class="exp-header">
+      <span class="col-rank">#</span>
+      <span>Experience</span>
+      <span class="col-num">Score</span>
+      <span class="col-num">Used</span>
+    </div>
+    ${items
+      .map((item, idx) => {
+        const isFix = item.type === "Fix";
+        const scopeLabel = item.scope === "team" ? "Team" : item.scope === "starter" ? "Starter" : "Local";
+        const scopeCls = item.scope === "team" ? "row-scope-team" : "row-scope";
+        const repoTag = item.repoScope && item.repoScope !== "*" ? ` · ${escapeHtml(item.repoScope)}` : "";
+        const uses = item.successCount || 0;
+        const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
+        const trophySvg = `<svg class="trophy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-label="Rank #1"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#d29922" fill-opacity="0.22" stroke="#bf8700" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11" stroke="#bf8700" stroke-width="1.2" stroke-linecap="round"/><path d="M8 8.7v2.8M5.8 13.5h4.4" stroke="#bf8700" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+        const rankCell =
+          idx === 0
+            ? `<span class="exp-rank is-top" title="Rank #1">${trophySvg}</span>`
+            : `<span class="exp-rank" title="Rank #${idx + 1}">${idx + 1}</span>`;
+        return `
+        <div class="exp-row ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
+          ${rankCell}
+          <div class="exp-main">
+            <div class="exp-title-line">
+              <span class="exp-title">${escapeHtml(item.title)}</span>
+              <span class="row-kind ${isFix ? "is-fix" : "is-rule"}">${isFix ? "Fix" : "Rule"}</span>
+              <span class="${scopeCls}">${scopeLabel}${repoTag}</span>
+            </div>
+            <div class="exp-summary">${escapeHtml(item.summary)}</div>
           </div>
-          <div class="exp-summary">${escapeHtml(item.summary)}</div>
-        </div>
-        <div class="exp-metrics">
-          <div class="metric-col" title="Composite quality & reliability score">
-            <span class="exp-score">${scoreVal}</span>
-            <span class="metric-label">score</span>
-          </div>
-          <div class="metric-col" title="Verified reuse count">
-            <span class="exp-reuses">${uses}</span>
-            <span class="metric-label">used</span>
-          </div>
-        </div>
-      </div>`;
-    })
-    .join("");
+          <span class="exp-score col-num" title="Composite score">${scoreVal}</span>
+          <span class="exp-reuses col-num" title="Verified reuse count">${uses}</span>
+        </div>`;
+      })
+      .join("")}`;
 
   listPane.querySelectorAll(".exp-row").forEach((card) => {
     card.addEventListener("click", () => {
