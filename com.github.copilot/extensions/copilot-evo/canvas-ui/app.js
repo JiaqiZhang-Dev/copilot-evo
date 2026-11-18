@@ -9,8 +9,6 @@ let relMode = "all";
 let searchQuery = "";
 let selectedId = "";
 let pendingDeleteId = "";
-let arenaLeftId = "";
-let arenaRightId = "";
 
 const el = (id) => document.getElementById(id);
 
@@ -99,22 +97,26 @@ function formatEventMeta(ev) {
   }
 }
 
-function renderDetail(item, isCandidate = false) {
+function kindLabel(type) {
+  return type === "Capsule" ? "FIX" : "RULE";
+}
+
+function renderDetail(item) {
   const pane = el("detail-pane");
   if (!item) {
-    pane.innerHTML = `<div class="empty">Select a Gene or Capsule to inspect its signals, steps, and validation evidence.</div>`;
+    pane.innerHTML = `<div class="empty">Select an Experience to inspect its signals, steps, and validation evidence.</div>`;
     return;
   }
 
   const kindCls = item.type === "Capsule" ? "kind-capsule" : "kind-gene";
   const signals = (item.signals || []).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
   const strategy = (item.strategy || []).length
-    ? `<div class="section-label">Strategy Steps</div><ol class="steps">${item.strategy
+    ? `<div class="section-label">Steps</div><ol class="steps">${item.strategy
         .map((s) => `<li>${escapeHtml(s)}</li>`)
         .join("")}</ol>`
     : "";
   const solution = item.solution
-    ? `<div class="section-label">Verified Solution</div><p class="detail-box">${escapeHtml(item.solution)}</p>`
+    ? `<div class="section-label">Verified Fix</div><p class="detail-box">${escapeHtml(item.solution)}</p>`
     : "";
   const guardrail = item.guardrail?.reason
     ? `<div class="section-label">Guardrail</div><p class="detail-box">${escapeHtml(item.guardrail.reason)}</p>`
@@ -123,21 +125,18 @@ function renderDetail(item, isCandidate = false) {
     ? `<div class="section-label">Validation Commands</div><p class="detail-box code-box">${escapeHtml(item.validation.join("\n"))}</p>`
     : "";
 
-  const promoteCandidateBtn = isCandidate
-    ? `<button class="btn btn-primary" data-promote="${escapeHtml(item.id)}" type="button">Promote</button>`
-    : "";
   const promoteTeamBtn =
-    !isCandidate && item.scope === "local"
+    item.scope === "local"
       ? `<button class="btn" data-promote-team="${escapeHtml(item.id)}" type="button">Share to Team</button>`
       : "";
   const copyBtn = `<button class="btn" data-copy="${escapeHtml(item.id)}" type="button">Copy JSON</button>`;
 
   const rel = item.relationships || {};
   const relLinks = [];
-  if (rel.gene) relLinks.push({ role: "Gene", item: rel.gene });
+  if (rel.gene) relLinks.push({ role: "Rule", item: rel.gene });
   if (rel.parent) relLinks.push({ role: "Parent", item: rel.parent });
   if (rel.supersedes) relLinks.push({ role: "Supersedes", item: rel.supersedes });
-  for (const child of rel.children || []) relLinks.push({ role: child.type === "Capsule" ? "Capsule" : "Derived", item: child });
+  for (const child of rel.children || []) relLinks.push({ role: child.type === "Capsule" ? "Fix" : "Derived", item: child });
   for (const rep of rel.supersededBy || []) relLinks.push({ role: "Replaced by", item: rep });
   for (const shared of rel.sharedSignals || []) {
     if (!relLinks.some((l) => l.item.id === shared.id)) {
@@ -169,13 +168,13 @@ function renderDetail(item, isCandidate = false) {
       <div>
         <h2 class="detail-title">${escapeHtml(item.title)}</h2>
         <div class="detail-id">
-          <span class="badge ${kindCls}">${escapeHtml((item.type || "Gene").toUpperCase())}</span>
-          <span class="badge gdi-badge">GDI ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
+          <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
+          <span class="badge gdi-badge">Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
           <span class="badge">${escapeHtml(item.repoScope && item.repoScope !== "*" ? item.repoScope : "global (*)")}</span>
           <span>${escapeHtml(item.id)}</span> · <span>${escapeHtml(item.scope || "local")}</span>
         </div>
       </div>
-      <div class="actions">${promoteCandidateBtn}${promoteTeamBtn}${copyBtn}${deleteControl}</div>
+      <div class="actions">${promoteTeamBtn}${copyBtn}${deleteControl}</div>
     </div>
     <div class="section-label">Trigger Signals</div>
     <div class="badges">${signals || '<span class="muted">None</span>'}</div>
@@ -190,7 +189,6 @@ function renderDetail(item, isCandidate = false) {
     <p class="muted">Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0} · Source: ${escapeHtml(item.sourceProject || "bundled")} · Updated: ${escapeHtml(item.updatedAt || "bundled")}</p>
   `;
 
-  pane.querySelector("[data-promote]")?.addEventListener("click", () => mutate("/api/assets/promote", { id: item.id }));
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
   pane.querySelectorAll("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -317,7 +315,7 @@ function renderRelationshipsView(listPane, allAssets) {
       return `
       <g class="graph-node" data-node-id="${escapeHtml(a.id)}">
         <rect x="${pos.x}" y="${pos.y}" width="${nodeW}" height="${nodeH}" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="${selected ? 2 : 1}" />
-        <text x="${pos.x + 10}" y="${pos.y + 18}" fill="${badgeColor}" font-size="10" font-weight="700" font-family="monospace">${isCap ? "CAPSULE" : "GENE"} · GDI ${a.gdiScore || "-"}</text>
+        <text x="${pos.x + 10}" y="${pos.y + 18}" fill="${badgeColor}" font-size="10" font-weight="700" font-family="monospace">${isCap ? "FIX" : "RULE"} · ${a.gdiScore || "-"}</text>
         <text x="${pos.x + 10}" y="${pos.y + 35}" fill="var(--text)" font-size="11.5" font-weight="600">${escapeHtml(shortTitle)}</text>
       </g>`;
     })
@@ -325,9 +323,9 @@ function renderRelationshipsView(listPane, allAssets) {
 
   listPane.innerHTML = `
     <div class="graph-legend">
-      <span>● Green: Gene</span>
-      <span>● Blue: Capsule</span>
-      <span>— Solid: Lineage (geneId / parentId / supersedes)</span>
+      <span>● Green: Rule</span>
+      <span>● Blue: Fix</span>
+      <span>— Solid: Lineage</span>
       <span>-- Dashed: Shared Signals (${edges.filter((e) => e.kind === "signal").length})</span>
     </div>
     <div class="graph-wrap">
@@ -346,60 +344,14 @@ function renderRelationshipsView(listPane, allAssets) {
   });
 
   const selected = allAssets.find((a) => a.id === selectedId) || allAssets[0];
-  renderDetail(selected, false);
+  renderDetail(selected);
 }
 
 function renderArenaView(listPane, allAssets) {
   if (!allAssets.length) {
-    listPane.innerHTML = `<div class="empty">No Genes or Capsules available for evaluation yet.</div>`;
+    listPane.innerHTML = `<div class="empty">No Experiences available to rank yet.</div>`;
     return;
   }
-
-  if (!allAssets.some((a) => a.id === arenaLeftId)) arenaLeftId = allAssets[0].id;
-  if (!allAssets.some((a) => a.id === arenaRightId) || arenaRightId === arenaLeftId) {
-    const alt = allAssets.find((a) => a.id !== arenaLeftId);
-    arenaRightId = alt ? alt.id : allAssets[0].id;
-  }
-
-  const left = allAssets.find((a) => a.id === arenaLeftId) || allAssets[0];
-  const right = allAssets.find((a) => a.id === arenaRightId) || allAssets[0];
-  const leftWinner = (left.gdiScore || 0) >= (right.gdiScore || 0);
-
-  const renderDuelCard = (item, isWinner) => {
-    const b = item.gdiBreakdown || {};
-    const dims = [
-      ["Quality (35%)", b.quality || 0],
-      ["Reliability (30%)", b.reliability || 0],
-      ["Lineage (20%)", b.lineage || 0],
-      ["Freshness (15%)", b.freshness || 0],
-    ];
-    return `
-      <div class="duel-card ${isWinner && left.id !== right.id ? "winner" : ""}">
-        <div class="card-head" style="margin-bottom:6px">
-          <span class="card-title">${escapeHtml(item.title)}</span>
-          <span class="badge gdi-badge">${isWinner && left.id !== right.id ? "Winner · " : ""}GDI ${item.gdiScore || 0}</span>
-        </div>
-        <div class="muted" style="margin-bottom:8px">Win rate: ${b.winRate ?? 100}% · Reuses: ${item.successCount || 0} · Failures: ${item.failureCount || 0}</div>
-        ${dims
-          .map(
-            ([label, val]) => `
-          <div class="dim-row">
-            <span class="muted">${label}</span>
-            <div class="bar-track"><div class="bar-fill ${item.type !== "Capsule" ? "gene" : ""}" style="width:${val}%"></div></div>
-            <span class="code-box">${val}</span>
-          </div>`
-          )
-          .join("")}
-      </div>`;
-  };
-
-  const optionsHtml = (selected) =>
-    allAssets
-      .map(
-        (a) =>
-          `<option value="${escapeHtml(a.id)}" ${a.id === selected ? "selected" : ""}>[${a.type}] ${escapeHtml(a.title)} (${a.gdiScore})</option>`
-      )
-      .join("");
 
   const leaderboardHtml = allAssets
     .map((item, idx) => {
@@ -412,11 +364,11 @@ function renderArenaView(listPane, allAssets) {
           <div class="card-title-wrap">
             <span class="badge">#${idx + 1}</span>
             <span class="tier-badge tier-${escapeHtml(b.tier || "B")}">${escapeHtml(b.tier || "B")}</span>
-            <span class="badge ${kindCls}">${escapeHtml((item.type || "Gene").toUpperCase())}</span>
+            <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
             <span class="card-title">${escapeHtml(item.title)}</span>
           </div>
           <div class="actions">
-            <span class="badge gdi-badge">GDI ${item.gdiScore || 0}</span>
+            <span class="badge gdi-badge">Score ${item.gdiScore || 0}</span>
             <span class="badge">${b.winRate ?? 100}% win</span>
             ${hasVal ? `<button class="btn" data-validate="${escapeHtml(item.id)}" type="button">Run Validation</button>` : ""}
             <button class="btn" data-inspect="${escapeHtml(item.id)}" type="button">Inspect</button>
@@ -436,37 +388,14 @@ function renderArenaView(listPane, allAssets) {
     <div class="arena-wrap">
       <div class="arena-section">
         <div class="arena-header">
-          <h3>Head-to-Head Evaluation</h3>
-          <span class="muted">Compare strategies across 4 GDI dimensions</span>
-        </div>
-        <div class="match-pickers">
-          <select id="arena-left" class="select-box">${optionsHtml(left.id)}</select>
-          <span class="vs-pill">VS</span>
-          <select id="arena-right" class="select-box">${optionsHtml(right.id)}</select>
-        </div>
-        <div class="duel-grid">
-          ${renderDuelCard(left, leftWinner)}
-          ${renderDuelCard(right, !leftWinner)}
-        </div>
-      </div>
-      <div class="arena-section">
-        <div class="arena-header">
-          <h3>GDI Competitive Leaderboard</h3>
-          <span class="muted">${allAssets.length} entries · Top tier ${escapeHtml(allAssets[0]?.gdiBreakdown?.tier || "-")}</span>
+          <h3>Experience Leaderboard</h3>
+          <span class="muted">${allAssets.length} entries · Auto-scored by Quality, Reliability, Lineage & Freshness</span>
         </div>
         ${leaderboardHtml}
       </div>
     </div>
   `;
 
-  el("arena-left")?.addEventListener("change", (e) => {
-    arenaLeftId = e.target.value;
-    render();
-  });
-  el("arena-right")?.addEventListener("change", (e) => {
-    arenaRightId = e.target.value;
-    render();
-  });
   listPane.querySelectorAll("[data-inspect]").forEach((btn) => {
     btn.addEventListener("click", () => {
       activeTab = "assets";
@@ -492,7 +421,7 @@ function render() {
     : `Auto-clone repo: ${state.config?.syncRepo || "JiaqiZhang-Dev/copilot-evo"}`;
 
   el("kpi-total").textContent = String(allAssets.length);
-  el("kpi-breakdown").textContent = `${genes.length} Genes · ${capsules.length} Capsules`;
+  el("kpi-breakdown").textContent = `${genes.length} Rules · ${capsules.length} Fixes`;
   el("kpi-team").textContent = String(state.counts?.teamAssets || 0);
   el("kpi-reuses").textContent = String(totalReuses);
   el("kpi-events").textContent = String(state.counts?.events || 0);
@@ -500,7 +429,6 @@ function render() {
   el("count-assets").textContent = String(allAssets.length);
   el("count-arena").textContent = String(allAssets.length);
   el("count-links").textContent = String(linkCount);
-  el("count-candidates").textContent = String(state.candidates?.length || 0);
   el("count-events").textContent = String(state.counts?.events || 0);
 
   el("assets-toolbar").classList.toggle("hidden", activeTab !== "assets");
@@ -555,9 +483,9 @@ function render() {
     return;
   }
 
-  const items = activeTab === "candidates" ? state.candidates || [] : getFilteredAssets();
+  const items = getFilteredAssets();
   if (!items.length) {
-    listPane.innerHTML = `<div class="empty">No items match the current filters.</div>`;
+    listPane.innerHTML = `<div class="empty">No experiences match the current filters.</div>`;
     renderDetail(null);
     return;
   }
@@ -576,11 +504,11 @@ function render() {
       <div class="card ${item.id === selectedId ? "selected" : ""}" data-id="${escapeHtml(item.id)}">
         <div class="card-head">
           <div class="card-title-wrap">
-            <span class="badge ${kindCls}">${escapeHtml((item.type || "Gene").toUpperCase())}</span>
-            <span class="card-title">${item.pinned ? "📌 " : ""}${escapeHtml(item.title)}</span>
+            <span class="badge ${kindCls}">${kindLabel(item.type)}</span>
+            <span class="card-title">${escapeHtml(item.title)}</span>
           </div>
           <div class="card-badges">
-            ${item.gdiScore ? `<span class="badge gdi-badge">GDI ${item.gdiScore}</span>` : ""}
+            ${item.gdiScore ? `<span class="badge gdi-badge">${item.gdiScore}</span>` : ""}
             <span class="badge ${scopeClass}">${escapeHtml(item.scope || "local")}</span>
             ${item.repoScope && item.repoScope !== "*" ? `<span class="badge">${escapeHtml(item.repoScope)}</span>` : ""}
           </div>

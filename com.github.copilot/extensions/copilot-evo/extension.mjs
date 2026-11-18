@@ -25,7 +25,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.5.0";
+const EXTENSION_VERSION = "0.6.0";
 let lastWorkingDirectory = process.cwd();
 const canvasServer = createEvoCanvasServer({
   evoHome,
@@ -46,19 +46,20 @@ const sessionState = {
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
-  "2. Auto-discover & solidify (English only): When you resolve and verify a non-obvious error/failure, or when the user states a reusable cross-project rule/preference (even if also saved via `store_memory`), proactively call `evo_solidify` without waiting to be asked (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English, translating if the conversation is in another language. Use `scope: \"team\"` when generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
-  "3. Auto-score from loop & user feedback: When recalled Genes/Capsules fail in practice or the user corrects/disagrees with an active guidance, automatically judge and call `evo_manage_asset({ action: \"downvote\", id })` (or supersede it with `evo_solidify` + `supersedes`). Do not ask the user to score manually.",
-  "4. Preview & ask before sync: Immediately after `evo_solidify` succeeds for a shareable asset, present the full English asset preview (`id`, `scope`, `title`, `summary`, `signals`, `strategy`/`solution`) to the user, then proactively ask (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
+  "2. Auto-discover & solidify (English only): When you resolve and verify a non-obvious error/failure (`kind: \"Fix\"`) or when the user states a reusable cross-project rule/preference (`kind: \"Rule\"`, even if also saved via `store_memory`), proactively call `evo_solidify` without waiting to be asked (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English, translating if the conversation is in another language. Use `scope: \"team\"` when generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
+  "3. Auto-score from loop & user feedback: When recalled Experiences fail in practice or the user corrects/disagrees with an active guidance, automatically judge and call `evo_manage_asset({ action: \"downvote\", id })` (or supersede it with `evo_solidify` + `supersedes`). Do not ask the user to score manually.",
+  "4. Preview & ask before sync: Immediately after `evo_solidify` succeeds for a shareable Experience, present the full English preview (`id`, `scope`, `title`, `summary`, `signals`, `strategy`/`solution`) to the user, then proactively ask (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
 ].join("\n");
 
 function formatAssetsContext(assets) {
   if (!assets.length) return "";
   const lines = assets.map((a) => {
+    const kindLabel = a.type === "Capsule" ? "Fix" : "Rule";
     const steps = a.strategy?.length ? ` Steps: ${a.strategy.slice(0, 3).join(" -> ")}` : "";
     const fix = a.solution ? ` Fix: ${a.solution}` : "";
-    return `- [${a.type}:${a.id}] ${a.title}: ${a.summary}${fix}${steps}`;
+    return `- [${kindLabel}:${a.id}] ${a.title}: ${a.summary}${fix}${steps}`;
   });
-  return `[copilot-evo GEP guidance]\n${lines.join("\n")}`;
+  return `[copilot-evo recalled experiences]\n${lines.join("\n")}`;
 }
 
 const session = await joinSession({
@@ -241,7 +242,7 @@ const session = await joinSession({
           query: { type: "string", description: "Search keywords or error text (omit or empty to list)" },
           signals: { type: "array", items: { type: "string" }, description: "Signal tags such as test_failure, win32, npm_error" },
           scope: { type: "string", enum: ["", "local", "team", "starter"], description: "Optional scope filter" },
-          kind: { type: "string", enum: ["", "Gene", "Capsule"], description: "Optional asset type filter" },
+          kind: { type: "string", enum: ["", "Rule", "Fix", "Gene", "Capsule"], description: "Optional experience kind filter" },
           repo: { type: "string", description: "Optional owner/repo filter; defaults to current workspace repo when detected" },
           limit: { type: "number", description: "Maximum results (default 5)" },
         },
@@ -273,11 +274,11 @@ const session = await joinSession({
     },
     {
       name: "evo_solidify",
-      description: "Proactively record a verified reusable strategy (Gene) or fix recipe (Capsule) in English into the GEP store with automatic secret/path sanitization. Call automatically after resolving reusable failures or learning generalizable strategies, then ask the user whether to sync via evo_sync_repo.",
+      description: "Proactively record a verified reusable Rule (workflow strategy) or Fix (verified bug fix) in English into the Experience store with automatic secret/path sanitization. Call automatically after resolving reusable failures or learning generalizable rules, then show preview and ask whether to sync via evo_sync_repo.",
       parameters: {
         type: "object",
         properties: {
-          kind: { type: "string", enum: ["Gene", "Capsule"], description: "Asset type" },
+          kind: { type: "string", enum: ["Rule", "Fix", "Gene", "Capsule"], description: "Experience kind: Rule (strategy/convention) or Fix (verified solution)" },
           id: { type: "string", description: "Optional kebab-case ID (updates existing if matched)" },
           title: { type: "string", description: "Short descriptive title in English" },
           summary: { type: "string", description: "Concise English explanation of the pattern or root cause" },
@@ -394,7 +395,7 @@ const session = await joinSession({
         } else if (args.action === "export") {
           res = exportBundle(evoHome, { scope: "team", outputPath: args.filePath });
         } else if (args.action === "import") {
-          res = importBundle(evoHome, { inputPath: args.filePath, autoPromote: args.autoPromote ?? false });
+          res = importBundle(evoHome, { inputPath: args.filePath, autoPromote: args.autoPromote ?? true });
         } else {
           res = { ok: false, error: `Unsupported action: ${args.action}` };
         }
@@ -408,11 +409,11 @@ const session = await joinSession({
     createCanvas({
       id: "evo-dashboard",
       displayName: "Copilot Evo",
-      description: "Browse, preview, search, promote, delete, and sync copilot-evo Genes, Capsules, candidates, and evolution events.",
+      description: "Browse, preview, search, rank, delete, and sync copilot-evo Experiences (Rules and Fixes), relationships, and events.",
       inputSchema: {
         type: "object",
         properties: {
-          tab: { type: "string", enum: ["assets", "arena", "relationships", "candidates", "events"] },
+          tab: { type: "string", enum: ["assets", "arena", "relationships", "events"] },
           filter: { type: "string", enum: ["all", "team", "local", "starter"] },
           assetId: { type: "string" },
         },
@@ -433,7 +434,7 @@ const session = await joinSession({
             type: "object",
             properties: {
               assetId: { type: "string" },
-              tab: { type: "string", enum: ["assets", "arena", "relationships", "candidates", "events"] },
+              tab: { type: "string", enum: ["assets", "arena", "relationships", "events"] },
             },
             required: ["assetId"],
           },

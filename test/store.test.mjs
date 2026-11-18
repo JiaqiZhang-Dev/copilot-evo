@@ -149,7 +149,7 @@ test("exportBundle and importBundle stage candidates and promote safely", () => 
       },
       { evoHome: homeA, bundledDir }
     );
-    assert.match(res.preview, /\[Capsule:capsule-clean-team\]/);
+    assert.match(res.preview, /\[EXP · Fix:capsule-clean-team\]/);
 
     const exp = exportBundle(homeA, { scope: "team", outputPath: packPath });
     assert.equal(exp.ok, true);
@@ -382,6 +382,29 @@ test("GDI rank, pin/vote feedback, and Gene/Capsule lineage work together", () =
     const active = selectAssets({ signals: ["npm_error"], genes, capsules, limit: 5 });
     assert.equal(active[0].id, "capsule-derived-fix");
     assert.ok(!active.some((a) => a.id === "gene-base-strategy"));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(bundledDir, { recursive: true, force: true });
+  }
+});
+
+test("solidifyAsset supports Rule/Fix aliases with exp- prefix", () => {
+  const home = makeTempDir();
+  const bundledDir = makeTempDir();
+  try {
+    const rule = solidifyAsset(
+      {
+        kind: "Rule",
+        title: "Prefer concise comments",
+        summary: "Keep code comments short and clear across repositories.",
+        signals: ["code_style"],
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+    assert.equal(rule.ok, true);
+    assert.ok(rule.asset.id.startsWith("exp-"));
+    assert.equal(rule.asset.type, "Gene");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

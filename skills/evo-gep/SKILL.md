@@ -1,20 +1,20 @@
 ---
 name: evo-gep
-description: Use the Genome Evolution Protocol (GEP) with copilot-evo to proactively discover reusable fixes and strategies, automatically call evo_solidify, and prompt the user to sync via evo_sync_repo.
+description: Use copilot-evo to proactively discover reusable fixes and rules, automatically call evo_solidify, and prompt the user to sync via evo_sync_repo.
 metadata:
-  version: "0.4.0"
+  version: "0.6.0"
 ---
 
-# Copilot Evo (GEP Self-Evolution)
+# Copilot Evo (Self-Evolving Experiences)
 
-Use `copilot-evo` to automatically turn hard-won debugging insights, recurring fixes, and cross-project workflow rules into reusable **Genes** (reusable strategies) and **Capsules** (verified fix recipes).
+Use `copilot-evo` to automatically turn hard-won debugging insights, verified bug fixes (**Fixes** / `Capsule`), and cross-project workflow conventions (**Rules** / `Gene`) into reusable team experiences.
 
 ## Proactive Workflow
 
-1. **Recall first (`evo_search`)**: Check local and team-synced Genes/Capsules when hitting an unfamiliar failure or starting a recurring task. Recall automatically respects `repoScope` (`*` for global, `owner/repo` for repo-specific rules) and ranks assets by lightweight GDI score.
-2. **Auto-solidify in English (`evo_solidify`)**: Whenever you resolve and verify a non-obvious failure (or the user establishes a reusable cross-project rule/strategy), proactively call `evo_solidify` without waiting to be asked. Always write `title`, `summary`, `signals`, `strategy`, and `solution` in clear English (translate non-English conversations). Use `scope: "team"` for generalizable, secret-free assets and `scope: "local"` for machine-specific ones; set `repoScope: "current"` when a rule applies only to the active repository, and link `geneId` / `parentId` / `supersedes` when extending or replacing an earlier asset. Skip trivial one-off typos.
-3. **Preview & prompt to sync (`evo_sync_repo`)**: Immediately after `evo_solidify` succeeds for a shareable asset, show the full English preview (`id`, `scope`, `repoScope`, `title`, `summary`, `signals`, `strategy`/`solution`) to the user, then ask (using `ask_user` when available) whether they want to push it to the team repository via `evo_sync_repo({ action: "push" })`.
-4. **Browse, rank & manage (`/evo-list`, `/evo-canvas`, `evo_status`, `evo_manage_asset`)**: Use `/evo-list` for an in-chat preview of stored experiences, `/evo-canvas` (or `open_canvas` with `canvasId: "evo-dashboard"`) for the side-panel dashboard, and `evo_manage_asset` to inspect lineage, pin/vote, promote, or delete entries.
+1. **Recall first (`evo_search`)**: Check local and team-synced Experiences when hitting an unfamiliar failure or starting a recurring task. Recall automatically respects `repoScope` (`*` for global, `owner/repo` for repo-specific rules) and ranks items by score.
+2. **Auto-solidify in English (`evo_solidify`)**: Whenever you resolve and verify a non-obvious failure (`kind: "Capsule"`) or the user establishes a reusable cross-project rule (`kind: "Gene"`), proactively call `evo_solidify` without waiting to be asked. Always write `title`, `summary`, `signals`, `strategy`, and `solution` in clear English (translate non-English conversations). Use `scope: "team"` for generalizable, secret-free assets and `scope: "local"` for machine-specific ones; set `repoScope: "current"` when a rule applies only to the active repository, and link `geneId` / `parentId` / `supersedes` when extending or replacing an earlier experience. Skip trivial one-off typos.
+3. **Preview & prompt to sync (`evo_sync_repo`)**: Immediately after `evo_solidify` succeeds for a shareable experience, show the full English preview (`id`, `scope`, `repoScope`, `title`, `summary`, `signals`, `strategy`/`solution`) to the user, then ask (using `ask_user` when available) whether they want to push it to the team repository via `evo_sync_repo({ action: "push" })`.
+4. **Browse & manage (`/evo-list`, `/evo-canvas`, `evo_status`, `evo_manage_asset`)**: Use `/evo-list` for an in-chat preview, `/evo-canvas` (or `open_canvas` with `canvasId: "evo-dashboard"`) for the side-panel dashboard (**Experiences**, **Leaderboard**, **Relationships**, **Events**), and `evo_manage_asset` to inspect or delete entries.
 
 ## Privacy & Safety Rules
 

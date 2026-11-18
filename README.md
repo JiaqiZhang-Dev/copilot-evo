@@ -1,12 +1,12 @@
 # copilot-evo
 
-Self-evolving GEP (Genes, Capsules, EvolutionEvents) memory and cross-project experience sharing plugin for GitHub Copilot App and CLI.
+Self-evolving **Experience (`EXP`: Rules & Fixes)** memory and cross-project sharing plugin for GitHub Copilot App and CLI.
 
 ## Capabilities
 
-- **Proactive Auto-Evolution**: Injects an active GEP protocol on session start, detects failure-to-recovery transitions via `onPostToolUseFailure` / `onPostToolUse` and rule cues in prompts, nudging the agent to automatically call `evo_solidify` in English, show a full preview, and ask whether to sync via `evo_sync_repo`.
-- **Repo Scope, GDI Rank & Lineage**: Supports global (`*`) or repository-scoped (`owner/repo`) assets, lightweight GDI ranking (relevance, reuse hits, validation, freshness, pin/vote feedback), and `geneId` / `parentId` / `supersedes` relationships.
-- **In-Chat & Canvas Preview (with GEP Arena)**: Preview stored Genes/Capsules in chat with `/evo-list`, or open the interactive **Copilot Evo Canvas** (`/evo-canvas`) to search, filter by repo/scope/type, inspect **Relationships**, compete & benchmark in the 4-dimension **Arena** leaderboard, view evolution events, and trigger Pull/Push sync.
+- **Proactive Auto-Evolution**: Injects an active protocol on session start, detects failure-to-recovery transitions via `onPostToolUseFailure` / `onPostToolUse` and rule cues in prompts, nudging the agent to automatically call `evo_solidify` in English (`Rule` or `Fix`), show a full preview, and ask whether to sync via `evo_sync_repo`.
+- **Repo Scope, Auto-Scoring & Lineage**: Supports global (`*`) or repository-scoped (`owner/repo`) experiences, automatic loop-driven scoring (Quality, Reliability, Lineage, Freshness), and `geneId` / `parentId` / `supersedes` relationships.
+- **In-Chat & Canvas Preview**: Preview stored Experiences in chat with `/evo-list`, or open the interactive **Copilot Evo Canvas** (`/evo-canvas`) with 4 streamlined tabs (**Experiences**, **Leaderboard**, **Relationships**, **Events**) and Pull/Push sync.
 - **Local-First Storage**: Keeps raw session failure logs and unshared assets strictly on your machine under `~/.copilot/evo/` (overridable with `COPILOT_EVO_HOME`).
 - **Pre-Share Privacy & Leak Guardrails**: Automatically strips tokens, private keys, database credentials, internal IPs, emails, and personal home-directory paths, and checks `process.env` secrets before saving `team`-scoped assets or syncing to Git.
 - **Private Git Sync (No PR Required)**: Push sanitized `team` Genes and Capsules directly to `main` via `evo_sync_repo` (auto-clones the configured private repo into `~/.copilot/evo/sync-repo` on first sync if needed), or export/import offline `.evopack.json` bundles.

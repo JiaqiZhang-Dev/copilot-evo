@@ -177,18 +177,19 @@ export function readRecentEvents(evoHome, limit = 50) {
 
 export function formatAssetPreview(asset) {
   if (!asset) return "";
+  const kindLabel = asset.type === "Capsule" ? "Fix" : "Rule";
   const repoLabel = asset.repoScope && asset.repoScope !== "*" ? ` repo:${asset.repoScope}` : " repo:*";
   const lines = [
-    `[${asset.type}:${asset.id}] (${asset.scope}${repoLabel}) ${asset.title}`,
+    `[EXP · ${kindLabel}:${asset.id}] (${asset.scope}${repoLabel}) ${asset.title}`,
     `Summary: ${asset.summary}`,
     `Signals: ${(asset.signals || []).join(", ") || "none"}`,
   ];
-  if (asset.geneId) lines.push(`Derived from Gene: ${asset.geneId}`);
-  if (asset.parentId) lines.push(`Parent Asset: ${asset.parentId}`);
+  if (asset.geneId) lines.push(`Derived from Rule: ${asset.geneId}`);
+  if (asset.parentId) lines.push(`Parent Experience: ${asset.parentId}`);
   if (asset.supersedes) lines.push(`Supersedes: ${asset.supersedes}`);
   if (asset.solution) lines.push(`Solution: ${asset.solution}`);
   if (asset.strategy?.length) {
-    lines.push("Strategy:");
+    lines.push("Steps:");
     asset.strategy.forEach((step, idx) => lines.push(`  ${idx + 1}. ${step}`));
   }
   if (asset.validation?.length) {
@@ -409,6 +410,11 @@ export function extractSignals(text, extraSignals = [], options = {}) {
   return Array.from(signals);
 }
 
+function normalizeAssetKind(raw) {
+  if (raw === "Capsule" || raw === "Fix") return "Capsule";
+  return "Gene";
+}
+
 export function selectAssets({
   signals = [],
   query = "",
@@ -428,12 +434,13 @@ export function selectAssets({
   const all = [...genes, ...capsules];
   const supersededIds = new Set(all.map((a) => a.supersedes).filter(Boolean));
   const normalizedRepo = repo && repo !== "*" ? normalizeRepoSlug(repo) : "";
+  const normalizedKind = kind ? normalizeAssetKind(kind) : "";
   const nowMs = Date.now();
 
   const scored = [];
   for (const asset of all) {
     if (scope && asset.scope !== scope) continue;
-    if (kind && asset.type !== kind) continue;
+    if (normalizedKind && asset.type !== normalizedKind) continue;
     if (!includeSuperseded && supersededIds.has(asset.id) && !terms.includes(asset.id.toLowerCase())) continue;
 
     const assetRepo = normalizeRepoSlug(asset.repoScope || "*");
@@ -486,10 +493,9 @@ function hasNonEnglishText(asset) {
 
 export function solidifyAsset(input, options = {}) {
   const evoHome = initStore(options);
-  const kind = input.kind === "Capsule" ? "Capsule" : "Gene";
+  const kind = normalizeAssetKind(input.kind);
   const scope = input.scope === "team" ? "team" : "local";
-  const prefix = kind === "Capsule" ? "capsule" : "gene";
-  const id = input.id ? slugify(input.id) : `${prefix}-${slugify(input.title)}-${Date.now().toString(36)}`;
+  const id = input.id ? slugify(input.id) : `exp-${slugify(input.title)}-${Date.now().toString(36)}`;
 
   const validation = Array.isArray(input.validation) ? input.validation.filter(Boolean) : [];
   for (const cmd of validation) {
