@@ -581,7 +581,13 @@ async function mutate(endpoint, body) {
     } else if (endpoint === "/api/assets/feedback") {
       showBanner(`Updated ${data.asset?.id || "asset"} (GDI ${data.gdiScore ?? "-"}).`);
     } else if (endpoint === "/api/arena/validate") {
-      showBanner(`Validation ${data.passed ? "PASSED" : "FAILED"} for ${data.assetId}.`, !data.passed);
+      if (data.passed) {
+        showBanner(`Validation PASSED for ${data.assetId}.`);
+      } else {
+        const failed = (data.results || []).find((r) => !r.passed);
+        const detail = failed?.output ? ` — ${failed.output.split(/\r?\n/)[0].slice(0, 140)}` : "";
+        showBanner(`Validation FAILED for ${data.assetId}${failed ? ` (${failed.command})` : ""}${detail}`, true);
+      }
     } else if (endpoint === "/api/assets/delete") {
       showBanner(`Deleted ${data.deletedId || "asset"}.`);
     }

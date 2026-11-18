@@ -11,7 +11,6 @@
       "Re-run the verification command to confirm green output before finishing.",
       "Call evo_solidify if the root cause is non-obvious and reusable across projects."
     ],
-    "validation": ["npm test"],
     "priority": 10,
     "scope": "starter"
   },
