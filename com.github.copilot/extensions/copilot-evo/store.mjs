@@ -211,6 +211,19 @@ function slugify(text) {
     .slice(0, 48) || "asset";
 }
 
+const CJK_SCRIPT_RE = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/;
+
+function hasNonEnglishText(asset) {
+  const fields = [
+    asset.title,
+    asset.summary,
+    asset.solution,
+    ...(asset.signals || []),
+    ...(asset.strategy || []),
+  ];
+  return fields.some((item) => typeof item === "string" && CJK_SCRIPT_RE.test(item));
+}
+
 export function solidifyAsset(input, options = {}) {
   const evoHome = initStore(options);
   const kind = input.kind === "Capsule" ? "Capsule" : "Gene";
@@ -241,6 +254,13 @@ export function solidifyAsset(input, options = {}) {
     sourceProject: hashProjectId(input.workingDirectory),
     updatedAt: new Date().toISOString(),
   };
+
+  if (hasNonEnglishText(rawAsset)) {
+    return {
+      ok: false,
+      error: "All solidified Genes and Capsules must be written in English. Translate title, summary, signals, strategy, and solution into English and retry evo_solidify.",
+    };
+  }
 
   const leakCheck = fullLeakCheck(rawAsset);
   if (scope === "team" && leakCheck.found) {

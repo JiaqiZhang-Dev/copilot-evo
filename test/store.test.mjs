@@ -160,6 +160,26 @@ test("exportBundle and importBundle stage candidates and promote safely", () => 
   }
 });
 
+test("solidifyAsset enforces English-only text for Genes and Capsules", () => {
+  const home = makeTempDir();
+  try {
+    const rejected = solidifyAsset(
+      {
+        kind: "Gene",
+        title: "中文经验标题",
+        summary: "以后代码实现都要参考现有设计规范",
+        signals: ["coding_style"],
+        scope: "team",
+      },
+      { evoHome: home }
+    );
+    assert.equal(rejected.ok, false);
+    assert.match(rejected.error, /English/i);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("hasStrategyCue and extractSignals distinguish rule cues from unrelated prompts", () => {
   assert.equal(hasStrategyCue("以后遇到这个问题都这么处理"), true);
   assert.equal(hasStrategyCue("Always run targeted tests before pushing"), true);

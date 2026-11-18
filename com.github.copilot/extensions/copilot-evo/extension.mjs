@@ -19,7 +19,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.2.1";
+const EXTENSION_VERSION = "0.2.2";
 const sessionState = {
   protocolInjected: false,
   pendingFailure: null,
@@ -32,7 +32,7 @@ const sessionState = {
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
-  "2. Auto-discover & solidify: When you resolve and verify a non-obvious error/failure, or when the user states a reusable cross-project rule/preference (even if also saved via `store_memory`), proactively call `evo_solidify` without waiting to be asked (skip trivial typos). Use `scope: \"team\"` when generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
+  "2. Auto-discover & solidify (English only): When you resolve and verify a non-obvious error/failure, or when the user states a reusable cross-project rule/preference (even if also saved via `store_memory`), proactively call `evo_solidify` without waiting to be asked (skip trivial typos). Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English, translating if the conversation is in another language. Use `scope: \"team\"` when generalizable and free of secrets/paths, otherwise `scope: \"local\"`.",
   "3. Auto-ask before sync: Immediately after `evo_solidify` succeeds for a shareable asset, proactively ask the user (using `ask_user` when available) whether to sync it to the team repository via `evo_sync_repo({ action: \"push\" })`.",
 ].join("\n");
 
@@ -86,7 +86,7 @@ const session = await joinSession({
       }
       if (hasStrategyCue(input.prompt)) {
         parts.push(
-          "[copilot-evo rule signal] This prompt states a reusable rule, pitfall, or workflow preference. Load `evo_solidify` and `evo_sync_repo` via `tool_search_tool` if needed, call `evo_solidify` (in addition to `store_memory` if used) to persist it as a Gene, then ask the user whether to sync via `evo_sync_repo`."
+          "[copilot-evo rule signal] This prompt states a reusable rule, pitfall, or workflow preference. Load `evo_solidify` and `evo_sync_repo` via `tool_search_tool` if needed, call `evo_solidify` in English (in addition to `store_memory` if used) to persist it as a Gene, then ask the user whether to sync via `evo_sync_repo`."
         );
       }
       if (!parts.length) return;
@@ -145,7 +145,7 @@ const session = await joinSession({
       if (toolName === "store_memory" && Date.now() - sessionState.lastSolidifyAt > 15000) {
         return {
           additionalContext:
-            "[copilot-evo] A durable rule was just saved to personal memory (`store_memory`). Now load `evo_solidify` and `evo_sync_repo` via `tool_search_tool` (if not already loaded), call `evo_solidify` to also record this rule as a GEP Gene (use `scope: \"team\"` if generalizable and secret-free), and then ask the user whether to sync it to the team repo via `evo_sync_repo({ action: \"push\" })`.",
+            "[copilot-evo] A durable rule was just saved to personal memory (`store_memory`). Now load `evo_solidify` and `evo_sync_repo` via `tool_search_tool` (if not already loaded), call `evo_solidify` in English to also record this rule as a GEP Gene (use `scope: \"team\"` if generalizable and secret-free), and then ask the user whether to sync it to the team repo via `evo_sync_repo({ action: \"push\" })`.",
         };
       }
 
@@ -206,17 +206,17 @@ const session = await joinSession({
     },
     {
       name: "evo_solidify",
-      description: "Proactively record a verified reusable strategy (Gene) or fix recipe (Capsule) into the GEP store with automatic secret/path sanitization. Call automatically after resolving reusable failures or learning generalizable strategies, then ask the user whether to sync via evo_sync_repo.",
+      description: "Proactively record a verified reusable strategy (Gene) or fix recipe (Capsule) in English into the GEP store with automatic secret/path sanitization. Call automatically after resolving reusable failures or learning generalizable strategies, then ask the user whether to sync via evo_sync_repo.",
       parameters: {
         type: "object",
         properties: {
           kind: { type: "string", enum: ["Gene", "Capsule"], description: "Asset type" },
           id: { type: "string", description: "Optional kebab-case ID (updates existing if matched)" },
-          title: { type: "string", description: "Short descriptive title" },
-          summary: { type: "string", description: "Concise explanation of the pattern or root cause" },
-          signals: { type: "array", items: { type: "string" }, description: "Trigger signals (e.g. test_failure, win32, enoent)" },
-          strategy: { type: "array", items: { type: "string" }, description: "Ordered actionable steps" },
-          solution: { type: "string", description: "Concrete fix summary (especially for Capsules)" },
+          title: { type: "string", description: "Short descriptive title in English" },
+          summary: { type: "string", description: "Concise English explanation of the pattern or root cause" },
+          signals: { type: "array", items: { type: "string" }, description: "English lowercase trigger signals (e.g. test_failure, win32, enoent)" },
+          strategy: { type: "array", items: { type: "string" }, description: "Ordered actionable steps in English" },
+          solution: { type: "string", description: "Concrete fix summary in English (especially for Capsules)" },
           validation: { type: "array", items: { type: "string" }, description: "Safe verification commands (node/npm/npx/pytest/dotnet/cargo/go test)" },
           scope: { type: "string", enum: ["local", "team"], description: "local stays on this machine; team stages sanitized asset for private repo sync" },
         },
