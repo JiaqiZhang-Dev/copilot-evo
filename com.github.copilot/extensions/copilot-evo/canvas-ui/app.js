@@ -3,7 +3,7 @@ let canvasToken = "";
 let activeTab = "assets";
 let activeFilter = "all";
 let activeKind = "all";
-let repoOnlyFilter = false;
+let repoScopeFilter = ""; // "" | "cross" | "repo"
 let contribMode = "author";
 let contribScope = "all";
 let eventFilter = "all";
@@ -101,7 +101,8 @@ function getFilteredAssets() {
       if (scope === "local") return false;
       if (activeFilter !== "all" && scope !== activeFilter) return false;
     }
-    if (repoOnlyFilter && !isRepoSpecificMatch(item, curRepo)) return false;
+    if (repoScopeFilter === "cross" && (item.repoScope || "*") !== "*") return false;
+    if (repoScopeFilter === "repo" && !isRepoSpecificMatch(item, curRepo)) return false;
     const itemType = item.type === "Fix" ? "Fix" : "Rule";
     if (activeKind !== "all" && itemType !== activeKind) return false;
     if (!q) return true;
@@ -1157,6 +1158,7 @@ function render() {
       : tabAssets.filter((a) => (a.type === "Fix" ? "Fix" : "Rule") === activeKind);
   const kindTeamCount = kindScopedAssets.filter((a) => a.scope === "team").length;
   const kindStarterCount = kindScopedAssets.filter((a) => a.scope === "starter").length;
+  const crossRepoCount = kindScopedAssets.filter((a) => (a.repoScope || "*") === "*").length;
   const repoOnlyCount = kindScopedAssets.filter((a) => isRepoSpecificMatch(a, curRepo)).length;
 
   el("count-assets").textContent = String(sharedCount);
@@ -1181,9 +1183,14 @@ function render() {
   if (el("chip-starter")) {
     el("chip-starter").textContent = `Built-in ${kindStarterCount}`;
   }
+  const crossRepoBtn = el("chip-cross-repo");
+  if (crossRepoBtn) {
+    crossRepoBtn.classList.toggle("active", repoScopeFilter === "cross");
+    crossRepoBtn.textContent = `Cross-repo (${crossRepoCount})`;
+  }
   const repoOnlyBtn = el("chip-repo-only");
   if (repoOnlyBtn) {
-    repoOnlyBtn.classList.toggle("active", repoOnlyFilter);
+    repoOnlyBtn.classList.toggle("active", repoScopeFilter === "repo");
     repoOnlyBtn.textContent = state.currentRepo
       ? `${state.currentRepo} (${repoOnlyCount})`
       : `Repo-scoped (${repoOnlyCount})`;
@@ -1592,8 +1599,13 @@ async function init() {
     render();
   });
 
+  el("chip-cross-repo")?.addEventListener("click", () => {
+    repoScopeFilter = repoScopeFilter === "cross" ? "" : "cross";
+    render();
+  });
+
   el("chip-repo-only")?.addEventListener("click", () => {
-    repoOnlyFilter = !repoOnlyFilter;
+    repoScopeFilter = repoScopeFilter === "repo" ? "" : "repo";
     render();
   });
 
