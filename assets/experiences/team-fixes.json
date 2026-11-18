@@ -1,1 +1,23 @@
-[]
+[
+  {
+    "id": "exp-validate-qa-bot-prompt-changes-locally-with-gith-mwltwxq3",
+    "type": "Fix",
+    "title": "Validate QA bot prompt changes locally with GitHub MCP",
+    "summary": "Unit tests do not catch LLM skill-switching regressions in azure-sdk-qa-bot-agent; replaying real PR queries against local `agents/chat_agent/init.py` with `GITHUB_TOKEN=$(gh auth token)` exercises live GitHub MCP and skill routing end-to-end.",
+    "signals": [
+      "qa_bot",
+      "local_validation",
+      "github_mcp",
+      "prompt_engineering"
+    ],
+    "strategy": [],
+    "solution": "Load .env into the process environment, set GITHUB_TOKEN from `gh auth token` so GitHub MCP authenticates, start `agents/chat_agent/init.py` on port 8088, and POST the `[tenant_context]` + user message payload to `/responses` to inspect actual tool calls and output before deploying.",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "Azure/azure-sdk-tools",
+    "sourceProject": "Azure/azure-sdk-tools",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-18T08:00:03.878Z",
+    "successCount": 1
+  }
+]
