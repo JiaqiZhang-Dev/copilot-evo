@@ -460,10 +460,11 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1 }), true);
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1, solidifiedTurn: 1 }), false);
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1, lastNudgeTurn: 1 }), false);
+    const beforeRecallSuccess = loadStore(home).fixes.find((f) => f.id === "exp-derived-fix").successCount;
     recordAssetRecalls(home, ["exp-derived-fix", "exp-base-strategy"]);
     const afterRecall = loadStore(home).fixes.find((f) => f.id === "exp-derived-fix");
     assert.equal(afterRecall.recallCount, 1);
-    assert.equal(afterRecall.successCount, 1);
+    assert.equal(afterRecall.successCount, beforeRecallSuccess);
     assert.equal(isTrivialToolFailure("create", "File already exists"), true);
     assert.equal(isTrivialToolFailure("edit", "No match found: old_str not found"), true);
     assert.equal(isTrivialToolFailure("powershell", "npm ERR! code E401"), false);
