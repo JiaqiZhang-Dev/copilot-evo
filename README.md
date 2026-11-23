@@ -35,6 +35,17 @@
   <img src="docs/images/demo.gif" width="92%" alt="Copilot Evo Walkthrough" />
 </p>
 
+<table>
+  <tr>
+    <th width="50%">Without Copilot Evo</th>
+    <th width="50%">With Copilot Evo</th>
+  </tr>
+  <tr>
+    <td valign="top">Every new session starts from zero—Copilot repeats the same build/deploy pitfalls, misses repo conventions, and loses hard-won debugging lessons when chat closes.</td>
+    <td valign="top">Non-obvious <code>Knowledge</code>, <code>Rules</code>, and verified <code>Fixes</code> are captured once, recalled automatically on turn 1 for matching repos/errors, and shared safely with your team.</td>
+  </tr>
+</table>
+
 ## Highlights
 
 <table>
@@ -66,7 +77,6 @@
 
 ```bash
 copilot plugin install JiaqiZhang-Dev/copilot-evo
-copilot plugin update copilot-evo
 ```
 
 ### 2. Open Copilot Evo
@@ -151,6 +161,7 @@ flowchart LR
 <details>
 <summary><strong>Tools, Environment Variables &amp; Tests</strong></summary>
 
+- **Upgrade**: `copilot plugin update copilot-evo`
 - **Tools**: `evo_search`, `evo_solidify`, `evo_manage_asset`, `evo_sync_repo`, `evo_status`
 - **Env Vars**: `COPILOT_EVO_HOME` (`~/.copilot/evo`), `COPILOT_EVO_SYNC_REPO`, `COPILOT_EVO_AUTHOR`
 - **Tests**: `npm test`

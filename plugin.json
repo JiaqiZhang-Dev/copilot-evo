@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "copilot-evo",
   "description": "Self-evolving Experience (Knowledge, Rules & Fixes) memory and private Git-synced team sharing plugin for GitHub Copilot.",
-  "version": "0.14.7",
+  "version": "0.14.8",
   "author": {
     "name": "JiaqiZhang-Dev",
     "url": "https://github.com/JiaqiZhang-Dev"
@@ -14,5 +14,10 @@
     "fixes",
     "memory",
     "copilot-plugin"
-  ]
+  ],
+  "extensions": {
+    "com.github.copilot": {
+      "logo": "docs/images/logo.svg"
+    }
+  }
 }
