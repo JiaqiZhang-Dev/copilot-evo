@@ -1203,8 +1203,15 @@ function isRemoteGitUrl(str) {
 }
 
 function parseRepoTarget(raw) {
-  const trimmed = String(raw || "").trim();
+  const trimmed = String(raw || "").trim().replace(/\/+$/, "");
   if (!trimmed) return null;
+  const ghUrlMatch = trimmed.match(
+    /^(?:https?:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?(?:\/.*)?$/i
+  );
+  if (ghUrlMatch) {
+    const slug = ghUrlMatch[1];
+    return { target: slug, cloneUrl: `https://github.com/${slug}.git`, slug, isSlug: true };
+  }
   if (isRemoteGitUrl(trimmed) || fs.existsSync(trimmed)) {
     const slug = isRemoteGitUrl(trimmed) ? normalizeRepoSlug(trimmed) : "";
     return { target: trimmed, cloneUrl: trimmed, slug: slug !== "*" ? slug : "", isSlug: false };

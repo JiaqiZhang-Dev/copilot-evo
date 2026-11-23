@@ -1764,8 +1764,8 @@ async function init() {
     const linkEl = el("repo-modal-link");
     if (!modal) return;
     const currentRepo = state?.config?.syncRepo || "";
-    if (input) input.value = currentRepo;
     const webUrl = toRepoWebUrl(currentRepo);
+    if (input) input.value = webUrl || currentRepo;
     if (metaEl && linkEl) {
       if (webUrl) {
         linkEl.href = webUrl;
@@ -1800,7 +1800,7 @@ async function init() {
   el("btn-repo-connect")?.addEventListener("click", () => {
     const val = el("repo-modal-input")?.value?.trim();
     if (!val) {
-      showRepoError("Enter a repository like owner/copilot-evo-data.");
+      showRepoError("Enter a repository URL like https://github.com/owner/copilot-evo-data.");
       return;
     }
     el("repo-modal-error")?.classList.add("hidden");
@@ -1809,7 +1809,7 @@ async function init() {
   el("btn-repo-create")?.addEventListener("click", () => {
     const val = el("repo-modal-input")?.value?.trim();
     if (!val) {
-      showRepoError("Enter a new private repository name like owner/copilot-evo-data.");
+      showRepoError("Enter a new private repository URL like https://github.com/owner/copilot-evo-data.");
       return;
     }
     el("repo-modal-error")?.classList.add("hidden");
