@@ -1301,75 +1301,95 @@ export async function configureSyncRepo(evoHome, { repo = "", createPrivate = fa
     };
   }
 
-  if (createPrivate) {
-    if (!parsed.isSlug) {
-      return { ok: false, error: "Creating a private GitHub repo requires an owner/repo slug." };
+  try {
+    if (parsed.isSlug) {
+      let existingMeta = null;
+      let viewErr = null;
+      try {
+        const rawMeta = await runCmd("gh", ["repo", "view", parsed.slug, "--json", "name,isPrivate"]);
+        existingMeta = JSON.parse(rawMeta);
+      } catch (err) {
+        viewErr = err;
+      }
+
+      if (existingMeta) {
+        if (createPrivate) {
+          return {
+            ok: false,
+            error: `Repository ${parsed.slug} already exists. Click Connect Existing instead.`,
+          };
+        }
+        if (existingMeta.isPrivate === false) {
+          return {
+            ok: false,
+            error: `Repository ${parsed.slug} is public. Use a private repository for team experiences.`,
+          };
+        }
+      } else if (createPrivate) {
+        await runCmd("gh", [
+          "repo",
+          "create",
+          parsed.slug,
+          "--private",
+          "--description",
+          "Private copilot-evo team experiences store",
+        ]);
+      } else if (viewErr && /not found|could not resolve to a repository/i.test(viewErr.message)) {
+        return {
+          ok: false,
+          error: `Repository ${parsed.slug} was not found or you lack access.`,
+        };
+      }
     }
-    let exists = false;
-    try {
-      await runCmd("gh", ["repo", "view", parsed.slug, "--json", "name"]);
-      exists = true;
-    } catch {
-      exists = false;
+
+    const cloneDir = path.join(evoHome, "sync-repos", slugToDirName(parsed.target));
+    await ensureSyncRepo(evoHome, { repo: parsed.target, repoPath: cloneDir });
+
+    const hasCommits = await hasGitHead(cloneDir);
+    if (!hasCommits) {
+      const expDir = path.join(cloneDir, "assets", "experiences");
+      writeJson(path.join(expDir, "team-knowledge.json"), []);
+      writeJson(path.join(expDir, "team-rules.json"), []);
+      writeJson(path.join(expDir, "team-fixes.json"), []);
+      const readmePath = path.join(cloneDir, "README.md");
+      if (!fs.existsSync(readmePath)) {
+        fs.writeFileSync(
+          readmePath,
+          `# ${parsed.slug || "copilot-evo-data"}\n\nPrivate experience store for [copilot-evo](https://github.com/JiaqiZhang-Dev/copilot-evo).\n`,
+          "utf8"
+        );
+      }
+      await runGit(cloneDir, ["add", "."]);
+      await runGit(cloneDir, ["commit", "-m", "chore(evo): initialize team experience store"]);
+      await runGit(cloneDir, ["push", "-u", "origin", "HEAD"]);
     }
-    if (!exists) {
-      await runCmd("gh", [
-        "repo",
-        "create",
-        parsed.slug,
-        "--private",
-        "--description",
-        "Private copilot-evo team experiences store",
-      ]);
+
+    const pullRes = await syncRepoPull(evoHome, { repoPath: cloneDir });
+    let pushed = false;
+    if (pushExisting) {
+      const store = loadStore(evoHome);
+      const hasLocalTeam =
+        store.rules.some((r) => r.scope === "team") ||
+        store.fixes.some((f) => f.scope === "team") ||
+        store.knowledge.some((k) => k.scope === "team");
+      if (hasLocalTeam) {
+        const pushRes = await syncRepoPush(evoHome, { repoPath: cloneDir });
+        pushed = Boolean(pushRes?.pushed);
+      }
     }
+
+    appendEvent(evoHome, { event: "configure_sync", repo: parsed.target, created: Boolean(createPrivate) });
+    return {
+      ok: true,
+      syncRepo: parsed.target,
+      syncRepoPath: cloneDir,
+      imported: pullRes.imported || 0,
+      updated: pullRes.updated || 0,
+      pushed,
+    };
+  } catch (err) {
+    return { ok: false, error: err?.message || "Failed to configure team repository." };
   }
-
-  const cloneDir = path.join(evoHome, "sync-repos", slugToDirName(parsed.target));
-  saveConfig(evoHome, { syncRepo: parsed.target, syncRepoPath: cloneDir });
-  await ensureSyncRepo(evoHome, { repo: parsed.target, repoPath: cloneDir });
-
-  const hasCommits = await hasGitHead(cloneDir);
-  if (!hasCommits) {
-    const expDir = path.join(cloneDir, "assets", "experiences");
-    writeJson(path.join(expDir, "team-knowledge.json"), []);
-    writeJson(path.join(expDir, "team-rules.json"), []);
-    writeJson(path.join(expDir, "team-fixes.json"), []);
-    const readmePath = path.join(cloneDir, "README.md");
-    if (!fs.existsSync(readmePath)) {
-      fs.writeFileSync(
-        readmePath,
-        `# ${parsed.slug || "copilot-evo-data"}\n\nPrivate experience store for [copilot-evo](https://github.com/JiaqiZhang-Dev/copilot-evo).\n`,
-        "utf8"
-      );
-    }
-    await runGit(cloneDir, ["add", "."]);
-    await runGit(cloneDir, ["commit", "-m", "chore(evo): initialize team experience store"]);
-    await runGit(cloneDir, ["push", "-u", "origin", "HEAD"]);
-  }
-
-  const pullRes = await syncRepoPull(evoHome, { repoPath: cloneDir });
-  let pushed = false;
-  if (pushExisting) {
-    const store = loadStore(evoHome);
-    const hasLocalTeam =
-      store.rules.some((r) => r.scope === "team") ||
-      store.fixes.some((f) => f.scope === "team") ||
-      store.knowledge.some((k) => k.scope === "team");
-    if (hasLocalTeam) {
-      const pushRes = await syncRepoPush(evoHome, { repoPath: cloneDir });
-      pushed = Boolean(pushRes?.pushed);
-    }
-  }
-
-  appendEvent(evoHome, { event: "configure_sync", repo: parsed.target, created: Boolean(createPrivate) });
-  return {
-    ok: true,
-    syncRepo: parsed.target,
-    syncRepoPath: cloneDir,
-    imported: pullRes.imported || 0,
-    updated: pullRes.updated || 0,
-    pushed,
-  };
 }
 
 export async function syncRepoPull(evoHome, { repoPath, repo } = {}) {

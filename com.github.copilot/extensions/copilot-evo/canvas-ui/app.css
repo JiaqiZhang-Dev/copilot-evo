@@ -1262,6 +1262,24 @@ body {
   color: var(--danger);
 }
 
+.repo-modal-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.repo-modal-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.repo-modal-link:hover {
+  text-decoration: underline;
+}
+
 .repo-modal-actions {
   display: flex;
   gap: 8px;

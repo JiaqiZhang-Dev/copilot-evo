@@ -44,6 +44,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     assert.match(html, /Leaderboard/);
     assert.match(html, /btn-team-repo/);
     assert.match(html, /repo-modal/);
+    assert.match(html, /repo-modal-link/);
     assert.match(html, /data-kind="Knowledge"/);
     assert.match(html, /chip-repo-only/);
     assert.match(html, /loading-overlay/);

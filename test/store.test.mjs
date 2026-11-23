@@ -723,6 +723,10 @@ test("initStore defaults to local-only without bundling team experiences and con
     assert.ok(syncedStore.rules.some((r) => r.id === "exp-external-team-rule"));
     assert.equal(syncedStore.config.syncRepo, remoteBare);
 
+    const failRes = await configureSyncRepo(home, { repo: "file:///nonexistent/copilot-evo-missing.git" });
+    assert.equal(failRes.ok, false);
+    assert.equal(loadStore(home).config.syncRepo, remoteBare);
+
     const disconnectRes = await configureSyncRepo(home, { repo: "" });
     assert.equal(disconnectRes.ok, true);
     assert.equal(disconnectRes.disconnected, true);

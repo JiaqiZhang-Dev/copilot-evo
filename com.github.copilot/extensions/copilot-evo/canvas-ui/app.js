@@ -1704,15 +1704,40 @@ async function init() {
 
   el("btn-pull")?.addEventListener("click", () => mutate("/api/sync/pull", {}));
 
+  const toRepoWebUrl = (syncRepo) => {
+    const val = String(syncRepo || "").trim();
+    if (!val) return "";
+    if (/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/i.test(val)) {
+      return val.replace(/\.git$/i, "");
+    }
+    if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(val)) {
+      return `https://github.com/${val}`;
+    }
+    return "";
+  };
+
   const openRepoModal = () => {
     const modal = el("repo-modal");
     const input = el("repo-modal-input");
     const disBtn = el("btn-repo-disconnect");
     const errEl = el("repo-modal-error");
+    const metaEl = el("repo-modal-meta");
+    const linkEl = el("repo-modal-link");
     if (!modal) return;
-    if (input) input.value = state?.config?.syncRepo || "";
+    const currentRepo = state?.config?.syncRepo || "";
+    if (input) input.value = currentRepo;
+    const webUrl = toRepoWebUrl(currentRepo);
+    if (metaEl && linkEl) {
+      if (webUrl) {
+        linkEl.href = webUrl;
+        linkEl.textContent = `${currentRepo} ↗`;
+        metaEl.classList.remove("hidden");
+      } else {
+        metaEl.classList.add("hidden");
+      }
+    }
     errEl?.classList.add("hidden");
-    disBtn?.classList.toggle("hidden", !(state?.config?.syncRepo || state?.syncRepoPath));
+    disBtn?.classList.toggle("hidden", !(currentRepo || state?.syncRepoPath));
     modal.classList.remove("hidden");
     input?.focus();
   };
