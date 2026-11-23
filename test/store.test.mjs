@@ -6,7 +6,6 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   appendEvent,
-  collectAssetsToCreditOnStop,
   computeGdiBreakdown,
   computeGdiScore,
   detectAuthorName,
@@ -31,6 +30,7 @@ import {
   normalizeRepoSlug,
   readRecentEvents,
   recordAssetOutcome,
+  recordAssetRecalls,
   runAssetValidation,
   selectAssets,
   setEventSessionContext,
@@ -288,6 +288,18 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
     const afterB = loadStore(homeB).rules.find((r) => r.id === "exp-synced-rule");
     assert.equal(afterA.successCount, 3);
     assert.equal(afterB.successCount, 3);
+
+    // Deleting a team experience and pushing removes it from the remote team store.
+    const delTeam = manageAsset("delete", "exp-synced-knowledge", { evoHome: homeA, bundledDir });
+    assert.equal(delTeam.ok, true);
+    assert.equal(delTeam.wasTeam, true);
+    await syncRepoPull(homeA, { repoPath: cloneA });
+    assert.ok(!loadStore(homeA).knowledge.some((k) => k.id === "exp-synced-knowledge"));
+    const pushDel = await syncRepoPush(homeA, { repoPath: cloneA });
+    assert.equal(pushDel.pushed, true);
+    assert.equal(pushDel.knowledgeCount, 0);
+    await syncRepoPull(homeA, { repoPath: cloneA });
+    assert.ok(!loadStore(homeA).knowledge.some((k) => k.id === "exp-synced-knowledge"));
     assert.equal(afterA.pendingSuccessDelta, undefined);
 
     // syncScoreDeltasOnly pushes score deltas for existing remote items without pushing new unconfirmed entries.
@@ -448,25 +460,10 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1 }), true);
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1, solidifiedTurn: 1 }), false);
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1, lastNudgeTurn: 1 }), false);
-    assert.deepEqual(
-      collectAssetsToCreditOnStop({ turnActionTools: 0, turnRecalledIds: ["exp-a"] }, {}),
-      []
-    );
-    assert.deepEqual(
-      collectAssetsToCreditOnStop({ turnActionTools: 1, turnHadCorrection: true, turnRecalledIds: ["exp-a"] }, {}),
-      []
-    );
-    assert.deepEqual(
-      collectAssetsToCreditOnStop(
-        {
-          turnActionTools: 2,
-          turnRecalledIds: ["exp-a", "exp-b"],
-          creditedAssets: new Set(["exp-a"]),
-        },
-        {}
-      ),
-      ["exp-b"]
-    );
+    recordAssetRecalls(home, ["exp-derived-fix", "exp-base-strategy"]);
+    const afterRecall = loadStore(home).fixes.find((f) => f.id === "exp-derived-fix");
+    assert.equal(afterRecall.recallCount, 1);
+    assert.equal(afterRecall.successCount, 1);
     assert.equal(isTrivialToolFailure("create", "File already exists"), true);
     assert.equal(isTrivialToolFailure("edit", "No match found: old_str not found"), true);
     assert.equal(isTrivialToolFailure("powershell", "npm ERR! code E401"), false);

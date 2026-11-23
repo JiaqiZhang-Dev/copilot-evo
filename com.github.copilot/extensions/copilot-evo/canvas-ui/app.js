@@ -301,9 +301,11 @@ function buildScoreTooltips(item) {
 
   const succ = Math.max(0, Number(item.successCount || 0));
   const fail = Math.max(0, Number(item.failureCount || 0));
+  const recalls = Math.max(0, Number(item.recallCount || 0));
   const reliabilityTip = [
     `Reliability ${rel}/100 (30% weight)`,
-    `Reuses: ${succ} (log2 growth, max 60)`,
+    `Helpful uses: ${succ} (log2 growth, max 60)`,
+    ...(recalls ? [`Recalled: ${recalls}`] : []),
     `Pass rate: ${b.winRate ?? 100}% (max 35, 20 if 0 runs)`,
     `Failures: ${fail} (-12 each, max -35)`,
     ...(item.priority ? [`Priority bonus: +${Math.min(10, Number(item.priority))}`] : []),
@@ -420,9 +422,15 @@ function renderDetail(item) {
            <button id="btn-refine" class="btn btn-primary" type="button">Refine</button>
          </div>`
       : "";
+  const recallCount = Number(item.recallCount || 0);
+  const noisyWarning =
+    recallCount >= 5 && (item.successCount || 0) <= 1
+      ? `<p class="detail-box">High recall count (${recallCount} recalls, ${item.successCount || 0} helpful) — consider narrowing signals or repoScope via Refine.</p>`
+      : "";
   const provenanceParts = [
     item.author ? `Author: ${escapeHtml(item.author)}` : "",
     `Source: ${escapeHtml(item.sourceProject || "bundled")}`,
+    ...(recallCount ? [`Recalled: ${recallCount}`] : []),
     `Updated: ${escapeHtml(item.updatedAt ? formatLocalTime(item.updatedAt) : "bundled")}`,
   ].filter(Boolean);
 
@@ -469,7 +477,8 @@ function renderDetail(item) {
             <span>·</span>
             <span title="${escapeHtml(scoreTips.totalTip)}">Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
             <span>·</span>
-            <span>${item.successCount || 0} used</span>
+            <span>${item.successCount || 0} helpful</span>
+            ${recallCount ? `<span>·</span><span>${recallCount} recalled</span>` : ""}
             <span>·</span>
             <span>${escapeHtml(repoText)}</span>
             <span>·</span>
@@ -481,6 +490,7 @@ function renderDetail(item) {
       <div class="actions">${promoteTeamBtn}${validateBtn}${copyBtn}${deleteControl}${closeBtn}</div>
     </div>
     ${refineHtml}
+    ${noisyWarning}
     <div class="section-label">Trigger Signals</div>
     <div class="badges">${signals || '<span class="muted">None</span>'}</div>
     <div class="section-label">Summary</div>
@@ -1452,7 +1462,7 @@ function render() {
             ${footHtml}
           </div>
           <span class="exp-score col-num" title="${escapeHtml(buildScoreTooltips(item).totalTip)}">${scoreVal}</span>
-          <span class="exp-reuses col-num" title="Verified reuse count">${uses}</span>
+          <span class="exp-reuses col-num" title="Helpful uses: ${uses}${item.recallCount ? ` · Recalled: ${item.recallCount}` : ""}">${uses}</span>
           ${shareCell}
         </div>`;
       })

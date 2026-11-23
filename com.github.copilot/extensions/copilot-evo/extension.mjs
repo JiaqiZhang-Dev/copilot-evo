@@ -5,7 +5,6 @@ import { createEvoCanvasServer } from "./canvas-server.mjs";
 import { sanitizePayload } from "./sanitize.mjs";
 import {
   appendEvent,
-  collectAssetsToCreditOnStop,
   countEvents,
   detectRepoSlug,
   detectSourceLabel,
@@ -26,7 +25,7 @@ import {
   loadStore,
   manageAsset,
   maybeAutoPull,
-  recordAssetOutcome,
+  recordAssetRecalls,
   resolveSyncRepoPath,
   selectAssets,
   setEventSessionContext,
@@ -38,7 +37,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.12.0";
+const EXTENSION_VERSION = "0.13.0";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -120,7 +119,6 @@ const sessionState = {
   turnHadNegativeFeedback: false,
   turnHadStrategyCue: false,
   turnRecalledIds: [],
-  creditedAssets: new Set(),
   solidifiedTurn: 0,
   lastNudgeTurn: 0,
   pendingFailure: null,
@@ -150,6 +148,10 @@ function recordRecallEvent(matched, { trigger, signals = [], toolName = "" } = {
   for (const asset of toLog) {
     sessionState.recentRecallAt.set(asset.id, now);
   }
+  recordAssetRecalls(
+    evoHome,
+    toLog.map((a) => a.id)
+  );
   appendEvent(evoHome, {
     event: "recall",
     trigger: trigger || "prompt",
@@ -166,6 +168,7 @@ const ACTIVE_PROTOCOL = [
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
   "2. Auto-discover & solidify atomically locally first (English only): Proactively call `evo_solidify` with `scope: \"local\"` whenever you uncover non-obvious domain/architecture/platform facts (`kind: \"Knowledge\"`), resolve a non-obvious error (`kind: \"Fix\"`), fix a user-reported mistake or rendering quirk (even when no tool errored), or when the user states/verifies reusable conventions or workflows (`kind: \"Rule\"`, even if also saved via `store_memory`). Skip trivial typos. Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise points/steps); split distinct concerns into separate `evo_solidify` calls, and attach verified public `https://` `references` (PR, issue, commit, or official docs URLs) as evidence when available. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
   "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND, if `evo_solidify` did not already prompt via native UI (`sharedToTeam` is unset and `needsRefinement` is unset), call `ask_user` with choices `[\"Keep local\", \"Share with team\", \"Refine this experience\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
+  "4. Explicit attribution & quality audit: Only call `evo_manage_asset({ action: \"upvote\", id })` for recalled experiences that genuinely helped solve or guide the task, and `downvote` any that were misleading. If a recalled experience is wrong, unhelpful, or has overly broad/miscategorized `kind`, `signals`, or `repoScope`, flag it concisely (current vs. proposed change or deletion reason) and call `ask_user` with `[\"Update experience\", \"Delete experience\", \"Downvote only\", \"Keep as-is\"]` before mutating (`evo_solidify` in place/`supersedes` or `evo_manage_asset`). If a `team`-scoped experience was updated or deleted, ask/confirm before pushing via `evo_sync_repo({ action: \"push\" })`.",
 ].join("\n");
 
 function formatAssetsContext(assets, { isReview = false } = {}) {
@@ -421,38 +424,24 @@ const session = await joinSession({
           sessionState.recoveries++;
           sessionState.turnHadRecovery = true;
           sessionState.lastNudgeTurn = sessionState.turnIndex;
-          if (sessionState.activeAssets.length) {
-            for (const id of sessionState.activeAssets) sessionState.creditedAssets.add(id);
-            recordAssetOutcome(evoHome, sessionState.activeAssets, "success", "tool_recovery");
-            canvasServer.broadcastUpdate("auto_outcome");
-            if (getPendingScoreDeltaTotal(evoHome) >= 3) {
-              syncScoreDeltasOnly(evoHome).catch(() => {});
-            }
-          }
+          const activeHint = sessionState.activeAssets.length
+            ? ` If any recalled experience (${sessionState.activeAssets.join(", ")}) actually contributed to this recovery, call \`evo_manage_asset({ action: "upvote", id })\`; if one misled or was overly broad, audit/flag it to the user.`
+            : "";
           return {
-            additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run. If the fix is verified and reusable, load \`evo_solidify\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` in English with \`scope: "local"\`, show the preview, and ask the user before promoting to \`team\` or syncing via \`evo_sync_repo\`.`,
+            additionalContext: `[copilot-evo recovery detected] A prior failure (${resolvedSignals.join(", ")}) was followed by a successful ${toolName} run.${activeHint} If the fix is verified and reusable, load \`evo_solidify\` via \`tool_search_tool\` (if needed), call \`evo_solidify\` in English with \`scope: "local"\`, show the preview, and ask the user before promoting to \`team\` or syncing via \`evo_sync_repo\`.`,
           };
         }
       }
 
       if (isAction && shouldNudgePostToolUse(sessionState)) {
         sessionState.lastNudgeTurn = sessionState.turnIndex;
+        const recalledNote = sessionState.turnRecalledIds.length
+          ? ` Also upvote only the recalled experiences (${sessionState.turnRecalledIds.join(", ")}) that genuinely helped, or flag any noisy/miscategorized item via \`ask_user\` before updating/deleting.`
+          : "";
         return {
           additionalContext:
-            "[copilot-evo semantic check] An action or edit completed in this turn. If this work uncovered a genuinely reusable engineering Rule or verified non-obvious Fix (skip routine edits and one-off typos), proactively call `evo_solidify` atomically in English (`scope: \"local\"`).",
+            `[copilot-evo semantic check] An action or edit completed in this turn. If this work uncovered genuinely reusable Knowledge, Rule, or verified Fix (skip routine edits and one-off typos), proactively call \`evo_solidify\` atomically in English (\`scope: "local"\`).${recalledNote}`,
         };
-      }
-    },
-
-    onAgentStop: async (input) => {
-      const toCredit = collectAssetsToCreditOnStop(sessionState, { stopHookActive: input?.stopHookActive });
-      if (toCredit.length) {
-        for (const id of toCredit) sessionState.creditedAssets.add(id);
-        recordAssetOutcome(evoHome, toCredit, "success", "applied_in_turn");
-        canvasServer.broadcastUpdate("auto_outcome");
-        if (getPendingScoreDeltaTotal(evoHome) >= 3) {
-          syncScoreDeltasOnly(evoHome).catch(() => {});
-        }
       }
     },
 
@@ -726,7 +715,7 @@ const session = await joinSession({
     },
     {
       name: "evo_manage_asset",
-      description: "Inspect, promote, pin, vote on, or delete a local Experience (Rule or Fix) by ID.",
+      description: "Inspect, promote to team, pin, upvote/downvote, or delete an Experience (Knowledge, Rule, or Fix) by ID. Use upvote/downvote only when a recalled experience genuinely helped or misled; confirm with the user before deleting or pushing team changes via evo_sync_repo.",
       parameters: {
         type: "object",
         properties: {
@@ -751,7 +740,7 @@ const session = await joinSession({
     },
     {
       name: "evo_sync_repo",
-      description: "Pull or push sanitized team Experiences (Rules and Fixes) directly to the private Git repo (no PR), or export/import offline .evopack.json bundles. Auto-clones the configured repo if not present locally.",
+      description: "Pull or push sanitized team Experiences (Knowledge, Rules, and Fixes) directly to the private Git repo (no PR), or export/import offline .evopack.json bundles. Auto-clones the configured repo if not present locally.",
       parameters: {
         type: "object",
         properties: {

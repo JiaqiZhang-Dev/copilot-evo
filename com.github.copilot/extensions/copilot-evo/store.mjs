@@ -44,7 +44,7 @@ function writeJson(filePath, data) {
 
 function stripLocalSyncFields(asset) {
   if (!asset || typeof asset !== "object") return asset;
-  const { pendingSuccessDelta, pendingFailureDelta, ...rest } = asset;
+  const { pendingSuccessDelta, pendingFailureDelta, pendingRecallDelta, ...rest } = asset;
   return rest;
 }
 
@@ -68,17 +68,22 @@ function mergeById(existing, incoming, options = {}) {
       const cur = merged[existingIdx];
       const pendingSucc = cur.pendingSuccessDelta || 0;
       const pendingFail = cur.pendingFailureDelta || 0;
+      const pendingRecall = cur.pendingRecallDelta || 0;
       const baseSucc = Math.max(0, (cur.successCount || 0) - pendingSucc);
       const baseFail = Math.max(0, (cur.failureCount || 0) - pendingFail);
+      const baseRecall = Math.max(0, (cur.recallCount || 0) - pendingRecall);
       const nextSucc = Math.max(item.successCount || 0, baseSucc) + pendingSucc;
       const nextFail = Math.max(item.failureCount || 0, baseFail) + pendingFail;
+      const nextRecall = Math.max(item.recallCount || 0, baseRecall) + pendingRecall;
       const incomingNewer =
         item.updatedAt && (!cur.updatedAt || Date.parse(item.updatedAt) > Date.parse(cur.updatedAt));
       const nextItem = incomingNewer ? { ...cur, ...item } : { ...cur };
       nextItem.successCount = nextSucc;
       nextItem.failureCount = nextFail;
+      if (nextRecall > 0) nextItem.recallCount = nextRecall;
       if (pendingSucc) nextItem.pendingSuccessDelta = pendingSucc;
       if (pendingFail) nextItem.pendingFailureDelta = pendingFail;
+      if (pendingRecall) nextItem.pendingRecallDelta = pendingRecall;
       if (JSON.stringify(nextItem) !== JSON.stringify(cur)) {
         merged[existingIdx] = nextItem;
         updated++;
@@ -390,12 +395,15 @@ export function recordAssetOutcome(evoHome, assetIds = [], outcome = "success", 
   if (!uniqueIds.length) return [];
   const rulesPath = path.join(evoHome, "rules.json");
   const fixesPath = path.join(evoHome, "fixes.json");
+  const knowledgePath = path.join(evoHome, "knowledge.json");
   const rules = readJsonSafe(rulesPath, []);
   const fixes = readJsonSafe(fixesPath, []);
+  const knowledge = readJsonSafe(knowledgePath, []);
   const idSet = new Set(uniqueIds);
   const updated = [];
   let rulesDirty = false;
   let fixesDirty = false;
+  let knowledgeDirty = false;
 
   const apply = (list, markDirty) => {
     for (let i = 0; i < list.length; i++) {
@@ -417,11 +425,49 @@ export function recordAssetOutcome(evoHome, assetIds = [], outcome = "success", 
 
   apply(rules, () => { rulesDirty = true; });
   apply(fixes, () => { fixesDirty = true; });
+  apply(knowledge, () => { knowledgeDirty = true; });
   if (rulesDirty) writeJson(rulesPath, rules);
   if (fixesDirty) writeJson(fixesPath, fixes);
+  if (knowledgeDirty) writeJson(knowledgePath, knowledge);
   if (updated.length) {
     appendEvent(evoHome, { event: `auto_${outcome}`, assetIds: updated, reason });
   }
+  return updated;
+}
+
+export function recordAssetRecalls(evoHome, assetIds = []) {
+  const uniqueIds = Array.from(new Set(assetIds.filter(Boolean)));
+  if (!uniqueIds.length) return [];
+  const rulesPath = path.join(evoHome, "rules.json");
+  const fixesPath = path.join(evoHome, "fixes.json");
+  const knowledgePath = path.join(evoHome, "knowledge.json");
+  const rules = readJsonSafe(rulesPath, []);
+  const fixes = readJsonSafe(fixesPath, []);
+  const knowledge = readJsonSafe(knowledgePath, []);
+  const idSet = new Set(uniqueIds);
+  const updated = [];
+  let rulesDirty = false;
+  let fixesDirty = false;
+  let knowledgeDirty = false;
+
+  const apply = (list, markDirty) => {
+    for (let i = 0; i < list.length; i++) {
+      if (!idSet.has(list[i].id)) continue;
+      const next = { ...list[i] };
+      next.recallCount = (next.recallCount || 0) + 1;
+      next.pendingRecallDelta = (next.pendingRecallDelta || 0) + 1;
+      list[i] = next;
+      updated.push(next.id);
+      markDirty();
+    }
+  };
+
+  apply(rules, () => { rulesDirty = true; });
+  apply(fixes, () => { fixesDirty = true; });
+  apply(knowledge, () => { knowledgeDirty = true; });
+  if (rulesDirty) writeJson(rulesPath, rules);
+  if (fixesDirty) writeJson(fixesPath, fixes);
+  if (knowledgeDirty) writeJson(knowledgePath, knowledge);
   return updated;
 }
 
@@ -606,15 +652,6 @@ export function shouldNudgePostToolUse(state) {
   if (state.lastNudgeTurn === state.turnIndex) return false;
   if (state.solidifiedTurn === state.turnIndex) return false;
   return (state.turnActionTools || 0) >= 1;
-}
-
-export function collectAssetsToCreditOnStop(state, { stopHookActive = false } = {}) {
-  if (stopHookActive || !state) return [];
-  if ((state.turnActionTools || 0) <= 0) return [];
-  if (state.turnHadCorrection || state.turnHadNegativeFeedback) return [];
-  const recalled = Array.isArray(state.turnRecalledIds) ? state.turnRecalledIds : [];
-  const credited = state.creditedAssets instanceof Set ? state.creditedAssets : new Set();
-  return Array.from(new Set(recalled.filter((id) => id && !credited.has(id))));
 }
 
 export function extractSignals(text, extraSignals = [], options = {}) {
@@ -1035,24 +1072,39 @@ export function manageAsset(action, id, options = {}) {
     const clean = sanitizePayload(candidate);
     target.list[target.idx] = clean;
     writeJson(target.filePath, target.list);
+    const curDeleted = loadStore(evoHome).config.deletedTeamIds || [];
+    if (curDeleted.includes(clean.id)) {
+      saveConfig(evoHome, { deletedTeamIds: curDeleted.filter((x) => x !== clean.id) });
+    }
     appendEvent(evoHome, { event: "promote_team", assetId: clean.id, assetType: clean.type });
     return { ok: true, asset: clean };
   }
 
   if (action === "delete") {
+    const existingItem = [...rules, ...fixes, ...knowledge].find((a) => a.id === id);
+    if (!existingItem) return { ok: false, error: `Experience not found: ${id}` };
     const nextRules = rules.filter((a) => a.id !== id);
     const nextFixes = fixes.filter((a) => a.id !== id);
     const nextKnowledge = knowledge.filter((a) => a.id !== id);
-    const changed =
-      nextRules.length !== rules.length ||
-      nextFixes.length !== fixes.length ||
-      nextKnowledge.length !== knowledge.length;
-    if (!changed) return { ok: false, error: `Experience not found: ${id}` };
     if (nextRules.length !== rules.length) writeJson(rulesPath, nextRules);
     if (nextFixes.length !== fixes.length) writeJson(fixesPath, nextFixes);
     if (nextKnowledge.length !== knowledge.length) writeJson(knowledgePath, nextKnowledge);
-    appendEvent(evoHome, { event: "delete", assetId: id });
-    return { ok: true, deletedId: id };
+    const wasTeam = existingItem.scope === "team";
+    if (wasTeam) {
+      const curDeleted = loadStore(evoHome).config.deletedTeamIds || [];
+      if (!curDeleted.includes(id)) {
+        saveConfig(evoHome, { deletedTeamIds: [...curDeleted, id] });
+      }
+    }
+    appendEvent(evoHome, { event: "delete", assetId: id, assetType: existingItem.type, scope: existingItem.scope });
+    return {
+      ok: true,
+      deletedId: id,
+      wasTeam,
+      nextAction: wasTeam
+        ? "Deleted team experience locally. Push via evo_sync_repo({ action: 'push' }) after user confirmation to remove it from the shared team repository."
+        : "Deleted local experience.",
+    };
   }
 
   return { ok: false, error: `Unknown action: ${action}` };
@@ -1082,16 +1134,19 @@ export function exportBundle(evoHome, { scope = "team", outputPath }) {
   return { ok: true, bundle, outputPath };
 }
 
-export function importBundle(evoHome, { inputPath, bundleData }) {
+export function importBundle(evoHome, { inputPath, bundleData, respectDeletedTeamIds = false } = {}) {
   const bundle = bundleData || readJsonSafe(inputPath, null);
   if (!bundle || (!Array.isArray(bundle.rules) && !Array.isArray(bundle.fixes) && !Array.isArray(bundle.knowledge))) {
     return { ok: false, error: "Invalid experience bundle." };
   }
+  const deletedSet = respectDeletedTeamIds
+    ? new Set(loadStore(evoHome).config.deletedTeamIds || [])
+    : new Set();
   const incoming = [
     ...(bundle.rules || []).map((r) => sanitizePayload({ ...r, type: "Rule" })),
     ...(bundle.fixes || []).map((f) => sanitizePayload({ ...f, type: "Fix" })),
     ...(bundle.knowledge || []).map((k) => sanitizePayload({ ...k, type: "Knowledge" })),
-  ];
+  ].filter((item) => !deletedSet.has(item.id));
 
   const valid = [];
   const rejected = [];
@@ -1196,7 +1251,7 @@ export async function syncRepoPull(evoHome, { repoPath, repo } = {}) {
   const targetRepo = await ensureSyncRepo(evoHome, { repoPath, repo });
   await runGit(targetRepo, ["pull", "--ff-only"]);
   const { rules, fixes, knowledge } = readTeamFilesFromRepo(targetRepo);
-  const res = importBundle(evoHome, { bundleData: { rules, fixes, knowledge } });
+  const res = importBundle(evoHome, { bundleData: { rules, fixes, knowledge }, respectDeletedTeamIds: true });
   saveConfig(evoHome, { lastAutoPullAt: new Date().toISOString() });
   appendEvent(evoHome, { event: "sync_pull", imported: res.imported || 0 });
   return { ...res, repoPath: targetRepo };
@@ -1217,13 +1272,17 @@ function mergeTeamAssetsForPush(remoteList, localTeamList) {
     const remote = merged[idx];
     const pendingSucc = local.pendingSuccessDelta || 0;
     const pendingFail = local.pendingFailureDelta || 0;
+    const pendingRecall = local.pendingRecallDelta || 0;
     const baseSucc = Math.max(0, (local.successCount || 0) - pendingSucc);
     const baseFail = Math.max(0, (local.failureCount || 0) - pendingFail);
+    const baseRecall = Math.max(0, (local.recallCount || 0) - pendingRecall);
     const localNewer =
       local.updatedAt && (!remote.updatedAt || Date.parse(local.updatedAt) > Date.parse(remote.updatedAt));
     const next = localNewer ? { ...remote, ...cleanLocal } : { ...remote };
     next.successCount = Math.max(remote.successCount || 0, baseSucc) + pendingSucc;
     next.failureCount = Math.max(remote.failureCount || 0, baseFail) + pendingFail;
+    const nextRecall = Math.max(remote.recallCount || 0, baseRecall) + pendingRecall;
+    if (nextRecall > 0) next.recallCount = nextRecall;
     merged[idx] = next;
   }
   return merged;
@@ -1257,13 +1316,18 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
     ...localTeamFixes.map((x) => [x.id, "Fix"]),
     ...localTeamKnowledge.map((x) => [x.id, "Knowledge"]),
   ]);
-  const filterReclassified = (remoteList, expectedType) =>
-    remoteList.filter((item) => !localTeamIdsByType.has(item.id) || localTeamIdsByType.get(item.id) === expectedType);
+  const deletedSet = new Set(store.config.deletedTeamIds || []);
+  const filterRemoteForPush = (remoteList, expectedType) =>
+    remoteList.filter(
+      (item) =>
+        !deletedSet.has(item.id) &&
+        (!localTeamIdsByType.has(item.id) || localTeamIdsByType.get(item.id) === expectedType)
+    );
 
-  const mergedRules = mergeTeamAssetsForPush(filterReclassified(existing.rules, "Rule"), localTeamRules);
-  const mergedFixes = mergeTeamAssetsForPush(filterReclassified(existing.fixes, "Fix"), localTeamFixes);
+  const mergedRules = mergeTeamAssetsForPush(filterRemoteForPush(existing.rules, "Rule"), localTeamRules);
+  const mergedFixes = mergeTeamAssetsForPush(filterRemoteForPush(existing.fixes, "Fix"), localTeamFixes);
   const mergedKnowledge = mergeTeamAssetsForPush(
-    filterReclassified(existing.knowledge, "Knowledge"),
+    filterRemoteForPush(existing.knowledge, "Knowledge"),
     localTeamKnowledge
   );
 
@@ -1283,10 +1347,22 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
     const nextList = localList.map((item) => {
       const r = remoteById.get(item.id);
       if (!r) return item;
-      if (item.pendingSuccessDelta || item.pendingFailureDelta || item.successCount !== r.successCount || item.failureCount !== r.failureCount) {
+      if (
+        item.pendingSuccessDelta ||
+        item.pendingFailureDelta ||
+        item.pendingRecallDelta ||
+        item.successCount !== r.successCount ||
+        item.failureCount !== r.failureCount ||
+        (r.recallCount && item.recallCount !== r.recallCount)
+      ) {
         changed = true;
-        const { pendingSuccessDelta, pendingFailureDelta, ...rest } = item;
-        return { ...rest, successCount: r.successCount, failureCount: r.failureCount };
+        const { pendingSuccessDelta, pendingFailureDelta, pendingRecallDelta, ...rest } = item;
+        return {
+          ...rest,
+          successCount: r.successCount,
+          failureCount: r.failureCount,
+          ...(r.recallCount ? { recallCount: r.recallCount } : {}),
+        };
       }
       return item;
     });
@@ -1303,6 +1379,7 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
     syncBackLocalDeltas(path.join(evoHome, "rules.json"), mergedRules);
     syncBackLocalDeltas(path.join(evoHome, "fixes.json"), mergedFixes);
     syncBackLocalDeltas(path.join(evoHome, "knowledge.json"), mergedKnowledge);
+    if (deletedSet.size) saveConfig(evoHome, { deletedTeamIds: [] });
     return { ok: true, pushed: false, message: "Team experiences are already up to date.", repoPath: targetRepo };
   }
 
@@ -1312,6 +1389,7 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
   syncBackLocalDeltas(path.join(evoHome, "rules.json"), mergedRules);
   syncBackLocalDeltas(path.join(evoHome, "fixes.json"), mergedFixes);
   syncBackLocalDeltas(path.join(evoHome, "knowledge.json"), mergedKnowledge);
+  if (deletedSet.size) saveConfig(evoHome, { deletedTeamIds: [] });
   appendEvent(evoHome, {
     event: "sync_push",
     rulesCount: mergedRules.length,
@@ -1374,12 +1452,15 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
       if (!local) return remote;
       const pendingSucc = local.pendingSuccessDelta || 0;
       const pendingFail = local.pendingFailureDelta || 0;
-      if (!pendingSucc && !pendingFail) return remote;
+      const pendingRecall = local.pendingRecallDelta || 0;
+      if (!pendingSucc && !pendingFail && !pendingRecall) return remote;
       dirty = true;
+      const nextRecall = (remote.recallCount || 0) + pendingRecall;
       return {
         ...remote,
         successCount: (remote.successCount || 0) + pendingSucc,
         failureCount: (remote.failureCount || 0) + pendingFail,
+        ...(nextRecall > 0 ? { recallCount: nextRecall } : {}),
       };
     });
     return { nextRemote, dirty };
@@ -1414,10 +1495,15 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
     let changed = false;
     const nextList = list.map((item) => {
       const r = remoteById.get(item.id);
-      if (!r || (!item.pendingSuccessDelta && !item.pendingFailureDelta)) return item;
+      if (!r || (!item.pendingSuccessDelta && !item.pendingFailureDelta && !item.pendingRecallDelta)) return item;
       changed = true;
-      const { pendingSuccessDelta, pendingFailureDelta, ...rest } = item;
-      return { ...rest, successCount: r.successCount || 0, failureCount: r.failureCount || 0 };
+      const { pendingSuccessDelta, pendingFailureDelta, pendingRecallDelta, ...rest } = item;
+      return {
+        ...rest,
+        successCount: r.successCount || 0,
+        failureCount: r.failureCount || 0,
+        ...(r.recallCount ? { recallCount: r.recallCount } : {}),
+      };
     });
     if (changed) writeJson(filePath, nextList);
   };

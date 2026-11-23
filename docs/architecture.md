@@ -25,9 +25,8 @@ flowchart LR
 - **`onSubagentStart`**: Injects matching repository and review experiences (or parent-turn active rules) into delegated subagents such as `code-review`, recording subagent recall events.
 - **`onPreToolUse`**: Evaluates `guardrail` patterns (such as Windows heredoc safety warnings) against tool arguments before execution.
 - **`onPostToolUseFailure`**: Filters trivial editor/file-lookup errors and 10-second duplicate bursts, appends a sanitized `tool_failure` event tagged with session metadata, and recalls relevant `Fix` or `Rule` experiences.
-- **`onPostToolUse`**: Detects recovery transitions after failures, tracks cross-turn revisions, emits silent `additionalContext` capture checks on substantive mutating turns (skipping read-only queries), and bridges `store_memory` saves into `evo_solidify` so durable preferences also enter the Experience store.
-- **`onAgentStop`**: Silently credits recalled experiences (`applied_in_turn`) when a substantive turn finishes without corrections or negative feedback, updating `USED` counts and triggering background score-delta syncs without emitting chat messages.
-- **`onSessionEnd`**: Flushes remaining pending score deltas on team experiences and appends a `session_summary` event when failures or solidifications occurred.
+- **`onPostToolUse`**: Detects recovery transitions after failures, tracks cross-turn revisions, emits silent `additionalContext` capture and attribution checks on substantive mutating turns (skipping read-only queries), and bridges `store_memory` saves into `evo_solidify` so durable preferences also enter the Experience store.
+- **`onSessionEnd`**: Flushes remaining pending score deltas (`successCount`, `failureCount`, and `recallCount`) on team experiences and appends a `session_summary` event when failures or solidifications occurred.
 
 ## Data Model & Scoring (`store.mjs`)
 
@@ -47,7 +46,7 @@ Each experience is automatically ranked by a composite `0–100` score across fo
 | Dimension | Weight | Signals Evaluated |
 | --- | --- | --- |
 | **Quality** | `35%` | Title clarity, summary depth, signal count, actionable steps/solution, and validation commands |
-| **Reliability** | `30%` | Logarithmic reuse hits (`successCount`), pass rate (`success / totalRuns`), priority, and failure penalties |
+| **Reliability** | `30%` | Logarithmic helpful uses (`successCount` from `upvote`/validation), pass rate (`success / totalRuns`), priority, and failure penalties (separate from `recallCount`) |
 | **Lineage** | `20%` | Team promotion, `ruleId` / `parentId` / `supersedes` connections, derived children, and pin status |
 | **Freshness** | `15%` | Recency decay based on `updatedAt` |
 
