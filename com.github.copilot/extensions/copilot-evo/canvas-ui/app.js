@@ -1522,7 +1522,10 @@ async function loadState(applyServerView = false) {
   const res = await fetch("/api/state", { cache: "no-store" });
   state = await res.json();
   if (applyServerView && state.viewState) {
-    const serverTab = state.viewState.tab === "arena" ? "contributors" : state.viewState.tab;
+    const serverTab =
+      state.viewState.tab === "arena" || state.viewState.tab === "contributors"
+        ? "assets"
+        : state.viewState.tab;
     activeTab = state.viewState.filter === "local" ? "local" : serverTab || activeTab;
     activeFilter = state.viewState.filter === "local" ? "all" : state.viewState.filter || activeFilter;
     if (state.viewState.assetId) selectedId = state.viewState.assetId;

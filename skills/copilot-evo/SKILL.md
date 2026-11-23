@@ -22,7 +22,7 @@ Use `copilot-evo` to turn debugging insights, verified bug fixes (`Fix`), domain
    - Only call `evo_manage_asset({ action: "upvote", id })` for recalled experiences that genuinely helped solve or guide the task, and `downvote` any that were misleading.
    - When a recalled experience is wrong, unhelpful, or has an overly broad/misleading `kind`, `signals`, or `repoScope`, proactively flag it to the user with a concise comparison (current `id`, `kind`, `repoScope`, `signals`, `summary` vs. proposed change or deletion reason) and call `ask_user` with choices `["Update experience", "Delete experience", "Downvote only", "Keep as-is"]`.
    - On confirmation, run `evo_solidify` (passing the same `id` to update in place, or `supersedes`) or `evo_manage_asset({ action: "delete" | "downvote", id })`. If a `team`-scoped experience was updated or deleted, prompt/confirm before pushing via `evo_sync_repo({ action: "push" })`.
-5. **Browse & manage (`/evo-list`, `/evo-canvas`, `evo_status`, `evo_manage_asset`)**: Use `/evo-list` for an in-chat preview, `/evo-canvas` (or `open_canvas` with `canvasId: "evo-dashboard"`) for the side-panel dashboard (**Experiences**, **Local**, **Leaderboard**, **Relationships**, **Events**), and `evo_manage_asset` to inspect or delete entries.
+5. **Browse & manage (`/evo-list`, `/evo-canvas`, `evo_status`, `evo_manage_asset`)**: Use `/evo-list` for an in-chat preview, `/evo-canvas` (or `open_canvas` with `canvasId: "evo-dashboard"`) for the side-panel dashboard (**Experiences**, **Local**, **Relationships**, **Events**), and `evo_manage_asset` to inspect or delete entries.
 
 ## Privacy & Safety Rules
 

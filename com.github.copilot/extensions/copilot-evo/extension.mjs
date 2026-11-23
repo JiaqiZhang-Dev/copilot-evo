@@ -38,7 +38,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.14.3";
+const EXTENSION_VERSION = "0.14.4";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -790,7 +790,7 @@ const session = await joinSession({
       inputSchema: {
         type: "object",
         properties: {
-          tab: { type: "string", enum: ["assets", "local", "contributors", "relationships", "events"] },
+          tab: { type: "string", enum: ["assets", "local", "relationships", "events"] },
           filter: { type: "string", enum: ["all", "team", "local", "starter"] },
           assetId: { type: "string" },
         },
@@ -811,7 +811,7 @@ const session = await joinSession({
             type: "object",
             properties: {
               assetId: { type: "string" },
-              tab: { type: "string", enum: ["assets", "local", "contributors", "relationships", "events"] },
+              tab: { type: "string", enum: ["assets", "local", "relationships", "events"] },
             },
             required: ["assetId"],
           },

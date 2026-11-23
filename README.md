@@ -108,21 +108,14 @@ Open the side-panel dashboard anytime with `/evo-canvas`:
   </tr>
   <tr>
     <td align="center" width="50%">
-      <strong>Quality-First Leaderboard</strong><br />
-      <sub>Ranked by average quality and pass rate—never spam count</sub><br /><br />
-      <img src="docs/images/canvas-leaderboard.png" alt="Leaderboard view" width="100%" />
-    </td>
-    <td align="center" width="50%">
       <strong>Relationships Graph</strong><br />
       <sub>Force-directed network of rules, fixes, and shared signals</sub><br /><br />
       <img src="docs/images/canvas-relationships.png" alt="Relationships graph view" width="100%" />
     </td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2">
+    <td align="center" width="50%">
       <strong>Session-Attributed Events</strong><br />
       <sub>Full timeline of recalls, outcomes, and Git syncs per session</sub><br /><br />
-      <img src="docs/images/canvas-events.png" alt="Events timeline view" width="50%" />
+      <img src="docs/images/canvas-events.png" alt="Events timeline view" width="100%" />
     </td>
   </tr>
 </table>
