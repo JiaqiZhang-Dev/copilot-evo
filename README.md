@@ -69,13 +69,21 @@ copilot plugin install JiaqiZhang-Dev/copilot-evo
 copilot plugin update copilot-evo
 ```
 
-### 2. Start working in Copilot (local-first out of the box)
+### 2. Open Copilot Evo (ready local-first out of the box)
 
-`copilot-evo` runs automatically during your sessions—recalling relevant rules, capturing new `Knowledge`, `Rule`, and `Fix` experiences locally under `~/.copilot/evo/`, and letting you inspect everything anytime with `/evo-canvas`.
+Copilot automatically recalls relevant experiences and saves new `Knowledge`, `Rule`, and `Fix` entries locally under `~/.copilot/evo/`. Open the dashboard anytime from **`+` → `Canvas` → `Copilot Evo`** (or run `/evo-canvas` in Copilot App, `/evo-list` in Copilot CLI).
+
+<p align="center">
+  <img src="docs/images/quickstart-step2.png" width="68%" alt="Open Copilot Evo from the + Canvas menu" />
+</p>
 
 ### 3. Connect a private team repo (optional)
 
-Click **Connect Team Repo** in `/evo-canvas` (or run `evo_sync_repo` with `action: "configure"`) to create or connect a private GitHub repository such as `https://github.com/your-org/copilot-evo-data`. Teammates with **Read**/**Write** access on that repository can connect the same URL to pull and share experiences. Details and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
+Click **Connect Team Repo** in the top-right corner, enter a private GitHub repository URL such as `https://github.com/your-org/copilot-evo-data`, and choose **Connect Existing** or **Create Private Repo**. Teammates with access can connect the same URL to pull and share sanitized experiences (see [Privacy &amp; Sync](docs/privacy-and-sync.md) for offline `.evopack.json` bundles).
+
+<p align="center">
+  <img src="docs/images/quickstart-step3.png" width="68%" alt="Connect or create a private team repository in Copilot Evo" />
+</p>
 
 ## Commands
 
