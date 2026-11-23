@@ -69,15 +69,15 @@ copilot plugin install JiaqiZhang-Dev/copilot-evo
 copilot plugin update copilot-evo
 ```
 
-### 2. Open Copilot Evo (ready local-first out of the box)
+### 2. Open Copilot Evo
 
-Copilot automatically recalls relevant experiences and saves new `Knowledge`, `Rule`, and `Fix` entries locally under `~/.copilot/evo/`. Open the dashboard anytime from **`+` → `Canvas` → `Copilot Evo`** (or run `/evo-canvas` in Copilot App, `/evo-list` in Copilot CLI).
+Copilot automatically recalls relevant experiences and saves new `Knowledge`, `Rule`, and `Fix` entries locally under `~/.copilot/evo/`. Run `/evo-canvas` in Copilot App (or `/evo-list` in Copilot CLI), or open the dashboard from **`+` → `Canvas` → `Copilot Evo`**.
 
 <p align="center">
   <img src="docs/images/quickstart-step2.png" width="68%" alt="Open Copilot Evo from the + Canvas menu" />
 </p>
 
-### 3. Connect a private team repo (optional)
+### 3. Connect a private team repo
 
 Click **Connect Team Repo** in the top-right corner, enter a private GitHub repository URL such as `https://github.com/your-org/copilot-evo-data`, and choose **Connect Existing** or **Create Private Repo**. Teammates with access can connect the same URL to pull and share sanitized experiences (see [Privacy &amp; Sync](docs/privacy-and-sync.md) for offline `.evopack.json` bundles).
 
