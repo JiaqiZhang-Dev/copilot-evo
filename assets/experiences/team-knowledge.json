@@ -1,0 +1,27 @@
+[
+  {
+    "id": "exp-redeploy-server-when-prompts-tenants-files-chang-mwluui4a",
+    "type": "Knowledge",
+    "title": "ChatService injects prompts/tenants/*.md on server",
+    "summary": "In azure-sdk-qa-bot-agent, server (ChatService._build_tenant_system_message) reads prompts/tenants/*.md and injects it as [skill] on each request, so changes to prompts/tenants/*.md require redeploying server as well as chat_agent.",
+    "signals": [
+      "qa_bot",
+      "deploy_dev",
+      "tenant_prompts",
+      "chat_service"
+    ],
+    "strategy": [
+      "Check whether prompts/tenants/*.md or config/ files changed in addition to agents/chat_agent/.",
+      "When prompts/tenants/*.md changes, redeploy both chat_agent (pipeline 8159) and server (pipeline 8128) so the preloaded [skill] injected by ChatService is updated."
+    ],
+    "solution": "",
+    "validation": [],
+    "scope": "team",
+    "repoScope": "Azure/azure-sdk-tools",
+    "sourceProject": "Azure/azure-sdk-tools",
+    "author": "JiaqiZhang-Dev",
+    "updatedAt": "2026-11-23T05:20:00.000Z",
+    "successCount": 1,
+    "failureCount": 0
+  }
+]

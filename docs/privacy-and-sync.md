@@ -8,6 +8,7 @@ All runtime data lives locally under `~/.copilot/evo/` (or `$COPILOT_EVO_HOME`):
 
 | File | Purpose | Shared with Team? |
 | --- | --- | --- |
+| `knowledge.json` | Local, starter, and pulled team `Knowledge` entries | Only `scope: "team"` items sync |
 | `rules.json` | Local, starter, and pulled team `Rule` entries | Only `scope: "team"` items sync |
 | `fixes.json` | Local and pulled team `Fix` entries | Only `scope: "team"` items sync |
 | `events.jsonl` | Sanitized local audit log of tool failures, recoveries, solidifications, and syncs | Never shared |
@@ -30,7 +31,7 @@ Every payload written to `events.jsonl`, promoted to `team`, exported to a bundl
 
 ## Team Sync & Access Control
 
-By default, `copilot-evo` syncs `assets/experiences/team-rules.json` and `assets/experiences/team-fixes.json` directly on `main` (no pull-request overhead) using `git pull --rebase --autostash` and numeric delta merging.
+By default, `copilot-evo` syncs `assets/experiences/team-knowledge.json`, `assets/experiences/team-rules.json`, and `assets/experiences/team-fixes.json` directly on `main` (no pull-request overhead) using `git pull --rebase --autostash` and numeric delta merging.
 
 ### Repository Access Options
 

@@ -1,6 +1,6 @@
 # Architecture
 
-`copilot-evo` is a closed-loop self-evolving Experience engine (`Rule` and `Fix`) built on the `@github/copilot-sdk/extension` runtime. It captures failures and user-established conventions automatically, recalls high-scoring matches across sessions, scores outcomes from real execution loops, and visualizes the knowledge base in a loopback Canvas web app.
+`copilot-evo` is a closed-loop self-evolving Experience engine (`Knowledge`, `Rule`, and `Fix`) built on the `@github/copilot-sdk/extension` runtime and inspired by the [CoALA](https://arxiv.org/abs/2309.02427) agent memory taxonomy (semantic, procedural, and episodic). It captures architecture facts, conventions, and verified fixes automatically, recalls high-scoring matches across sessions, scores outcomes from real execution loops, and visualizes the knowledge base in a loopback Canvas web app.
 
 ## Closed-Loop Lifecycle
 
@@ -31,7 +31,11 @@ flowchart LR
 
 ## Data Model & Scoring (`store.mjs`)
 
-Experiences are stored as `Rule` (`rules.json`) or `Fix` (`fixes.json`) records:
+Experiences are organized into three orthogonal categories stored in `knowledge.json`, `rules.json`, and `fixes.json`:
+
+- **`Knowledge`** (`knowledge.json` · Semantic memory): Domain, architecture, service-coupling, or platform behaviors and quirks (how a system works).
+- **`Rule`** (`rules.json` · Procedural memory): Actionable conventions, review checklists, guardrails, and step-by-step workflows (what to do).
+- **`Fix`** (`fixes.json` · Episodic troubleshooting): Concrete error symptoms, root causes, and verified resolutions (how to fix a failure).
 
 - **Scope (`scope`)**: `starter` (bundled read-only defaults), `local` (machine-local unshared entries), or `team` (sanitized entries shared via Git).
 - **Repository Scope (`repoScope`)**: `"*"` (`Cross-repo`) or `"owner/repo"` (normalized from `git remote.origin.url`). Repo-specific experiences receive a relevance boost in matching repositories and are filtered out of unrelated repositories.

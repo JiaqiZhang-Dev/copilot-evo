@@ -250,17 +250,31 @@ test("syncRepoPush and syncRepoPull round-trip team assets across clones", async
       },
       { evoHome: homeA, bundledDir }
     );
+    solidifyAsset(
+      {
+        kind: "Knowledge",
+        id: "exp-synced-knowledge",
+        title: "GitHub Actions check_suite quirk",
+        summary: "GitHub Actions does not fire check_suite events for github-actions workflow runs.",
+        signals: ["github-actions", "check_suite", "workflow_run"],
+        strategy: ["Subscribe to both check_suite and workflow_run completed events."],
+        scope: "team",
+      },
+      { evoHome: homeA, bundledDir }
+    );
 
     const pushRes = await syncRepoPush(homeA, { repoPath: cloneA });
     assert.equal(pushRes.ok, true);
     assert.equal(pushRes.pushed, true);
+    assert.equal(pushRes.knowledgeCount, 1);
 
     initStore({ evoHome: homeB, bundledDir });
     const pullRes = await syncRepoPull(homeB, { repoPath: cloneB });
     assert.equal(pullRes.ok, true);
-    assert.equal(pullRes.imported, 1);
+    assert.equal(pullRes.imported, 2);
     const storeB = loadStore(homeB);
     assert.ok(storeB.rules.some((r) => r.id === "exp-synced-rule"));
+    assert.ok(storeB.knowledge.some((k) => k.id === "exp-synced-knowledge"));
 
     // Both clones record local outcome deltas and merge without losing counts.
     recordAssetOutcome(homeA, ["exp-synced-rule"], "success", "cloneA_hit");
@@ -561,6 +575,42 @@ test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
     );
     assert.equal(distinctRule.ok, true);
     assert.equal(findSimilarAssets({ type: "Rule", title: "Unrelated topic", signals: ["other"] }, loadStore(home).rules).length, 0);
+
+    // Knowledge category: fair quality score & in-place reclassification across category files.
+    const kn = solidifyAsset(
+      {
+        kind: "Knowledge",
+        id: "exp-knowledge-reclassify",
+        title: "ChatService loads tenant prompts at startup",
+        summary: "Server injects prompts/tenants/*.md as [skill] on each request, so tenant prompt edits require redeploying server.",
+        signals: ["qa_bot", "tenant_prompts"],
+        strategy: ["Redeploy both chat_agent and server when tenant prompts change."],
+        scope: "local",
+      },
+      { evoHome: home, bundledDir }
+    );
+    assert.equal(kn.ok, true);
+    assert.equal(kn.asset.type, "Knowledge");
+    const knQuality = computeGdiBreakdown(kn.asset, loadStore(home).knowledge);
+    assert.equal(knQuality.quality, 100);
+    assert.ok(loadStore(home).knowledge.some((k) => k.id === "exp-knowledge-reclassify"));
+
+    const movedToRule = solidifyAsset(
+      {
+        kind: "Rule",
+        id: "exp-knowledge-reclassify",
+        title: "Redeploy server when tenant prompts change",
+        summary: "Server injects prompts/tenants/*.md as [skill] on each request, so tenant prompt edits require redeploying server.",
+        signals: ["qa_bot", "tenant_prompts"],
+        strategy: ["Check prompts/tenants changes.", "Redeploy both chat_agent and server."],
+        scope: "local",
+      },
+      { evoHome: home, bundledDir }
+    );
+    assert.equal(movedToRule.ok, true);
+    assert.equal(movedToRule.asset.successCount, 2);
+    assert.ok(!loadStore(home).knowledge.some((k) => k.id === "exp-knowledge-reclassify"));
+    assert.ok(loadStore(home).rules.some((r) => r.id === "exp-knowledge-reclassify"));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

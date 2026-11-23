@@ -11,7 +11,17 @@ const PLUGIN_ROOT = path.resolve(__dirname, "..", "..", "..");
 const BUNDLED_EXP_DIR = path.join(PLUGIN_ROOT, "assets", "experiences");
 
 function normalizeExperienceType(rawType) {
-  return rawType === "Fix" ? "Fix" : "Rule";
+  const val = String(rawType || "").trim().toLowerCase();
+  if (val === "fix") return "Fix";
+  if (val === "knowledge") return "Knowledge";
+  return "Rule";
+}
+
+function getFileNameForType(type) {
+  const t = normalizeExperienceType(type);
+  if (t === "Fix") return "fixes.json";
+  if (t === "Knowledge") return "knowledge.json";
+  return "rules.json";
 }
 
 export function getEvoHome(overrideHome) {
@@ -92,22 +102,31 @@ export function initStore(options = {}) {
 
   const rulesPath = path.join(evoHome, "rules.json");
   const fixesPath = path.join(evoHome, "fixes.json");
+  const knowledgePath = path.join(evoHome, "knowledge.json");
   const configPath = path.join(evoHome, "config.json");
 
   const starterRules = readJsonSafe(path.join(bundledDir, "starter-rules.json"), []);
+  const starterKnowledge = readJsonSafe(path.join(bundledDir, "starter-knowledge.json"), []);
   const teamRules = readJsonSafe(path.join(bundledDir, "team-rules.json"), []);
   const teamFixes = readJsonSafe(path.join(bundledDir, "team-fixes.json"), []);
+  const teamKnowledge = readJsonSafe(path.join(bundledDir, "team-knowledge.json"), []);
 
   const currentRules = readJsonSafe(rulesPath, []);
   const currentFixes = readJsonSafe(fixesPath, []);
+  const currentKnowledge = readJsonSafe(knowledgePath, []);
+
   const { merged: mergedRules } = mergeById(currentRules, [...starterRules, ...teamRules]);
   const { merged: mergedFixes } = mergeById(currentFixes, teamFixes);
+  const { merged: mergedKnowledge } = mergeById(currentKnowledge, [...starterKnowledge, ...teamKnowledge]);
 
   if (!fs.existsSync(rulesPath) || mergedRules.length !== currentRules.length) {
     writeJson(rulesPath, mergedRules);
   }
   if (!fs.existsSync(fixesPath) || mergedFixes.length !== currentFixes.length) {
     writeJson(fixesPath, mergedFixes);
+  }
+  if (!fs.existsSync(knowledgePath) || mergedKnowledge.length !== currentKnowledge.length) {
+    writeJson(knowledgePath, mergedKnowledge);
   }
   if (!fs.existsSync(configPath)) {
     writeJson(configPath, {
@@ -124,6 +143,7 @@ export function loadStore(evoHome) {
   return {
     rules: readJsonSafe(path.join(evoHome, "rules.json"), []),
     fixes: readJsonSafe(path.join(evoHome, "fixes.json"), []),
+    knowledge: readJsonSafe(path.join(evoHome, "knowledge.json"), []),
     config: readJsonSafe(path.join(evoHome, "config.json"), {
       syncRepoPath: "",
       syncRepo: getDefaultSyncRepoSlug(),
@@ -227,7 +247,7 @@ export function formatAssetPreview(asset) {
   if (asset.supersedes) lines.push(`Supersedes: ${asset.supersedes}`);
   if (asset.solution) lines.push(`Solution: ${asset.solution}`);
   if (asset.strategy?.length) {
-    lines.push("Steps:");
+    lines.push(kindLabel === "Knowledge" ? "Key Takeaways:" : "Steps:");
     asset.strategy.forEach((step, idx) => lines.push(`  ${idx + 1}. ${step}`));
   }
   if (asset.validation?.length) {
@@ -270,15 +290,26 @@ export function computeGdiBreakdown(asset, allAssets = [], nowMs = Date.now()) {
   const totalRuns = success + failure;
   const winRate = totalRuns > 0 ? Math.round((success / totalRuns) * 100) : 100;
 
-  // 1. Intrinsic Quality (35%): completeness, actionable steps, signals, validation.
+  // 1. Intrinsic Quality (35%): completeness, actionable steps/takeaways, signals, validation.
+  const kind = normalizeExperienceType(asset?.type);
   let quality = 25;
   if (String(asset?.title || "").trim().length >= 8) quality += 15;
   if (String(asset?.summary || "").trim().length >= 20) quality += 15;
   if (Array.isArray(asset?.signals) && asset.signals.length >= 2) quality += 15;
-  if ((Array.isArray(asset?.strategy) && asset.strategy.length >= 2) || String(asset?.solution || "").trim().length >= 15) {
+  const hasDetail =
+    (Array.isArray(asset?.strategy) && asset.strategy.length >= (kind === "Knowledge" ? 1 : 2)) ||
+    String(asset?.solution || "").trim().length >= 15 ||
+    (kind === "Knowledge" && String(asset?.summary || "").trim().length >= 60);
+  if (hasDetail) quality += 15;
+  if (
+    (Array.isArray(asset?.validation) && asset.validation.length > 0) ||
+    (kind === "Knowledge" &&
+      String(asset?.summary || "").trim().length >= 45 &&
+      ((Array.isArray(asset?.strategy) && asset.strategy.length >= 1) ||
+        String(asset?.solution || "").trim().length >= 15))
+  ) {
     quality += 15;
   }
-  if (Array.isArray(asset?.validation) && asset.validation.length > 0) quality += 15;
   quality = Math.min(100, quality);
 
   // 2. Usage & Reliability (30%): reuses, win rate, and priority.
@@ -605,9 +636,11 @@ export function selectAssets({
   kind = "",
   repo = "",
   isReview = false,
+  isFailure = false,
   includeSuperseded = false,
   rules = [],
   fixes = [],
+  knowledge = [],
   limit = 3,
 }) {
   const sigSet = new Set(signals.map((s) => String(s).toLowerCase()));
@@ -615,7 +648,7 @@ export function selectAssets({
     .toLowerCase()
     .split(/\s+/)
     .filter((t) => t.length >= 2);
-  const all = [...rules, ...fixes];
+  const all = [...rules, ...fixes, ...knowledge];
   const supersededIds = new Set(all.map((a) => a.supersedes).filter(Boolean));
   const normalizedRepo = repo && repo !== "*" ? normalizeRepoSlug(repo) : "";
   const normalizedKind = kind ? normalizeAssetKind(kind) : "";
@@ -624,8 +657,9 @@ export function selectAssets({
 
   const scored = [];
   for (const asset of all) {
+    const assetType = normalizeExperienceType(asset.type);
     if (scope && asset.scope !== scope) continue;
-    if (normalizedKind && asset.type !== normalizedKind) continue;
+    if (normalizedKind && assetType !== normalizedKind) continue;
     if (!includeSuperseded && supersededIds.has(asset.id) && !terms.includes(asset.id.toLowerCase())) continue;
 
     const assetRepo = normalizeRepoSlug(asset.repoScope || "*");
@@ -649,8 +683,11 @@ export function selectAssets({
     }
     if (relevance > 0) {
       const repoBoost = assetRepo !== "*" && normalizedRepo && assetRepo.toLowerCase() === normalizedRepo.toLowerCase() ? 1.5 : 0;
+      const contextBoost =
+        (isFailure && (assetType === "Fix" || assetType === "Knowledge") ? 0.75 : 0) +
+        (reviewContext && (assetType === "Rule" || assetType === "Knowledge") ? 0.75 : 0);
       const gdiScore = computeGdiScore(asset, all, nowMs);
-      scored.push({ asset, score: relevance + repoBoost + gdiScore * 0.05, gdiScore });
+      scored.push({ asset, score: relevance + repoBoost + contextBoost + gdiScore * 0.05, gdiScore });
     }
   }
 
@@ -794,7 +831,7 @@ export function solidifyAsset(input, options = {}) {
   if (hasNonEnglishText(rawAsset)) {
     return {
       ok: false,
-      error: "All solidified Rules and Fixes must be written in English. Translate title, summary, signals, strategy, and solution into English and retry evo_solidify.",
+      error: "All solidified Experiences (Knowledge, Rule, Fix) must be written in English. Translate title, summary, signals, strategy, and solution into English and retry evo_solidify.",
     };
   }
 
@@ -808,13 +845,36 @@ export function solidifyAsset(input, options = {}) {
   }
 
   const cleanAsset = sanitizePayload(rawAsset);
-  const targetFile = path.join(evoHome, kind === "Fix" ? "fixes.json" : "rules.json");
+  const allStoreFiles = ["rules.json", "fixes.json", "knowledge.json"];
+  const targetFileName = getFileNameForType(kind);
+  const targetFile = path.join(evoHome, targetFileName);
   const list = readJsonSafe(targetFile, []);
   const idx = list.findIndex((item) => item.id === cleanAsset.id);
 
-  if (idx < 0 && !input.allowDuplicate && !input.supersedes) {
+  // Check if this ID currently lives under another category (reclassification in place).
+  let prevExisting = idx >= 0 ? list[idx] : null;
+  let movedFromFile = "";
+  if (!prevExisting) {
+    for (const fileName of allStoreFiles) {
+      if (fileName === targetFileName) continue;
+      const otherPath = path.join(evoHome, fileName);
+      const otherList = readJsonSafe(otherPath, []);
+      const otherIdx = otherList.findIndex((item) => item.id === cleanAsset.id);
+      if (otherIdx >= 0) {
+        prevExisting = otherList[otherIdx];
+        movedFromFile = otherPath;
+        break;
+      }
+    }
+  }
+
+  if (!prevExisting && !input.allowDuplicate && !input.supersedes) {
     const store = loadStore(evoHome);
-    const similarCandidates = findSimilarAssets(cleanAsset, [...store.rules, ...store.fixes]);
+    const similarCandidates = findSimilarAssets(cleanAsset, [
+      ...store.rules,
+      ...store.fixes,
+      ...store.knowledge,
+    ]);
     if (similarCandidates.length) {
       const top = similarCandidates[0];
       return {
@@ -826,20 +886,32 @@ export function solidifyAsset(input, options = {}) {
     }
   }
 
-  if (idx >= 0) {
-    cleanAsset.successCount = (list[idx].successCount || 0) + 1;
-    cleanAsset.pendingSuccessDelta = (list[idx].pendingSuccessDelta || 0) + 1;
-    if (list[idx].author && !input.author) cleanAsset.author = list[idx].author;
-    if (list[idx].sourceProject && !list[idx].sourceProject.startsWith("proj-")) {
-      cleanAsset.sourceProject = list[idx].sourceProject;
+  if (prevExisting) {
+    cleanAsset.successCount = (prevExisting.successCount || 0) + 1;
+    cleanAsset.pendingSuccessDelta = (prevExisting.pendingSuccessDelta || 0) + 1;
+    if (prevExisting.failureCount) cleanAsset.failureCount = prevExisting.failureCount;
+    if (prevExisting.pendingFailureDelta) cleanAsset.pendingFailureDelta = prevExisting.pendingFailureDelta;
+    if (prevExisting.pinned) cleanAsset.pinned = true;
+    if (prevExisting.priority) cleanAsset.priority = prevExisting.priority;
+    if (prevExisting.author && !input.author) cleanAsset.author = prevExisting.author;
+    if (prevExisting.sourceProject && !prevExisting.sourceProject.startsWith("proj-")) {
+      cleanAsset.sourceProject = prevExisting.sourceProject;
     }
-    list[idx] = { ...list[idx], ...cleanAsset };
+    if (idx >= 0) {
+      list[idx] = { ...prevExisting, ...cleanAsset };
+    } else {
+      list.push({ ...prevExisting, ...cleanAsset });
+    }
   } else {
     cleanAsset.successCount = 1;
     if (scope === "team") cleanAsset.pendingSuccessDelta = 1;
     list.push(cleanAsset);
   }
   writeJson(targetFile, list);
+  if (movedFromFile) {
+    const oldList = readJsonSafe(movedFromFile, []).filter((item) => item.id !== cleanAsset.id);
+    writeJson(movedFromFile, oldList);
+  }
 
   if (cleanAsset.ruleId || cleanAsset.parentId) {
     recordAssetOutcome(
@@ -875,27 +947,40 @@ export function manageAsset(action, id, options = {}) {
   const evoHome = initStore(options);
   const rulesPath = path.join(evoHome, "rules.json");
   const fixesPath = path.join(evoHome, "fixes.json");
+  const knowledgePath = path.join(evoHome, "knowledge.json");
 
   const rules = readJsonSafe(rulesPath, []);
   const fixes = readJsonSafe(fixesPath, []);
+  const knowledge = readJsonSafe(knowledgePath, []);
+
+  const findTarget = () => {
+    for (const [list, filePath] of [
+      [rules, rulesPath],
+      [fixes, fixesPath],
+      [knowledge, knowledgePath],
+    ]) {
+      const idx = list.findIndex((a) => a.id === id);
+      if (idx >= 0) return { list, filePath, idx };
+    }
+    return null;
+  };
 
   if (action === "inspect") {
-    const allAssets = [...rules, ...fixes];
+    const allAssets = [...rules, ...fixes, ...knowledge];
     const found = allAssets.find((a) => a.id === id);
     if (!found) return { ok: false, error: `Experience not found: ${id}` };
     return {
       ok: true,
       asset: found,
-      gdiScore: computeGdiScore(found),
+      gdiScore: computeGdiScore(found, allAssets),
       relationships: getAssetRelationships(found, allAssets),
     };
   }
 
   if (action === "pin" || action === "unpin" || action === "upvote" || action === "downvote") {
-    const targetList = rules.some((a) => a.id === id) ? rules : fixes;
-    const idx = targetList.findIndex((a) => a.id === id);
-    if (idx < 0) return { ok: false, error: `Experience not found: ${id}` };
-    const current = { ...targetList[idx] };
+    const target = findTarget();
+    if (!target) return { ok: false, error: `Experience not found: ${id}` };
+    const current = { ...target.list[target.idx] };
     if (action === "pin") current.pinned = true;
     if (action === "unpin") current.pinned = false;
     if (action === "upvote") {
@@ -907,17 +992,16 @@ export function manageAsset(action, id, options = {}) {
       current.pendingFailureDelta = (current.pendingFailureDelta || 0) + 1;
     }
     current.updatedAt = new Date().toISOString();
-    targetList[idx] = current;
-    writeJson(targetList === rules ? rulesPath : fixesPath, targetList);
+    target.list[target.idx] = current;
+    writeJson(target.filePath, target.list);
     appendEvent(evoHome, { event: `feedback_${action}`, assetId: current.id, assetType: current.type });
-    return { ok: true, asset: current, gdiScore: computeGdiScore(current) };
+    return { ok: true, asset: current, gdiScore: computeGdiScore(current, [...rules, ...fixes, ...knowledge]) };
   }
 
   if (action === "promote_team") {
-    const targetList = rules.some((a) => a.id === id) ? rules : fixes;
-    const idx = targetList.findIndex((a) => a.id === id);
-    if (idx < 0) return { ok: false, error: `Experience not found: ${id}` };
-    const candidate = { ...targetList[idx], scope: "team", updatedAt: new Date().toISOString() };
+    const target = findTarget();
+    if (!target) return { ok: false, error: `Experience not found: ${id}` };
+    const candidate = { ...target.list[target.idx], scope: "team", updatedAt: new Date().toISOString() };
     const leaks = fullLeakCheck(candidate);
     if (leaks.found) {
       const details = leaks.leaks.map((l) => `${l.type}${l.envKey ? `(${l.envKey})` : ""}`).join(", ");
@@ -928,8 +1012,8 @@ export function manageAsset(action, id, options = {}) {
       };
     }
     const clean = sanitizePayload(candidate);
-    targetList[idx] = clean;
-    writeJson(targetList === rules ? rulesPath : fixesPath, targetList);
+    target.list[target.idx] = clean;
+    writeJson(target.filePath, target.list);
     appendEvent(evoHome, { event: "promote_team", assetId: clean.id, assetType: clean.type });
     return { ok: true, asset: clean };
   }
@@ -937,10 +1021,15 @@ export function manageAsset(action, id, options = {}) {
   if (action === "delete") {
     const nextRules = rules.filter((a) => a.id !== id);
     const nextFixes = fixes.filter((a) => a.id !== id);
-    const changed = nextRules.length !== rules.length || nextFixes.length !== fixes.length;
+    const nextKnowledge = knowledge.filter((a) => a.id !== id);
+    const changed =
+      nextRules.length !== rules.length ||
+      nextFixes.length !== fixes.length ||
+      nextKnowledge.length !== knowledge.length;
     if (!changed) return { ok: false, error: `Experience not found: ${id}` };
-    writeJson(rulesPath, nextRules);
-    writeJson(fixesPath, nextFixes);
+    if (nextRules.length !== rules.length) writeJson(rulesPath, nextRules);
+    if (nextFixes.length !== fixes.length) writeJson(fixesPath, nextFixes);
+    if (nextKnowledge.length !== knowledge.length) writeJson(knowledgePath, nextKnowledge);
     appendEvent(evoHome, { event: "delete", assetId: id });
     return { ok: true, deletedId: id };
   }
@@ -949,16 +1038,18 @@ export function manageAsset(action, id, options = {}) {
 }
 
 export function exportBundle(evoHome, { scope = "team", outputPath }) {
-  const { rules, fixes } = loadStore(evoHome);
+  const { rules, fixes, knowledge } = loadStore(evoHome);
   const filterFn = (item) => (scope === "all" ? item.scope !== "starter" : item.scope === scope);
   const selectedRules = rules.filter(filterFn).map((r) => sanitizePayload(stripLocalSyncFields(r)));
   const selectedFixes = fixes.filter(filterFn).map((f) => sanitizePayload(stripLocalSyncFields(f)));
+  const selectedKnowledge = knowledge.filter(filterFn).map((k) => sanitizePayload(stripLocalSyncFields(k)));
 
   const bundle = {
     schema: "copilot-evo/bundle@1",
     exportedAt: new Date().toISOString(),
     rules: selectedRules,
     fixes: selectedFixes,
+    knowledge: selectedKnowledge,
   };
   const leaks = fullLeakCheck(bundle);
   if (leaks.found) {
@@ -972,12 +1063,13 @@ export function exportBundle(evoHome, { scope = "team", outputPath }) {
 
 export function importBundle(evoHome, { inputPath, bundleData }) {
   const bundle = bundleData || readJsonSafe(inputPath, null);
-  if (!bundle || (!Array.isArray(bundle.rules) && !Array.isArray(bundle.fixes))) {
+  if (!bundle || (!Array.isArray(bundle.rules) && !Array.isArray(bundle.fixes) && !Array.isArray(bundle.knowledge))) {
     return { ok: false, error: "Invalid experience bundle." };
   }
   const incoming = [
     ...(bundle.rules || []).map((r) => sanitizePayload({ ...r, type: "Rule" })),
     ...(bundle.fixes || []).map((f) => sanitizePayload({ ...f, type: "Fix" })),
+    ...(bundle.knowledge || []).map((k) => sanitizePayload({ ...k, type: "Knowledge" })),
   ];
 
   const valid = [];
@@ -991,20 +1083,31 @@ export function importBundle(evoHome, { inputPath, bundleData }) {
     valid.push(item);
   }
 
+  const incomingTypeById = new Map(valid.map((a) => [a.id, a.type]));
+  const pruneMoved = (list, expectedType) =>
+    list.filter((item) => !incomingTypeById.has(item.id) || incomingTypeById.get(item.id) === expectedType);
+
   const rulesPath = path.join(evoHome, "rules.json");
   const fixesPath = path.join(evoHome, "fixes.json");
-  const rRes = mergeById(readJsonSafe(rulesPath, []), valid.filter((a) => a.type === "Rule"), {
+  const knowledgePath = path.join(evoHome, "knowledge.json");
+  const rRes = mergeById(pruneMoved(readJsonSafe(rulesPath, []), "Rule"), valid.filter((a) => a.type === "Rule"), {
     updateExisting: true,
   });
-  const fRes = mergeById(readJsonSafe(fixesPath, []), valid.filter((a) => a.type === "Fix"), {
+  const fRes = mergeById(pruneMoved(readJsonSafe(fixesPath, []), "Fix"), valid.filter((a) => a.type === "Fix"), {
     updateExisting: true,
   });
+  const kRes = mergeById(
+    pruneMoved(readJsonSafe(knowledgePath, []), "Knowledge"),
+    valid.filter((a) => a.type === "Knowledge"),
+    { updateExisting: true }
+  );
   writeJson(rulesPath, rRes.merged);
   writeJson(fixesPath, fRes.merged);
+  writeJson(knowledgePath, kRes.merged);
   return {
     ok: true,
-    imported: rRes.added + fRes.added,
-    updated: rRes.updated + fRes.updated,
+    imported: rRes.added + fRes.added + kRes.added,
+    updated: rRes.updated + fRes.updated + kRes.updated,
     rejected,
   };
 }
@@ -1064,14 +1167,15 @@ function readTeamFilesFromRepo(targetRepo) {
   return {
     rules: readJsonSafe(path.join(expDir, "team-rules.json"), []),
     fixes: readJsonSafe(path.join(expDir, "team-fixes.json"), []),
+    knowledge: readJsonSafe(path.join(expDir, "team-knowledge.json"), []),
   };
 }
 
 export async function syncRepoPull(evoHome, { repoPath, repo } = {}) {
   const targetRepo = await ensureSyncRepo(evoHome, { repoPath, repo });
   await runGit(targetRepo, ["pull", "--ff-only"]);
-  const { rules, fixes } = readTeamFilesFromRepo(targetRepo);
-  const res = importBundle(evoHome, { bundleData: { rules, fixes } });
+  const { rules, fixes, knowledge } = readTeamFilesFromRepo(targetRepo);
+  const res = importBundle(evoHome, { bundleData: { rules, fixes, knowledge } });
   saveConfig(evoHome, { lastAutoPullAt: new Date().toISOString() });
   appendEvent(evoHome, { event: "sync_pull", imported: res.imported || 0 });
   return { ...res, repoPath: targetRepo };
@@ -1111,10 +1215,12 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
   const store = loadStore(evoHome);
   const localTeamRules = store.rules.filter((r) => r.scope === "team");
   const localTeamFixes = store.fixes.filter((f) => f.scope === "team");
+  const localTeamKnowledge = store.knowledge.filter((k) => k.scope === "team");
 
   const leakCheckLocal = fullLeakCheck({
     rules: localTeamRules.map(stripLocalSyncFields),
     fixes: localTeamFixes.map(stripLocalSyncFields),
+    knowledge: localTeamKnowledge.map(stripLocalSyncFields),
   });
   if (leakCheckLocal.found) {
     return { ok: false, error: "Push aborted: sensitive content detected in team experiences.", leaks: leakCheckLocal.leaks };
@@ -1122,18 +1228,32 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
 
   const teamRulesPath = path.join(targetRepo, "assets", "experiences", "team-rules.json");
   const teamFixesPath = path.join(targetRepo, "assets", "experiences", "team-fixes.json");
+  const teamKnowledgePath = path.join(targetRepo, "assets", "experiences", "team-knowledge.json");
   const existing = readTeamFilesFromRepo(targetRepo);
 
-  const mergedRules = mergeTeamAssetsForPush(existing.rules, localTeamRules);
-  const mergedFixes = mergeTeamAssetsForPush(existing.fixes, localTeamFixes);
+  const localTeamIdsByType = new Map([
+    ...localTeamRules.map((x) => [x.id, "Rule"]),
+    ...localTeamFixes.map((x) => [x.id, "Fix"]),
+    ...localTeamKnowledge.map((x) => [x.id, "Knowledge"]),
+  ]);
+  const filterReclassified = (remoteList, expectedType) =>
+    remoteList.filter((item) => !localTeamIdsByType.has(item.id) || localTeamIdsByType.get(item.id) === expectedType);
 
-  const leakCheck = fullLeakCheck({ rules: mergedRules, fixes: mergedFixes });
+  const mergedRules = mergeTeamAssetsForPush(filterReclassified(existing.rules, "Rule"), localTeamRules);
+  const mergedFixes = mergeTeamAssetsForPush(filterReclassified(existing.fixes, "Fix"), localTeamFixes);
+  const mergedKnowledge = mergeTeamAssetsForPush(
+    filterReclassified(existing.knowledge, "Knowledge"),
+    localTeamKnowledge
+  );
+
+  const leakCheck = fullLeakCheck({ rules: mergedRules, fixes: mergedFixes, knowledge: mergedKnowledge });
   if (leakCheck.found) {
     return { ok: false, error: "Push aborted: leak check failed on merged team experiences.", leaks: leakCheck.leaks };
   }
 
   writeJson(teamRulesPath, mergedRules);
   writeJson(teamFixesPath, mergedFixes);
+  writeJson(teamKnowledgePath, mergedKnowledge);
 
   const syncBackLocalDeltas = (filePath, remoteMerged) => {
     const remoteById = new Map(remoteMerged.map((a) => [a.id, a]));
@@ -1152,28 +1272,37 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
     if (changed) writeJson(filePath, nextList);
   };
 
-  const status = await runGit(targetRepo, ["status", "--porcelain", "assets/experiences/team-rules.json", "assets/experiences/team-fixes.json"]);
+  const syncFiles = [
+    "assets/experiences/team-rules.json",
+    "assets/experiences/team-fixes.json",
+    "assets/experiences/team-knowledge.json",
+  ];
+  const status = await runGit(targetRepo, ["status", "--porcelain", ...syncFiles]);
   if (!status) {
     syncBackLocalDeltas(path.join(evoHome, "rules.json"), mergedRules);
     syncBackLocalDeltas(path.join(evoHome, "fixes.json"), mergedFixes);
+    syncBackLocalDeltas(path.join(evoHome, "knowledge.json"), mergedKnowledge);
     return { ok: true, pushed: false, message: "Team experiences are already up to date.", repoPath: targetRepo };
   }
 
-  await runGit(targetRepo, ["add", "assets/experiences/team-rules.json", "assets/experiences/team-fixes.json"]);
-  await runGit(targetRepo, ["commit", "-m", commitMessage || "chore(evo): sync sanitized team rules and fixes"]);
+  await runGit(targetRepo, ["add", ...syncFiles]);
+  await runGit(targetRepo, ["commit", "-m", commitMessage || "chore(evo): sync sanitized team experiences"]);
   await runGit(targetRepo, ["push"]);
   syncBackLocalDeltas(path.join(evoHome, "rules.json"), mergedRules);
   syncBackLocalDeltas(path.join(evoHome, "fixes.json"), mergedFixes);
+  syncBackLocalDeltas(path.join(evoHome, "knowledge.json"), mergedKnowledge);
   appendEvent(evoHome, {
     event: "sync_push",
     rulesCount: mergedRules.length,
     fixesCount: mergedFixes.length,
+    knowledgeCount: mergedKnowledge.length,
   });
   return {
     ok: true,
     pushed: true,
     rulesCount: mergedRules.length,
     fixesCount: mergedFixes.length,
+    knowledgeCount: mergedKnowledge.length,
     repoPath: targetRepo,
   };
 }
@@ -1181,9 +1310,9 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
 const DEFAULT_AUTO_PULL_INTERVAL_MS = 30 * 60 * 1000;
 
 export function getPendingScoreDeltaTotal(evoHome) {
-  const { rules, fixes } = loadStore(evoHome);
+  const { rules, fixes, knowledge } = loadStore(evoHome);
   let total = 0;
-  for (const item of [...rules, ...fixes]) {
+  for (const item of [...rules, ...fixes, ...knowledge]) {
     if (item.scope !== "team") continue;
     total += (item.pendingSuccessDelta || 0) + (item.pendingFailureDelta || 0);
   }
@@ -1211,6 +1340,7 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
   const store = loadStore(evoHome);
   const teamRulesPath = path.join(targetRepo, "assets", "experiences", "team-rules.json");
   const teamFixesPath = path.join(targetRepo, "assets", "experiences", "team-fixes.json");
+  const teamKnowledgePath = path.join(targetRepo, "assets", "experiences", "team-knowledge.json");
 
   await runGit(targetRepo, ["pull", "--rebase", "--autostash"]);
   const existing = readTeamFilesFromRepo(targetRepo);
@@ -1236,16 +1366,23 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
 
   const rMerge = mergeScoresOnly(existing.rules, store.rules);
   const fMerge = mergeScoresOnly(existing.fixes, store.fixes);
-  if (!rMerge.dirty && !fMerge.dirty) {
+  const kMerge = mergeScoresOnly(existing.knowledge, store.knowledge);
+  if (!rMerge.dirty && !fMerge.dirty && !kMerge.dirty) {
     return { ok: true, pushed: false, reason: "no_pending_deltas" };
   }
 
-  writeJson(teamRulesPath, rMerge.nextRemote);
-  writeJson(teamFixesPath, fMerge.nextRemote);
+  if (rMerge.dirty) writeJson(teamRulesPath, rMerge.nextRemote);
+  if (fMerge.dirty) writeJson(teamFixesPath, fMerge.nextRemote);
+  if (kMerge.dirty) writeJson(teamKnowledgePath, kMerge.nextRemote);
 
-  const status = await runGit(targetRepo, ["status", "--porcelain", "assets/experiences/team-rules.json", "assets/experiences/team-fixes.json"]);
+  const syncFiles = [
+    "assets/experiences/team-rules.json",
+    "assets/experiences/team-fixes.json",
+    "assets/experiences/team-knowledge.json",
+  ];
+  const status = await runGit(targetRepo, ["status", "--porcelain", ...syncFiles]);
   if (status) {
-    await runGit(targetRepo, ["add", "assets/experiences/team-rules.json", "assets/experiences/team-fixes.json"]);
+    await runGit(targetRepo, ["add", ...syncFiles]);
     await runGit(targetRepo, ["commit", "-m", "chore(evo): sync experience score deltas"]);
     await runGit(targetRepo, ["push"]);
   }
@@ -1266,6 +1403,7 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
 
   clearLocalDeltas(path.join(evoHome, "rules.json"), rMerge.nextRemote);
   clearLocalDeltas(path.join(evoHome, "fixes.json"), fMerge.nextRemote);
+  clearLocalDeltas(path.join(evoHome, "knowledge.json"), kMerge.nextRemote);
   appendEvent(evoHome, { event: "sync_scores", reason: "auto_delta_push" });
   return { ok: true, pushed: true, repoPath: targetRepo };
 }
@@ -1295,8 +1433,8 @@ function splitArgs(command) {
 }
 
 export async function runAssetValidation(evoHome, id, workingDirectory) {
-  const { rules, fixes } = loadStore(evoHome);
-  const asset = [...rules, ...fixes].find((a) => a.id === id);
+  const { rules, fixes, knowledge } = loadStore(evoHome);
+  const asset = [...rules, ...fixes, ...knowledge].find((a) => a.id === id);
   if (!asset) return { ok: false, error: `Asset not found: ${id}` };
   const commands = Array.isArray(asset.validation) ? asset.validation.filter(Boolean) : [];
   if (!commands.length) {

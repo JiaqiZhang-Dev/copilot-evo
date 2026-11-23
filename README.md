@@ -8,7 +8,7 @@
 </p>
 
 <h3>Solve once. Evolve everywhere.</h3>
-<p>Self-evolving Experience Engine (<code>EXP</code>: Rules &amp; Fixes) for GitHub Copilot App &amp; CLI</p>
+<p>Self-evolving Experience Engine (<code>EXP</code>: Knowledge, Rules &amp; Fixes) for GitHub Copilot App &amp; CLI</p>
 
 <p>
   <img src="https://img.shields.io/badge/Copilot-Plugin-0969da?style=flat-square" alt="Copilot Plugin" />
@@ -30,7 +30,7 @@
 
 ---
 
-> **Copilot Evo** captures verified debugging fixes and engineering conventions automatically, recalls the right rule when similar tasks or errors arise, and syncs sanitized team knowledge via a private Git repository.
+> **Copilot Evo** captures architecture **Knowledge**, reusable **Rules**, and verified **Fixes** automatically, recalls what fits your active repository and task, and syncs sanitized team wisdom via a private Git repository.
 
 <p align="center">
   <img src="docs/images/demo.gif" width="92%" alt="Copilot Evo Walkthrough" />
@@ -41,12 +41,12 @@
 <table>
   <tr>
     <td width="50%" valign="top">
-      <strong>🧬 Atomic Self-Evolution</strong><br />
-      Turns verified fixes and conventions into focused <code>Rule</code> and <code>Fix</code> entries automatically—one topic per card.
+      <strong>🧬 CoALA-Inspired Memory</strong><br />
+      Organizes experience into <code>Knowledge</code> (facts &amp; quirks), <code>Rule</code> (conventions &amp; workflows), and <code>Fix</code> (bug resolutions), inspired by <a href="https://arxiv.org/abs/2309.02427">CoALA</a>.
     </td>
     <td width="50%" valign="top">
       <strong>🎯 Repo-Aware Recall</strong><br />
-      Surfaces the highest-scoring <code>Cross-repo</code> or <code>owner/repo</code> knowledge right when prompts or errors hit.
+      Surfaces the highest-scoring <code>Cross-repo</code> or <code>owner/repo</code> knowledge right when prompts, reviews, or errors hit.
     </td>
   </tr>
   <tr>
@@ -135,10 +135,10 @@ flowchart LR
   I --> H
 ```
 
-1. **Recall**: Matches top `Rule` and `Fix` experiences to your prompt, error signals, and active repo.
-2. **Solidify**: Captures each verified fix or convention atomically in English (`scope: "local"`).
-3. **Confirm**: Prompts natively to keep local or sanitize and share directly to your team's private repo.
-4. **Evolve**: Tracks recalls, recoveries, and validation runs to continuously rank what works best.
+1. **Recall**: Matches top `Knowledge`, `Rule`, and `Fix` experiences to your prompt, error signals, and active repo.
+2. **Solidify**: Captures each non-obvious fact, convention, or verified fix atomically in English (`scope: "local"`).
+3. **Confirm**: Prompts natively to keep local, refine inline, or sanitize and share directly to your team's private repo.
+4. **Evolve**: Tracks recalls, recoveries, and validation runs to continuously rank what works best (modeled after [Cognitive Architectures for Language Agents (CoALA)](https://arxiv.org/abs/2309.02427)).
 
 <details>
 <summary><strong>Tools, Environment Variables &amp; Tests</strong></summary>

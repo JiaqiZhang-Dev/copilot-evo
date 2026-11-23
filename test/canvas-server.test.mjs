@@ -42,6 +42,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     const html = await htmlRes.text();
     assert.match(html, /Copilot Evo/);
     assert.match(html, /Leaderboard/);
+    assert.match(html, /data-kind="Knowledge"/);
     assert.match(html, /chip-repo-only/);
     assert.match(html, /loading-overlay/);
     assert.doesNotMatch(html, /data-tab="arena"/);
@@ -51,6 +52,7 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     assert.equal(stateRes.status, 200);
     const state = await stateRes.json();
     assert.ok(state.rules.some((r) => r.id === "exp-canvas-preview"));
+    assert.ok(Array.isArray(state.knowledge));
     assert.equal(state.viewState.filter, "team");
 
     const unauthDelete = await fetch(`${baseUrl}/api/assets/delete`, {

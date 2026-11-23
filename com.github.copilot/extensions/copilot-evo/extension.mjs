@@ -38,7 +38,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.10.34";
+const EXTENSION_VERSION = "0.11.0";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -164,7 +164,7 @@ function recordRecallEvent(matched, { trigger, signals = [], toolName = "" } = {
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
-  "2. Auto-discover & solidify atomically locally first (English only): Proactively call `evo_solidify` with `scope: \"local\"` whenever you resolve a non-obvious error (`kind: \"Fix\"`), fix a user-reported mistake or platform/rendering quirk (even when no tool errored), or when the user states/verifies reusable conventions (`kind: \"Rule\"`, even if also saved via `store_memory`). Skip trivial typos. Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise steps); split distinct concerns into separate `evo_solidify` calls instead of bundling them into one mega-entry. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
+  "2. Auto-discover & solidify atomically locally first (English only): Proactively call `evo_solidify` with `scope: \"local\"` whenever you uncover non-obvious domain/architecture/platform facts (`kind: \"Knowledge\"`), resolve a non-obvious error (`kind: \"Fix\"`), fix a user-reported mistake or rendering quirk (even when no tool errored), or when the user states/verifies reusable conventions or workflows (`kind: \"Rule\"`, even if also saved via `store_memory`). Skip trivial typos. Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise points/steps); split distinct concerns into separate `evo_solidify` calls. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
   "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND, if `evo_solidify` did not already prompt via native UI (`sharedToTeam` is unset and `needsRefinement` is unset), call `ask_user` with choices `[\"Keep local\", \"Share with team\", \"Refine this experience\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
 ].join("\n");
 
@@ -194,7 +194,7 @@ const session = await joinSession({
         })
         .catch(() => {});
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
-      const { rules, fixes, config } = loadStore(evoHome);
+      const { rules, fixes, knowledge, config } = loadStore(evoHome);
       const initialPrompt = input.initialPrompt || "";
       const isReview = isPrReviewCue(initialPrompt);
       const signals = extractSignals(initialPrompt, [], { includePlatform: false });
@@ -207,6 +207,7 @@ const session = await joinSession({
               isReview,
               rules,
               fixes,
+              knowledge,
               limit: isReview ? Math.max(config.autoInjectLimit || 3, 5) : config.autoInjectLimit || 3,
             })
           : [];
@@ -231,7 +232,7 @@ const session = await joinSession({
       sessionState.turnRecalledIds = [];
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
-      const { rules, fixes, config } = loadStore(evoHome);
+      const { rules, fixes, knowledge, config } = loadStore(evoHome);
       const failureSignals = sessionState.recentFailures.flatMap((f) => f.signals);
       const isReview = isPrReviewCue(input.prompt);
       const signals = extractSignals(input.prompt, failureSignals, { includePlatform: false });
@@ -244,6 +245,7 @@ const session = await joinSession({
               isReview,
               rules,
               fixes,
+              knowledge,
               limit: isReview ? Math.max(config.autoInjectLimit || 3, 5) : config.autoInjectLimit || 3,
             })
           : [];
@@ -332,13 +334,15 @@ const session = await joinSession({
         canvasServer.broadcastUpdate("tool_failure");
       }
 
-      const { rules, fixes } = loadStore(evoHome);
+      const { rules, fixes, knowledge } = loadStore(evoHome);
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
       const matched = selectAssets({
         signals,
         repo: detectRepoSlug(lastWorkingDirectory),
+        isFailure: true,
         rules,
         fixes,
+        knowledge,
         limit: 2,
       });
       if (matched.length) {
@@ -455,7 +459,7 @@ const session = await joinSession({
     onSubagentStart: async (input) => {
       const workDir = input.workingDirectory || lastWorkingDirectory;
       const currentRepo = detectRepoSlug(workDir);
-      const { rules, fixes, config } = loadStore(evoHome);
+      const { rules, fixes, knowledge, config } = loadStore(evoHome);
       const subText = [input.agentName, input.agentDisplayName, input.agentDescription].filter(Boolean).join(" ");
       const isReview = /\b(?:code-review|review|audit|verifier|checker)\b/i.test(subText) || isPrReviewCue(subText);
       const failureSignals = sessionState.recentFailures.flatMap((f) => f.signals);
@@ -469,10 +473,11 @@ const session = await joinSession({
         isReview,
         rules,
         fixes,
+        knowledge,
         limit: isReview ? Math.max(config.autoInjectLimit || 3, 5) : config.autoInjectLimit || 3,
       });
       if (!matched.length && sessionState.activeAssets.length) {
-        const byId = new Map([...rules, ...fixes].map((a) => [a.id, a]));
+        const byId = new Map([...rules, ...fixes, ...knowledge].map((a) => [a.id, a]));
         matched = sessionState.activeAssets.map((id) => byId.get(id)).filter(Boolean);
       }
       if (!matched.length) return;
@@ -502,20 +507,20 @@ const session = await joinSession({
   tools: [
     {
       name: "evo_search",
-      description: "Search or list local and team-synced Experiences (Rules and Fixes) by keywords, signals, kind, or scope.",
+      description: "Search or list local and team-synced Experiences (Knowledge, Rules, and Fixes) by keywords, signals, kind, or scope.",
       parameters: {
         type: "object",
         properties: {
           query: { type: "string", description: "Search keywords or error text (omit or empty to list)" },
           signals: { type: "array", items: { type: "string" }, description: "Signal tags such as test_failure, win32, npm_error" },
           scope: { type: "string", enum: ["", "local", "team", "starter"], description: "Optional scope filter" },
-          kind: { type: "string", enum: ["", "Rule", "Fix"], description: "Optional experience kind filter" },
+          kind: { type: "string", enum: ["", "Knowledge", "Rule", "Fix"], description: "Optional experience kind filter" },
           repo: { type: "string", description: "Optional owner/repo filter; defaults to current workspace repo when detected" },
           limit: { type: "number", description: "Maximum results (default 5)" },
         },
       },
       handler: async (args) => {
-        const { rules, fixes } = loadStore(evoHome);
+        const { rules, fixes, knowledge } = loadStore(evoHome);
         const signals = extractSignals(args.query || "", args.signals || [], { includePlatform: false });
         const repo = args.repo || detectRepoSlug(lastWorkingDirectory);
         const results = selectAssets({
@@ -526,6 +531,7 @@ const session = await joinSession({
           repo,
           rules,
           fixes,
+          knowledge,
           limit: args.limit || 5,
         });
         if (results.length && (args.query || (args.signals && args.signals.length))) {
@@ -544,11 +550,11 @@ const session = await joinSession({
     },
     {
       name: "evo_solidify",
-      description: "Proactively record ONE atomic, focused Rule (workflow strategy) or Fix (verified bug fix) in English into the Experience store with automatic secret/path sanitization. Never bundle multiple unrelated topics into a single experience—call evo_solidify once per distinct concern (2-4 signals, 1-3 steps). Default to scope: 'local'; confirm with the user before promoting to 'team' or syncing via evo_sync_repo.",
+      description: "Proactively record ONE atomic Experience in English: Knowledge (domain/architecture facts & platform quirks), Rule (conventions, guidelines & workflows), or Fix (verified troubleshooting/bug fix). Never bundle unrelated topics—call evo_solidify once per distinct concern (2-4 signals, 1-3 steps). Default to scope: 'local'; confirm with the user before promoting to 'team' or syncing via evo_sync_repo.",
       parameters: {
         type: "object",
         properties: {
-          kind: { type: "string", enum: ["Rule", "Fix"], description: "Experience kind: Rule (strategy/convention) or Fix (verified solution)" },
+          kind: { type: "string", enum: ["Knowledge", "Rule", "Fix"], description: "Experience kind: Knowledge (domain/architecture fact or quirk), Rule (guideline/workflow), or Fix (verified bug fix)" },
           id: { type: "string", description: "Optional kebab-case ID (updates existing if matched)" },
           title: { type: "string", description: "Short descriptive title in English" },
           summary: { type: "string", description: "Concise English explanation of the pattern or root cause" },
@@ -676,7 +682,7 @@ const session = await joinSession({
       description: "Inspect copilot-evo store statistics, recent session signals, and private Git sync configuration.",
       parameters: { type: "object", properties: {} },
       handler: async () => {
-        const { rules, fixes, config } = loadStore(evoHome);
+        const { rules, fixes, knowledge, config } = loadStore(evoHome);
         const syncRepoPath = resolveSyncRepoPath(evoHome);
         return JSON.stringify(
           {
@@ -684,8 +690,10 @@ const session = await joinSession({
             evoHome,
             currentRepo: detectRepoSlug(lastWorkingDirectory) || null,
             counts: {
+              knowledge: knowledge.length,
               rules: rules.length,
               fixes: fixes.length,
+              teamKnowledge: knowledge.filter((k) => k.scope === "team").length,
               teamRules: rules.filter((r) => r.scope === "team").length,
               teamFixes: fixes.filter((f) => f.scope === "team").length,
               events: countEvents(evoHome),
@@ -765,7 +773,7 @@ const session = await joinSession({
     createCanvas({
       id: "evo-dashboard",
       displayName: "Copilot Evo",
-      description: "Browse, preview, search, rank, delete, and sync copilot-evo Experiences (Rules and Fixes), relationships, and events.",
+      description: "Browse, preview, search, rank, delete, and sync copilot-evo Experiences (Knowledge, Rules, and Fixes), relationships, and events.",
       inputSchema: {
         type: "object",
         properties: {

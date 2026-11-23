@@ -83,7 +83,7 @@ export function createEvoCanvasServer({
   function buildSnapshot() {
     const store = loadStore(evoHome);
     const events = readRecentEvents(evoHome, 250);
-    const allAssets = [...store.rules, ...store.fixes];
+    const allAssets = [...store.rules, ...store.fixes, ...store.knowledge];
     const nowMs = Date.now();
     const enrich = (item) => {
       const gdi = computeGdiBreakdown(item, allAssets, nowMs);
@@ -97,6 +97,7 @@ export function createEvoCanvasServer({
     };
     const rules = store.rules.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
     const fixes = store.fixes.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
+    const knowledge = store.knowledge.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
 
     return {
       evoHome,
@@ -106,11 +107,14 @@ export function createEvoCanvasServer({
       config: store.config,
       rules,
       fixes,
+      knowledge,
       events,
       counts: {
+        knowledge: store.knowledge.length,
         rules: store.rules.length,
         fixes: store.fixes.length,
         teamAssets:
+          store.knowledge.filter((k) => k.scope === "team").length +
           store.rules.filter((r) => r.scope === "team").length +
           store.fixes.filter((f) => f.scope === "team").length,
         events: countEvents(evoHome),
@@ -200,7 +204,7 @@ export function createEvoCanvasServer({
       } else if (reqUrl.pathname === "/api/assets/refine") {
         const feedback = String(body.feedback || "").trim();
         const store = loadStore(evoHome);
-        const asset = [...store.rules, ...store.fixes].find((a) => a.id === body.id);
+        const asset = [...store.rules, ...store.fixes, ...store.knowledge].find((a) => a.id === body.id);
         if (!asset) {
           result = { ok: false, error: `Experience not found: ${body.id}` };
         } else if (!feedback) {

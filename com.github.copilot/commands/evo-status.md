@@ -1,5 +1,5 @@
 ---
-description: Inspect copilot-evo local store, active Experiences (Rules and Fixes), and private Git sync status.
+description: Inspect copilot-evo local store, active Experiences (Knowledge, Rules, and Fixes), and private Git sync status.
 ---
 
 # Evolution Status

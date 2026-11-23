@@ -72,9 +72,16 @@ function escapeHtml(text) {
     .replaceAll('"', "&quot;");
 }
 
+function normalizeKind(type) {
+  const v = String(type || "").toLowerCase();
+  if (v === "fix") return "Fix";
+  if (v === "knowledge") return "Knowledge";
+  return "Rule";
+}
+
 function getAllAssets() {
   if (!state) return [];
-  return [...(state.rules || []), ...(state.fixes || [])].sort((a, b) => {
+  return [...(state.knowledge || []), ...(state.rules || []), ...(state.fixes || [])].sort((a, b) => {
     const scoreDiff = (b.gdiScore || 0) - (a.gdiScore || 0);
     if (scoreDiff !== 0) return scoreDiff;
     const reuseDiff = (b.successCount || 0) - (a.successCount || 0);
@@ -103,7 +110,7 @@ function getFilteredAssets() {
     }
     if (repoScopeFilter === "cross" && (item.repoScope || "*") !== "*") return false;
     if (repoScopeFilter === "repo" && !isRepoSpecificMatch(item, curRepo)) return false;
-    const itemType = item.type === "Fix" ? "Fix" : "Rule";
+    const itemType = normalizeKind(item.type);
     if (activeKind !== "all" && itemType !== activeKind) return false;
     if (!q) return true;
     const text = `${item.id} ${item.title} ${item.summary} ${item.solution || ""} ${item.repoScope || ""} ${(item.signals || []).join(" ")}`.toLowerCase();
@@ -164,7 +171,7 @@ function formatRelativeTime(ts) {
 }
 
 function displayTypeWord(type) {
-  return type === "Fix" ? "Fix" : type === "Rule" ? "Rule" : type || "Experience";
+  return normalizeKind(type);
 }
 
 function formatRecallTrigger(ev) {
@@ -192,7 +199,7 @@ function formatEventMeta(ev) {
       return {
         label: "Team Push",
         cls: "ev-ok",
-        desc: `Synced ${ev.rulesCount ?? ev.genesCount ?? 0} Rules · ${ev.fixesCount ?? ev.capsulesCount ?? 0} Fixes`,
+        desc: `Synced ${ev.knowledgeCount ?? 0} Knowledge · ${ev.rulesCount ?? ev.genesCount ?? 0} Rules · ${ev.fixesCount ?? ev.capsulesCount ?? 0} Fixes`,
       };
     case "sync_pull":
       return { label: "Team Pull", cls: "ev-ok", desc: `Imported ${ev.imported || 0} team experience(s)` };
@@ -228,7 +235,8 @@ function formatEventMeta(ev) {
 }
 
 function kindLabel(type) {
-  return type === "Fix" ? "FIX" : "RULE";
+  const k = normalizeKind(type);
+  return k === "Fix" ? "FIX" : k === "Knowledge" ? "KNOWLEDGE" : "RULE";
 }
 
 function renderScoreRing(score, titleText = "") {
@@ -263,21 +271,32 @@ function buildScoreTooltips(item) {
     `+ Freshness ${fr}×15% (${(fr * 0.15).toFixed(1)})${pinnedLine}`,
   ].join("\n");
 
+  const kind = normalizeKind(item.type);
   const hasTitle = String(item.title || "").trim().length >= 8;
   const hasSummary = String(item.summary || "").trim().length >= 20;
   const hasSignals = Array.isArray(item.signals) && item.signals.length >= 2;
   const hasSteps =
-    (Array.isArray(item.strategy) && item.strategy.length >= 2) ||
-    String(item.solution || "").trim().length >= 15;
-  const hasVal = Array.isArray(item.validation) && item.validation.length > 0;
+    (Array.isArray(item.strategy) && item.strategy.length >= (kind === "Knowledge" ? 1 : 2)) ||
+    String(item.solution || "").trim().length >= 15 ||
+    (kind === "Knowledge" && String(item.summary || "").trim().length >= 60);
+  const hasVal =
+    (Array.isArray(item.validation) && item.validation.length > 0) ||
+    (kind === "Knowledge" &&
+      String(item.summary || "").trim().length >= 45 &&
+      ((Array.isArray(item.strategy) && item.strategy.length >= 1) ||
+        String(item.solution || "").trim().length >= 15));
   const qualityTip = [
     `Quality ${q}/100 (35% weight)`,
     `Base: 25`,
     `Title >=8 chars: ${hasTitle ? "+15" : "+0"}`,
     `Summary >=20 chars: ${hasSummary ? "+15" : "+0"}`,
     `>=2 Signals: ${hasSignals ? "+15" : "+0"}`,
-    `>=2 Steps or Solution: ${hasSteps ? "+15" : "+0"}`,
-    `Validation cmds: ${hasVal ? "+15" : "+0"}`,
+    kind === "Knowledge"
+      ? `Rich summary or takeaway: ${hasSteps ? "+15" : "+0"}`
+      : `>=2 Steps or Solution: ${hasSteps ? "+15" : "+0"}`,
+    kind === "Knowledge"
+      ? `Summary >=45 + takeaway: ${hasVal ? "+15" : "+0"}`
+      : `Validation cmds: ${hasVal ? "+15" : "+0"}`,
   ].join("\n");
 
   const succ = Math.max(0, Number(item.successCount || 0));
@@ -318,14 +337,16 @@ function renderDetail(item) {
     return;
   }
 
+  const itemKind = normalizeKind(item.type);
   const signals = (item.signals || []).map((s) => `<span class="badge">${escapeHtml(s)}</span>`).join("");
+  const stepsLabel = itemKind === "Knowledge" ? "Key Takeaways" : "Steps";
   const strategy = (item.strategy || []).length
-    ? `<div class="section-label">Steps</div><ol class="steps">${item.strategy
+    ? `<div class="section-label">${stepsLabel}</div><ol class="steps">${item.strategy
         .map((s) => `<li>${escapeHtml(s)}</li>`)
         .join("")}</ol>`
     : "";
   const solution = item.solution
-    ? `<div class="section-label">Verified Fix</div><p class="detail-box">${escapeHtml(item.solution)}</p>`
+    ? `<div class="section-label">${itemKind === "Fix" ? "Verified Fix" : "Reference"}</div><p class="detail-box">${escapeHtml(item.solution)}</p>`
     : "";
   const guardrail = item.guardrail?.reason
     ? `<div class="section-label">Guardrail</div><p class="detail-box">${escapeHtml(item.guardrail.reason)}</p>`
@@ -433,7 +454,7 @@ function renderDetail(item) {
         <div>
           <h2 class="detail-title">${escapeHtml(item.title)}</h2>
           <div class="detail-meta-line">
-            <span class="detail-meta-pill">${escapeHtml(item.type === "Fix" ? "Fix" : "Rule")}</span>
+            <span class="detail-meta-pill">${escapeHtml(itemKind)}</span>
             <span>·</span>
             <span title="${escapeHtml(scoreTips.totalTip)}">Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
             <span>·</span>
@@ -655,7 +676,7 @@ function renderSignalClusterDetail(signalName, relatedAssets) {
       return `
       <button class="contrib-exp-item" data-jump-signal-exp="${escapeHtml(item.id)}" type="button">
         <span class="contrib-exp-title">${escapeHtml(item.title)}</span>
-        <span class="contrib-exp-meta">${item.type === "Fix" ? "Fix" : "Rule"} · ${escapeHtml(repoLabel)} · ${scopeText} · ${Number(item.gdiScore || 0).toFixed(1)}</span>
+        <span class="contrib-exp-meta">${normalizeKind(item.type)} · ${escapeHtml(repoLabel)} · ${scopeText} · ${Number(item.gdiScore || 0).toFixed(1)}</span>
       </button>`;
     })
     .join("");
@@ -768,7 +789,7 @@ function renderRelationshipsView(listPane, allAssets) {
   }
 
   const graphNodes = [
-    ...visibleAssets.map((a) => ({ id: a.id, kind: a.type === "Fix" ? "Fix" : "Rule", asset: a })),
+    ...visibleAssets.map((a) => ({ id: a.id, kind: normalizeKind(a.type), asset: a })),
     ...visibleHubs.map((h) => ({ id: `sig:${h.sig}`, kind: "signal", sig: h.sig, count: h.count })),
   ];
   const graphLinks = [];
@@ -852,23 +873,27 @@ function renderRelationshipsView(listPane, allAssets) {
     .map((a) => {
       const p = positions.get(a.id);
       if (!p) return "";
-      const isFix = a.type === "Fix";
+      const k = normalizeKind(a.type);
+      const isFix = k === "Fix";
+      const isKnowledge = k === "Knowledge";
       const isSelected = a.id === selectedId;
       const dimmed = Boolean(focusKey) && !neighborIds.has(a.id);
       const r = Math.round(11 + Math.min(4, Math.max(0, ((a.gdiScore || 50) - 50) / 12)));
       const label = (a.title || a.id).length > 22 ? `${(a.title || a.id).slice(0, 21)}…` : a.title || a.id;
-      const fill = isFix ? "var(--accent-soft)" : "var(--accent)";
+      const fill = isFix ? "var(--accent-soft)" : isKnowledge ? "var(--accent-deep)" : "var(--accent)";
       return `
       <g class="kg-node" data-node-id="${escapeHtml(a.id)}" opacity="${dimmed ? 0.2 : 1}">
         ${isSelected ? `<circle cx="${p.x}" cy="${p.y}" r="${r + 5}" fill="var(--accent-muted)" stroke="var(--accent)" stroke-width="1.5" />` : ""}
         ${
           isFix
             ? `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="var(--bg)" stroke="${fill}" stroke-width="2.5" /><circle cx="${p.x}" cy="${p.y}" r="${Math.max(4, r - 5)}" fill="${fill}" />`
-            : `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${fill}" stroke="#ffffff" stroke-width="1.5" />`
+            : isKnowledge
+              ? `<rect x="${p.x - r}" y="${p.y - r}" width="${r * 2}" height="${r * 2}" rx="5" fill="${fill}" stroke="#ffffff" stroke-width="1.5" />`
+              : `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${fill}" stroke="#ffffff" stroke-width="1.5" />`
         }
-        <text x="${p.x}" y="${p.y + 3.5}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="700" font-family="Consolas, monospace">${isFix ? "" : "R"}</text>
+        <text x="${p.x}" y="${p.y + 3.5}" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="700" font-family="Consolas, monospace">${isFix ? "" : isKnowledge ? "K" : "R"}</text>
         <text x="${p.x}" y="${p.y + r + 14}" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="${isSelected ? "700" : "600"}">${escapeHtml(label)}</text>
-        <title>${escapeHtml(a.title)} (${a.type} · Score ${a.gdiScore ?? "-"})</title>
+        <title>${escapeHtml(a.title)} (${k} · Score ${a.gdiScore ?? "-"})</title>
       </g>`;
     })
     .join("");
@@ -901,6 +926,7 @@ function renderRelationshipsView(listPane, allAssets) {
       </svg>
       <div class="kg-hint">Click node or #signal to inspect related experiences</div>
       <div class="kg-legend">
+        <span><i class="dot dot-knowledge"></i>Knowledge</span>
         <span><i class="dot dot-rule"></i>Rule</span>
         <span><i class="kg-ring-dot"></i>Fix</span>
         <span><i class="dot dot-signal"></i>#Signal (${sharedHubs.length})</span>
@@ -1011,7 +1037,7 @@ function renderContributorDetail(group) {
       (item) => `
       <button class="contrib-exp-item" data-jump-exp="${escapeHtml(item.id)}" type="button">
         <span class="contrib-exp-title">${escapeHtml(item.title)}</span>
-        <span class="contrib-exp-meta">${item.type === "Fix" ? "Fix" : "Rule"} · ${Number(item.gdiScore || 0).toFixed(1)} · ${item.successCount || 0} used</span>
+        <span class="contrib-exp-meta">${normalizeKind(item.type)} · ${Number(item.gdiScore || 0).toFixed(1)} · ${item.successCount || 0} used</span>
       </button>`
     )
     .join("");
@@ -1126,7 +1152,8 @@ function render() {
   if (!state) return;
   const rules = state.rules || [];
   const fixes = state.fixes || [];
-  const allAssets = [...rules, ...fixes];
+  const knowledge = state.knowledge || [];
+  const allAssets = [...knowledge, ...rules, ...fixes];
   const totalReuses = allAssets.reduce((sum, a) => sum + (a.successCount || 0), 0);
   const linkCount = collectGraphData(allAssets).length;
 
@@ -1135,7 +1162,7 @@ function render() {
     : "";
   const tel = el("telemetry-line");
   if (tel) {
-    tel.textContent = `${rules.length} rules · ${fixes.length} fixes · ${state.counts?.teamAssets || 0} shared · ${totalReuses} hits${syncTime}`;
+    tel.textContent = `${knowledge.length} knowledge · ${rules.length} rules · ${fixes.length} fixes · ${state.counts?.teamAssets || 0} shared · ${totalReuses} hits${syncTime}`;
     tel.title = state.syncRepoPath
       ? `Sync repo: ${state.syncRepoPath}`
       : `Auto-clone repo: ${state.config?.syncRepo || "JiaqiZhang-Dev/copilot-evo"}`;
@@ -1150,12 +1177,13 @@ function render() {
   const tabAssets = allAssets.filter((a) =>
     activeTab === "local" ? !a.scope || a.scope === "local" : a.scope && a.scope !== "local"
   );
-  const tabRuleCount = tabAssets.filter((a) => (a.type === "Fix" ? "Fix" : "Rule") === "Rule").length;
-  const tabFixCount = tabAssets.filter((a) => a.type === "Fix").length;
+  const tabKnowledgeCount = tabAssets.filter((a) => normalizeKind(a.type) === "Knowledge").length;
+  const tabRuleCount = tabAssets.filter((a) => normalizeKind(a.type) === "Rule").length;
+  const tabFixCount = tabAssets.filter((a) => normalizeKind(a.type) === "Fix").length;
   const kindScopedAssets =
     activeKind === "all"
       ? tabAssets
-      : tabAssets.filter((a) => (a.type === "Fix" ? "Fix" : "Rule") === activeKind);
+      : tabAssets.filter((a) => normalizeKind(a.type) === activeKind);
   const kindTeamCount = kindScopedAssets.filter((a) => a.scope === "team").length;
   const kindStarterCount = kindScopedAssets.filter((a) => a.scope === "starter").length;
   const crossRepoCount = kindScopedAssets.filter((a) => (a.repoScope || "*") === "*").length;
@@ -1170,6 +1198,7 @@ function render() {
   document.querySelectorAll(".seg[data-kind]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.kind === activeKind);
     if (btn.dataset.kind === "all") btn.textContent = `All`;
+    else if (btn.dataset.kind === "Knowledge") btn.textContent = `Knowledge ${tabKnowledgeCount}`;
     else if (btn.dataset.kind === "Rule") btn.textContent = `Rules ${tabRuleCount}`;
     else if (btn.dataset.kind === "Fix") btn.textContent = `Fixes ${tabFixCount}`;
   });
@@ -1344,7 +1373,9 @@ function render() {
     </div>
     ${items
       .map((item, idx) => {
-        const isFix = item.type === "Fix";
+        const itemKind = normalizeKind(item.type);
+        const kindCls =
+          itemKind === "Fix" ? "is-fix" : itemKind === "Knowledge" ? "is-knowledge" : "is-rule";
         const repoLabel =
           item.repoScope && item.repoScope !== "*" ? escapeHtml(item.repoScope) : "Cross-repo";
         const footText =
@@ -1357,7 +1388,12 @@ function render() {
               : item.sourceProject
                 ? `From ${escapeHtml(item.sourceProject)}`
                 : "";
-        const kindTooltip = isFix ? "Fix: verified bug resolution" : "Rule: reusable guideline";
+        const kindTooltip =
+          itemKind === "Fix"
+            ? "Fix: verified bug resolution"
+            : itemKind === "Knowledge"
+              ? "Knowledge: domain, architecture, or platform behavior"
+              : "Rule: reusable guideline or workflow";
         const uses = item.successCount || 0;
         const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
         const trophySvg = `<svg class="trophy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-label="Rank #1"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#0969da" fill-opacity="0.18" stroke="#0969da" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11" stroke="#0969da" stroke-width="1.2" stroke-linecap="round"/><path d="M8 8.7v2.8M5.8 13.5h4.4" stroke="#0969da" stroke-width="1.3" stroke-linecap="round"/></svg>`;
@@ -1402,7 +1438,7 @@ function render() {
           <div class="exp-main">
             <div class="exp-title-line">
               <span class="exp-title">${escapeHtml(item.title)}</span>
-              <span class="row-kind ${isFix ? "is-fix" : "is-rule"}" title="${kindTooltip}">${isFix ? "Fix" : "Rule"}</span>
+              <span class="row-kind ${kindCls}" title="${kindTooltip}">${itemKind}</span>
               <span class="row-scope" title="Repository scope">${repoLabel}</span>
             </div>
             <div class="exp-summary">${escapeHtml(item.summary)}</div>

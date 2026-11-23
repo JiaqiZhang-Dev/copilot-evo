@@ -1,5 +1,5 @@
 ---
-description: Open the Copilot Evo Canvas panel to browse, preview, rank, relate, and sync Experiences (Rules and Fixes) and events.
+description: Open the Copilot Evo Canvas panel to browse, preview, rank, relate, and sync Experiences (Knowledge, Rules, and Fixes) and events.
 ---
 
 # Open Copilot Evo Canvas
