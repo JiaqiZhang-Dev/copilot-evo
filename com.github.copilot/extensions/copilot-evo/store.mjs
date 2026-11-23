@@ -1368,11 +1368,23 @@ export async function configureSyncRepo(evoHome, { repo = "", createPrivate = fa
     let pushed = false;
     if (pushExisting) {
       const store = loadStore(evoHome);
-      const hasLocalTeam =
-        store.rules.some((r) => r.scope === "team") ||
-        store.fixes.some((f) => f.scope === "team") ||
-        store.knowledge.some((k) => k.scope === "team");
-      if (hasLocalTeam) {
+      const remoteFiles = readTeamFilesFromRepo(cloneDir);
+      const remoteIds = new Set([
+        ...remoteFiles.rules.map((x) => x.id),
+        ...remoteFiles.fixes.map((x) => x.id),
+        ...remoteFiles.knowledge.map((x) => x.id),
+      ]);
+      const localTeam = [...store.rules, ...store.fixes, ...store.knowledge].filter((x) => x.scope === "team");
+      const needsPush =
+        (store.config.deletedTeamIds?.length || 0) > 0 ||
+        localTeam.some(
+          (x) =>
+            !remoteIds.has(x.id) ||
+            x.pendingSuccessDelta ||
+            x.pendingFailureDelta ||
+            x.pendingRecallDelta
+        );
+      if (needsPush) {
         const pushRes = await syncRepoPush(evoHome, { repoPath: cloneDir });
         pushed = Boolean(pushRes?.pushed);
       }

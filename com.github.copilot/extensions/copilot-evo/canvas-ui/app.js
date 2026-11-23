@@ -1530,6 +1530,26 @@ async function loadState(applyServerView = false) {
   render();
 }
 
+function setRepoModalBusy(busy, message = "") {
+  const loadingEl = el("repo-modal-loading");
+  const textEl = el("repo-modal-loading-text");
+  const input = el("repo-modal-input");
+  const controls = [
+    el("btn-repo-connect"),
+    el("btn-repo-create"),
+    el("btn-repo-disconnect"),
+    el("btn-repo-close"),
+  ].filter(Boolean);
+  controls.forEach((b) => {
+    b.disabled = Boolean(busy);
+  });
+  if (input) input.disabled = Boolean(busy);
+  if (loadingEl) {
+    loadingEl.classList.toggle("hidden", !busy);
+    if (textEl && message) textEl.textContent = message;
+  }
+}
+
 async function mutate(endpoint, body) {
   showBanner("");
   const buttons = [el("btn-pull")].filter(Boolean);
@@ -1541,7 +1561,14 @@ async function mutate(endpoint, body) {
   } else if (endpoint === "/api/sync/pull") {
     setLoadingOverlay(true, "Syncing team experiences...");
   } else if (endpoint === "/api/sync/configure") {
-    setLoadingOverlay(true, body?.createPrivate ? "Creating private team repo..." : body?.repo ? "Connecting team repo..." : "Disconnecting...");
+    setRepoModalBusy(
+      true,
+      body?.createPrivate
+        ? "Creating private team repo..."
+        : body?.repo
+          ? "Connecting team repo..."
+          : "Disconnecting..."
+    );
   } else if (endpoint === "/api/arena/validate") {
     setLoadingOverlay(true, "Running validation...");
   } else if (endpoint === "/api/assets/refine") {
@@ -1618,15 +1645,24 @@ async function mutate(endpoint, body) {
       showBanner(`Deleted ${data.deletedId || "asset"}.`);
     }
     sharingId = "";
+    setRepoModalBusy(false);
     setLoadingOverlay(false);
     await loadState(false);
   } catch (err) {
     sharingId = "";
+    setRepoModalBusy(false);
     setLoadingOverlay(false);
-    showBanner(err.message, true);
+    if (endpoint === "/api/sync/configure" && el("repo-modal-error")) {
+      const errEl = el("repo-modal-error");
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    } else {
+      showBanner(err.message, true);
+    }
     render();
   } finally {
     sharingId = "";
+    setRepoModalBusy(false);
     setLoadingOverlay(false);
     buttons.forEach((b) => (b.disabled = false));
   }
@@ -1736,6 +1772,7 @@ async function init() {
         metaEl.classList.add("hidden");
       }
     }
+    setRepoModalBusy(false);
     errEl?.classList.add("hidden");
     disBtn?.classList.toggle("hidden", !(currentRepo || state?.syncRepoPath));
     modal.classList.remove("hidden");
@@ -1748,9 +1785,14 @@ async function init() {
     errEl.classList.remove("hidden");
   };
   el("btn-team-repo")?.addEventListener("click", openRepoModal);
-  el("btn-repo-close")?.addEventListener("click", () => el("repo-modal")?.classList.add("hidden"));
+  el("btn-repo-close")?.addEventListener("click", () => {
+    if (el("btn-repo-close")?.disabled) return;
+    el("repo-modal")?.classList.add("hidden");
+  });
   el("repo-modal")?.addEventListener("click", (e) => {
-    if (e.target === el("repo-modal")) el("repo-modal")?.classList.add("hidden");
+    if (e.target === el("repo-modal") && !el("btn-repo-close")?.disabled) {
+      el("repo-modal")?.classList.add("hidden");
+    }
   });
   el("btn-repo-connect")?.addEventListener("click", () => {
     const val = el("repo-modal-input")?.value?.trim();
