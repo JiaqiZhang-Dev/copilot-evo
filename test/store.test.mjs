@@ -730,7 +730,11 @@ test("initStore defaults to local-only without bundling team experiences and con
     const disconnectRes = await configureSyncRepo(home, { repo: "" });
     assert.equal(disconnectRes.ok, true);
     assert.equal(disconnectRes.disconnected, true);
-    assert.equal(loadStore(home).config.syncRepo, "");
+    assert.equal(disconnectRes.removedTeamCount, 1);
+    const afterDisconnect = loadStore(home);
+    assert.equal(afterDisconnect.config.syncRepo, "");
+    assert.equal(afterDisconnect.config.lastAutoPullAt, "");
+    assert.equal(afterDisconnect.rules.some((r) => r.id === "exp-external-team-rule"), false);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(remoteBare, { recursive: true, force: true });

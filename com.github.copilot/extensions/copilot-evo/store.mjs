@@ -1289,8 +1289,49 @@ function readTeamFilesFromRepo(targetRepo) {
 export async function configureSyncRepo(evoHome, { repo = "", createPrivate = false, pushExisting = true } = {}) {
   const trimmed = String(repo || "").trim();
   if (!trimmed) {
-    saveConfig(evoHome, { syncRepo: "", syncRepoPath: "" });
-    return { ok: true, disconnected: true, syncRepo: "", syncRepoPath: "" };
+    const oldRepoPath = resolveSyncRepoPath(evoHome);
+    const remoteFiles = oldRepoPath ? readTeamFilesFromRepo(oldRepoPath) : null;
+    const remoteIds = remoteFiles
+      ? new Set([
+          ...remoteFiles.rules.map((x) => x.id),
+          ...remoteFiles.fixes.map((x) => x.id),
+          ...remoteFiles.knowledge.map((x) => x.id),
+        ])
+      : null;
+    let removedTeamCount = 0;
+    let demotedLocalCount = 0;
+    for (const fileName of ["rules.json", "fixes.json", "knowledge.json"]) {
+      const filePath = path.join(evoHome, fileName);
+      const list = readJsonSafe(filePath, []);
+      if (!Array.isArray(list) || !list.length) continue;
+      let changed = false;
+      const next = [];
+      for (const item of list) {
+        if (item?.scope !== "team") {
+          next.push(item);
+          continue;
+        }
+        changed = true;
+        if (remoteIds && !remoteIds.has(item.id)) {
+          const { pendingSuccessDelta, pendingFailureDelta, pendingRecallDelta, ...rest } = item;
+          next.push({ ...rest, scope: "local" });
+          demotedLocalCount++;
+        } else {
+          removedTeamCount++;
+        }
+      }
+      if (changed) writeJson(filePath, next);
+    }
+    saveConfig(evoHome, { syncRepo: "", syncRepoPath: "", lastAutoPullAt: "", deletedTeamIds: [] });
+    appendEvent(evoHome, { event: "disconnect_sync", removedTeamCount, demotedLocalCount });
+    return {
+      ok: true,
+      disconnected: true,
+      syncRepo: "",
+      syncRepoPath: "",
+      removedTeamCount,
+      demotedLocalCount,
+    };
   }
 
   const parsed = parseRepoTarget(trimmed);

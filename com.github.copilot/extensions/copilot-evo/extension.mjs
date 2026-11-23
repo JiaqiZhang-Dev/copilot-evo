@@ -38,7 +38,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.14.4";
+const EXTENSION_VERSION = "0.14.5";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
