@@ -13,7 +13,6 @@
 <p>
   <img src="https://img.shields.io/badge/Copilot-Plugin-0969da?style=flat-square" alt="Copilot Plugin" />
   <img src="https://img.shields.io/badge/Storage-Local--First-0550ae?style=flat-square" alt="Local-First" />
-  <img src="https://img.shields.io/badge/Sync-Zero--PR%20Private%20Git-218bff?style=flat-square" alt="Zero-PR Git Sync" />
   <img src="https://img.shields.io/badge/Node-%3E%3D18.0.0-1f2328?style=flat-square" alt="Node 18+" />
 </p>
 
