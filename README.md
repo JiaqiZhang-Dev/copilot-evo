@@ -19,7 +19,7 @@
 
 <p>
   <a href="#highlights">Highlights</a> ·
-  <a href="#install">Install</a> ·
+  <a href="#quick-start">Quick Start</a> ·
   <a href="#commands">Commands</a> ·
   <a href="#canvas">Canvas</a> ·
   <a href="#how-it-works">How It Works</a> ·
@@ -61,14 +61,22 @@
   </tr>
 </table>
 
-## Install
+## Quick Start
+
+### 1. Install the plugin
 
 ```bash
 copilot plugin install JiaqiZhang-Dev/copilot-evo
 copilot plugin update copilot-evo
 ```
 
-`copilot-evo` runs local-first out of the box with no shared team data bundled in the plugin repository. To share experiences across a team, click **Connect Team Repo** in `/evo-canvas` (or run `evo_sync_repo` with `action: "configure"`) to connect an existing private GitHub repo or create a dedicated private data repo such as `your-org/copilot-evo-data`. Teammates only need **Read**/**Write** access on that private data repo—never on the plugin repo itself. Details and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
+### 2. Start working in Copilot (local-first out of the box)
+
+`copilot-evo` runs automatically during your sessions—recalling relevant rules, capturing new `Knowledge`, `Rule`, and `Fix` experiences locally under `~/.copilot/evo/`, and letting you inspect everything anytime with `/evo-canvas`.
+
+### 3. Connect a private team repo (optional)
+
+Click **Connect Team Repo** in `/evo-canvas` (or run `evo_sync_repo` with `action: "configure"`) to create or connect a dedicated private repository such as `your-org/copilot-evo-data`. Teammates simply connect to that same private repo—they only need **Read**/**Write** access on the data repo, never on the plugin repo itself. Details and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
 
 ## Commands
 
