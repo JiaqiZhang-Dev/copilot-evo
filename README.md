@@ -75,7 +75,7 @@ copilot plugin update copilot-evo
 
 ### 3. Connect a private team repo (optional)
 
-Click **Connect Team Repo** in `/evo-canvas` (or run `evo_sync_repo` with `action: "configure"`) to create or connect a dedicated private repository such as `your-org/copilot-evo-data`. Teammates simply connect to that same private repo—they only need **Read**/**Write** access on the data repo, never on the plugin repo itself. Details and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
+Click **Connect Team Repo** in `/evo-canvas` (or run `evo_sync_repo` with `action: "configure"`) to create or connect a private GitHub repository such as `https://github.com/your-org/copilot-evo-data`. Teammates with **Read**/**Write** access on that repository can connect the same URL to pull and share experiences. Details and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
 
 ## Commands
 

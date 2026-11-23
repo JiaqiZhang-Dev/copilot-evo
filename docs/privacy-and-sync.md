@@ -32,10 +32,10 @@ Every payload written to `events.jsonl`, promoted to `team`, exported to a bundl
 
 ## Team Sync & Access Control
 
-The plugin repository (`copilot-evo`) contains only plugin code and generic starter rules—never private team experiences. Each team stores its shared `assets/experiences/team-knowledge.json`, `assets/experiences/team-rules.json`, and `assets/experiences/team-fixes.json` in a dedicated private Git repository, synced directly on `main` (no pull-request overhead) using `git pull --rebase --autostash` and numeric delta merging.
+Each team stores its shared `assets/experiences/team-knowledge.json`, `assets/experiences/team-rules.json`, and `assets/experiences/team-fixes.json` in its own private Git repository, synced directly on `main` (no pull-request overhead) using `git pull --rebase --autostash` and numeric delta merging.
 
 ### Repository Access Options
 
-1. **One-Click Canvas Setup (Recommended)**: Open `/evo-canvas`, click **Connect Team Repo**, and either connect an existing private repo (`owner/copilot-evo-data`) or click **Create Private Repo** to provision and initialize one automatically via `gh`.
-2. **Agent / Environment Override**: Call `evo_sync_repo` with `action: "configure"` and `repo: "owner/copilot-evo-data"` (add `createPrivate: true` to create a new private repo), or set `COPILOT_EVO_SYNC_REPO` to a local clone path.
+1. **One-Click Canvas Setup (Recommended)**: Open `/evo-canvas`, click **Connect Team Repo**, and either connect an existing private repo (`https://github.com/owner/copilot-evo-data`) or click **Create Private Repo** to provision and initialize one automatically via `gh`.
+2. **Agent / Environment Override**: Call `evo_sync_repo` with `action: "configure"` and `repo: "https://github.com/owner/copilot-evo-data"` (add `createPrivate: true` to create a new private repo), or set `COPILOT_EVO_SYNC_REPO` to a local clone path.
 3. **Offline Bundle Exchange**: Use `evo_sync_repo` with `action: "export"` and `action: "import"` to exchange sanitized `.evopack.json` bundles without Git remote access.
