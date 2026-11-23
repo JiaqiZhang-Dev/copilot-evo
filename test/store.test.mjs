@@ -535,6 +535,7 @@ test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
       { evoHome: home, bundledDir }
     );
     assert.equal(updated.asset.id, longId);
+    assert.equal(updated.asset.successCount, 1);
     assert.equal(loadStore(home).rules.filter((r) => r.id === longId).length, 1);
 
     solidifyAsset(
@@ -622,7 +623,7 @@ test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
       { evoHome: home, bundledDir }
     );
     assert.equal(movedToRule.ok, true);
-    assert.equal(movedToRule.asset.successCount, 2);
+    assert.equal(movedToRule.asset.successCount, 1);
     assert.ok(!loadStore(home).knowledge.some((k) => k.id === "exp-knowledge-reclassify"));
     assert.ok(loadStore(home).rules.some((r) => r.id === "exp-knowledge-reclassify"));
   } finally {

@@ -934,8 +934,10 @@ export function solidifyAsset(input, options = {}) {
   }
 
   if (prevExisting) {
-    cleanAsset.successCount = (prevExisting.successCount || 0) + 1;
-    cleanAsset.pendingSuccessDelta = (prevExisting.pendingSuccessDelta || 0) + 1;
+    cleanAsset.successCount = prevExisting.successCount ?? 1;
+    if (prevExisting.pendingSuccessDelta) cleanAsset.pendingSuccessDelta = prevExisting.pendingSuccessDelta;
+    if (prevExisting.recallCount) cleanAsset.recallCount = prevExisting.recallCount;
+    if (prevExisting.pendingRecallDelta) cleanAsset.pendingRecallDelta = prevExisting.pendingRecallDelta;
     if (prevExisting.failureCount) cleanAsset.failureCount = prevExisting.failureCount;
     if (prevExisting.pendingFailureDelta) cleanAsset.pendingFailureDelta = prevExisting.pendingFailureDelta;
     if (prevExisting.pinned) cleanAsset.pinned = true;
