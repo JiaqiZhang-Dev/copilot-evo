@@ -17,8 +17,8 @@
 </p>
 
 <p>
-  <a href="#highlights">Highlights</a> ·
   <a href="#quick-start">Quick Start</a> ·
+  <a href="#highlights">Highlights</a> ·
   <a href="#commands">Commands</a> ·
   <a href="#canvas">Canvas</a> ·
   <a href="#how-it-works">How It Works</a> ·
@@ -46,6 +46,30 @@
   </tr>
 </table>
 
+## Quick Start
+
+### 1. Install the plugin
+
+```bash
+copilot plugin install JiaqiZhang-Dev/copilot-evo
+```
+
+### 2. Open Copilot Evo
+
+Copilot automatically recalls relevant experiences and saves new `Knowledge`, `Rule`, and `Fix` entries locally under `~/.copilot/evo/`. Run `/evo-canvas` in Copilot App (or `/evo-list` in Copilot CLI), or open the dashboard from **`+` → `Canvas` → `Copilot Evo`**.
+
+<p align="center">
+  <img src="docs/images/quickstart-step2.png" width="68%" alt="Open Copilot Evo from the + Canvas menu" />
+</p>
+
+### 3. Connect a private team repo
+
+Click **Connect Team Repo** in the top-right corner, enter a private GitHub repository URL such as `https://github.com/your-org/copilot-evo-data`, and choose **Connect Existing** or **Create Private Repo**. Teammates with access can connect the same URL to pull and share sanitized experiences (see [Privacy &amp; Sync](docs/privacy-and-sync.md) for offline `.evopack.json` bundles).
+
+<p align="center">
+  <img src="docs/images/quickstart-step3.png" width="68%" alt="Connect or create a private team repository in Copilot Evo" />
+</p>
+
 ## Highlights
 
 <table>
@@ -70,30 +94,6 @@
     </td>
   </tr>
 </table>
-
-## Quick Start
-
-### 1. Install the plugin
-
-```bash
-copilot plugin install JiaqiZhang-Dev/copilot-evo
-```
-
-### 2. Open Copilot Evo
-
-Copilot automatically recalls relevant experiences and saves new `Knowledge`, `Rule`, and `Fix` entries locally under `~/.copilot/evo/`. Run `/evo-canvas` in Copilot App (or `/evo-list` in Copilot CLI), or open the dashboard from **`+` → `Canvas` → `Copilot Evo`**.
-
-<p align="center">
-  <img src="docs/images/quickstart-step2.png" width="68%" alt="Open Copilot Evo from the + Canvas menu" />
-</p>
-
-### 3. Connect a private team repo
-
-Click **Connect Team Repo** in the top-right corner, enter a private GitHub repository URL such as `https://github.com/your-org/copilot-evo-data`, and choose **Connect Existing** or **Create Private Repo**. Teammates with access can connect the same URL to pull and share sanitized experiences (see [Privacy &amp; Sync](docs/privacy-and-sync.md) for offline `.evopack.json` bundles).
-
-<p align="center">
-  <img src="docs/images/quickstart-step3.png" width="68%" alt="Connect or create a private team repository in Copilot Evo" />
-</p>
 
 ## Commands
 
