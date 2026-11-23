@@ -1236,6 +1236,32 @@ body {
   color: var(--muted);
 }
 
+.repo-modal-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-size: 13px;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.repo-modal-input:focus {
+  outline: none;
+  background: var(--bg);
+  border-color: var(--accent);
+}
+
+.repo-modal-error {
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--danger-muted);
+  color: var(--danger);
+}
+
 .repo-modal-actions {
   display: flex;
   gap: 8px;

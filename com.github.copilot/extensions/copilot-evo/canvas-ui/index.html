@@ -58,7 +58,8 @@
             <button id="btn-repo-close" class="btn btn-close" type="button" title="Close">✕</button>
           </div>
           <p class="repo-modal-desc">Connect a dedicated private GitHub repository to share sanitized experiences with your team without touching the plugin codebase.</p>
-          <input id="repo-modal-input" class="search" type="text" placeholder="owner/copilot-evo-data (e.g. my-org/evo-data)" />
+          <input id="repo-modal-input" class="repo-modal-input" type="text" placeholder="owner/copilot-evo-data (e.g. my-org/evo-data)" />
+          <div id="repo-modal-error" class="repo-modal-error hidden"></div>
           <div class="repo-modal-actions">
             <button id="btn-repo-connect" class="btn btn-primary" type="button">Connect Existing</button>
             <button id="btn-repo-create" class="btn" type="button">Create Private Repo</button>

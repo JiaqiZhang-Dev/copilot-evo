@@ -1558,8 +1558,16 @@ async function mutate(endpoint, body) {
     });
     const data = await res.json();
     if (!data.ok) {
-      showBanner(data.error || "Operation failed.", true);
+      const msg = data.error || "Operation failed.";
+      if (endpoint === "/api/sync/configure" && el("repo-modal-error")) {
+        const errEl = el("repo-modal-error");
+        errEl.textContent = msg;
+        errEl.classList.remove("hidden");
+      } else {
+        showBanner(msg, true);
+      }
     } else if (endpoint === "/api/sync/configure") {
+      el("repo-modal-error")?.classList.add("hidden");
       el("repo-modal")?.classList.add("hidden");
       if (data.disconnected) {
         showToast("Disconnected team repo", "Switched back to local-only mode.");
@@ -1700,11 +1708,19 @@ async function init() {
     const modal = el("repo-modal");
     const input = el("repo-modal-input");
     const disBtn = el("btn-repo-disconnect");
+    const errEl = el("repo-modal-error");
     if (!modal) return;
     if (input) input.value = state?.config?.syncRepo || "";
+    errEl?.classList.add("hidden");
     disBtn?.classList.toggle("hidden", !(state?.config?.syncRepo || state?.syncRepoPath));
     modal.classList.remove("hidden");
     input?.focus();
+  };
+  const showRepoError = (msg) => {
+    const errEl = el("repo-modal-error");
+    if (!errEl) return showBanner(msg, true);
+    errEl.textContent = msg;
+    errEl.classList.remove("hidden");
   };
   el("btn-team-repo")?.addEventListener("click", openRepoModal);
   el("btn-repo-close")?.addEventListener("click", () => el("repo-modal")?.classList.add("hidden"));
@@ -1714,17 +1730,19 @@ async function init() {
   el("btn-repo-connect")?.addEventListener("click", () => {
     const val = el("repo-modal-input")?.value?.trim();
     if (!val) {
-      showBanner("Enter a repository like owner/copilot-evo-data.", true);
+      showRepoError("Enter a repository like owner/copilot-evo-data.");
       return;
     }
+    el("repo-modal-error")?.classList.add("hidden");
     mutate("/api/sync/configure", { repo: val, createPrivate: false });
   });
   el("btn-repo-create")?.addEventListener("click", () => {
     const val = el("repo-modal-input")?.value?.trim();
     if (!val) {
-      showBanner("Enter a new private repository name like owner/copilot-evo-data.", true);
+      showRepoError("Enter a new private repository name like owner/copilot-evo-data.");
       return;
     }
+    el("repo-modal-error")?.classList.add("hidden");
     mutate("/api/sync/configure", { repo: val, createPrivate: true });
   });
   el("btn-repo-disconnect")?.addEventListener("click", () => {
