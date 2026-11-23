@@ -8,7 +8,7 @@
 </p>
 
 <h3>Solve once. Evolve everywhere.</h3>
-<p>Self-evolving Experience Engine (<code>EXP</code>: Knowledge, Rules &amp; Fixes) for GitHub Copilot App &amp; CLI</p>
+<p>Self-evolving Experience Engine for GitHub Copilot App &amp; CLI</p>
 
 <p>
   <img src="https://img.shields.io/badge/Copilot-Plugin-0969da?style=flat-square" alt="Copilot Plugin" />
