@@ -5,6 +5,7 @@ import { createEvoCanvasServer } from "./canvas-server.mjs";
 import { sanitizePayload } from "./sanitize.mjs";
 import {
   appendEvent,
+  configureSyncRepo,
   countEvents,
   detectRepoSlug,
   detectSourceLabel,
@@ -37,7 +38,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.13.1";
+const EXTENSION_VERSION = "0.14.0";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -740,13 +741,14 @@ const session = await joinSession({
     },
     {
       name: "evo_sync_repo",
-      description: "Pull or push sanitized team Experiences (Knowledge, Rules, and Fixes) directly to the private Git repo (no PR), or export/import offline .evopack.json bundles. Auto-clones the configured repo if not present locally.",
+      description: "Configure, pull, or push sanitized team Experiences (Knowledge, Rules, and Fixes) directly to a private Git repo (no PR), or export/import offline .evopack.json bundles.",
       parameters: {
         type: "object",
         properties: {
-          action: { type: "string", enum: ["pull", "push", "export", "import"] },
-          repoPath: { type: "string", description: "Optional local clone path of the private copilot-evo repo" },
-          repo: { type: "string", description: "Optional GitHub owner/repo or git URL when cloning for the first time" },
+          action: { type: "string", enum: ["configure", "pull", "push", "export", "import"] },
+          repoPath: { type: "string", description: "Optional local clone path of the private team experience repo" },
+          repo: { type: "string", description: "GitHub owner/repo (e.g. my-org/copilot-evo-data) or Git URL; empty string disconnects when action is 'configure'" },
+          createPrivate: { type: "boolean", description: "When action is 'configure', create a new private GitHub repo if it does not exist yet" },
           filePath: { type: "string", description: "Bundle path for export/import actions" },
           commitMessage: { type: "string", description: "Optional commit message for push" },
         },
@@ -754,7 +756,12 @@ const session = await joinSession({
       },
       handler: async (args) => {
         let res;
-        if (args.action === "pull") {
+        if (args.action === "configure") {
+          res = await configureSyncRepo(evoHome, {
+            repo: args.repo ?? "",
+            createPrivate: Boolean(args.createPrivate),
+          });
+        } else if (args.action === "pull") {
           res = await syncRepoPull(evoHome, { repoPath: args.repoPath, repo: args.repo });
         } else if (args.action === "push") {
           res = await syncRepoPush(evoHome, {

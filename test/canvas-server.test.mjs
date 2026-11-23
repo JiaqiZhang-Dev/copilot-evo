@@ -42,6 +42,8 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     const html = await htmlRes.text();
     assert.match(html, /Copilot Evo/);
     assert.match(html, /Leaderboard/);
+    assert.match(html, /btn-team-repo/);
+    assert.match(html, /repo-modal/);
     assert.match(html, /data-kind="Knowledge"/);
     assert.match(html, /chip-repo-only/);
     assert.match(html, /loading-overlay/);
@@ -124,6 +126,31 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     assert.equal(refineRes.status, 200);
     assert.equal(refineCalls.length, 1);
     assert.equal(refineCalls[0].feedback, "Keep scope strict");
+
+    const invalidCfgRes = await fetch(`${baseUrl}/api/sync/configure`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Evo-Token": canvasToken,
+      },
+      body: JSON.stringify({ repo: "not a valid repo!!!" }),
+    });
+    assert.equal(invalidCfgRes.status, 400);
+    const invalidCfgBody = await invalidCfgRes.json();
+    assert.equal(invalidCfgBody.ok, false);
+
+    const disconnectCfgRes = await fetch(`${baseUrl}/api/sync/configure`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Evo-Token": canvasToken,
+      },
+      body: JSON.stringify({ repo: "" }),
+    });
+    assert.equal(disconnectCfgRes.status, 200);
+    const disconnectCfgBody = await disconnectCfgRes.json();
+    assert.equal(disconnectCfgBody.ok, true);
+    assert.equal(disconnectCfgBody.disconnected, true);
   } finally {
     await server.closeInstance({ instanceId: "test-panel-1" });
     fs.rmSync(evoHome, { recursive: true, force: true });

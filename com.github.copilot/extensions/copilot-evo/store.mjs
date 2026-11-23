@@ -93,13 +93,6 @@ function mergeById(existing, incoming, options = {}) {
   return { merged, added, updated };
 }
 
-function getDefaultSyncRepoSlug() {
-  const pkg = readJsonSafe(path.join(PLUGIN_ROOT, "plugin.json"), null);
-  const owner = pkg?.author?.name || "JiaqiZhang-Dev";
-  const name = pkg?.name || "copilot-evo";
-  return `${owner}/${name}`;
-}
-
 export function initStore(options = {}) {
   const evoHome = getEvoHome(options.evoHome);
   const bundledDir = options.bundledDir || BUNDLED_EXP_DIR;
@@ -112,23 +105,19 @@ export function initStore(options = {}) {
 
   const starterRules = readJsonSafe(path.join(bundledDir, "starter-rules.json"), []);
   const starterKnowledge = readJsonSafe(path.join(bundledDir, "starter-knowledge.json"), []);
-  const teamRules = readJsonSafe(path.join(bundledDir, "team-rules.json"), []);
-  const teamFixes = readJsonSafe(path.join(bundledDir, "team-fixes.json"), []);
-  const teamKnowledge = readJsonSafe(path.join(bundledDir, "team-knowledge.json"), []);
 
   const currentRules = readJsonSafe(rulesPath, []);
   const currentFixes = readJsonSafe(fixesPath, []);
   const currentKnowledge = readJsonSafe(knowledgePath, []);
 
-  const { merged: mergedRules } = mergeById(currentRules, [...starterRules, ...teamRules]);
-  const { merged: mergedFixes } = mergeById(currentFixes, teamFixes);
-  const { merged: mergedKnowledge } = mergeById(currentKnowledge, [...starterKnowledge, ...teamKnowledge]);
+  const { merged: mergedRules } = mergeById(currentRules, starterRules);
+  const { merged: mergedKnowledge } = mergeById(currentKnowledge, starterKnowledge);
 
   if (!fs.existsSync(rulesPath) || mergedRules.length !== currentRules.length) {
     writeJson(rulesPath, mergedRules);
   }
-  if (!fs.existsSync(fixesPath) || mergedFixes.length !== currentFixes.length) {
-    writeJson(fixesPath, mergedFixes);
+  if (!fs.existsSync(fixesPath)) {
+    writeJson(fixesPath, currentFixes);
   }
   if (!fs.existsSync(knowledgePath) || mergedKnowledge.length !== currentKnowledge.length) {
     writeJson(knowledgePath, mergedKnowledge);
@@ -136,7 +125,7 @@ export function initStore(options = {}) {
   if (!fs.existsSync(configPath)) {
     writeJson(configPath, {
       syncRepoPath: "",
-      syncRepo: getDefaultSyncRepoSlug(),
+      syncRepo: "",
       strictGuardrails: false,
       autoInjectLimit: 3,
     });
@@ -151,7 +140,7 @@ export function loadStore(evoHome) {
     knowledge: readJsonSafe(path.join(evoHome, "knowledge.json"), []),
     config: readJsonSafe(path.join(evoHome, "config.json"), {
       syncRepoPath: "",
-      syncRepo: getDefaultSyncRepoSlug(),
+      syncRepo: "",
       strictGuardrails: false,
       autoInjectLimit: 3,
     }),
@@ -1201,14 +1190,51 @@ function runGit(repoPath, args) {
   return runCmd("git", ["-C", repoPath, ...args]);
 }
 
+function slugToDirName(slugOrUrl) {
+  return String(slugOrUrl || "team-repo")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "--")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "team-repo";
+}
+
+function isRemoteGitUrl(str) {
+  return /^(?:https?:\/\/|git@|file:\/\/)/i.test(String(str || "").trim());
+}
+
+function parseRepoTarget(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return null;
+  if (isRemoteGitUrl(trimmed) || fs.existsSync(trimmed)) {
+    const slug = isRemoteGitUrl(trimmed) ? normalizeRepoSlug(trimmed) : "";
+    return { target: trimmed, cloneUrl: trimmed, slug: slug !== "*" ? slug : "", isSlug: false };
+  }
+  const slug = normalizeRepoSlug(trimmed);
+  if (!slug || slug === "*") return null;
+  return { target: slug, cloneUrl: `https://github.com/${slug}.git`, slug, isSlug: true };
+}
+
+async function hasGitHead(repoPath) {
+  try {
+    await runGit(repoPath, ["rev-parse", "--verify", "HEAD"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function resolveSyncRepoPath(evoHome, explicitPath) {
   const config = loadStore(evoHome).config;
+  const repoCloneDir = config.syncRepo
+    ? path.join(evoHome, "sync-repos", slugToDirName(config.syncRepo))
+    : "";
+  const legacyDir = config.syncRepo ? path.join(evoHome, "sync-repo") : "";
   const candidates = [
     explicitPath,
     config.syncRepoPath,
     process.env.COPILOT_EVO_SYNC_REPO,
-    path.join(evoHome, "sync-repo"),
-    path.join(os.homedir(), "copilot-evo"),
+    repoCloneDir,
+    legacyDir,
   ].filter(Boolean);
   for (const dir of candidates) {
     if (fs.existsSync(path.join(dir, ".git"))) return dir;
@@ -1216,25 +1242,38 @@ export function resolveSyncRepoPath(evoHome, explicitPath) {
   return null;
 }
 
-// Clones the configured private plugin repo if a teammate has not cloned it locally yet.
+// Clones the configured private team data repo if not cloned locally yet.
 async function ensureSyncRepo(evoHome, { repoPath, repo } = {}) {
-  const existing = resolveSyncRepoPath(evoHome, repoPath);
-  if (existing) return existing;
+  if (!repo) {
+    const existing = resolveSyncRepoPath(evoHome, repoPath);
+    if (existing) return existing;
+  }
 
   const config = loadStore(evoHome).config;
-  const targetSlug = repo || config.syncRepo || getDefaultSyncRepoSlug();
-  const cloneDir = repoPath || path.join(evoHome, "sync-repo");
-  fs.mkdirSync(path.dirname(cloneDir), { recursive: true });
-
-  const cloneUrl = /^(?:https?:\/\/|git@|file:\/\/)/.test(targetSlug)
-    ? targetSlug
-    : `https://github.com/${targetSlug}.git`;
-  try {
-    await runCmd("gh", ["repo", "clone", targetSlug, cloneDir]);
-  } catch {
-    await runCmd("git", ["clone", cloneUrl, cloneDir]);
+  const rawTarget = repo || config.syncRepo;
+  const parsed = parseRepoTarget(rawTarget);
+  if (!parsed) {
+    throw new Error(
+      "No team sync repository configured. Click Connect Team Repo in Canvas or run evo_sync_repo({ action: 'configure', repo: 'owner/repo' })."
+    );
   }
-  saveConfig(evoHome, { syncRepoPath: cloneDir, syncRepo: targetSlug });
+  const cloneDir = repoPath || path.join(evoHome, "sync-repos", slugToDirName(parsed.target));
+  if (fs.existsSync(path.join(cloneDir, ".git"))) {
+    saveConfig(evoHome, { syncRepoPath: cloneDir, syncRepo: parsed.target });
+    return cloneDir;
+  }
+
+  fs.mkdirSync(path.dirname(cloneDir), { recursive: true });
+  if (parsed.isSlug) {
+    try {
+      await runCmd("gh", ["repo", "clone", parsed.target, cloneDir]);
+    } catch {
+      await runCmd("git", ["clone", parsed.cloneUrl, cloneDir]);
+    }
+  } else {
+    await runCmd("git", ["clone", parsed.cloneUrl, cloneDir]);
+  }
+  saveConfig(evoHome, { syncRepoPath: cloneDir, syncRepo: parsed.target });
   return cloneDir;
 }
 
@@ -1247,9 +1286,98 @@ function readTeamFilesFromRepo(targetRepo) {
   };
 }
 
+export async function configureSyncRepo(evoHome, { repo = "", createPrivate = false, pushExisting = true } = {}) {
+  const trimmed = String(repo || "").trim();
+  if (!trimmed) {
+    saveConfig(evoHome, { syncRepo: "", syncRepoPath: "" });
+    return { ok: true, disconnected: true, syncRepo: "", syncRepoPath: "" };
+  }
+
+  const parsed = parseRepoTarget(trimmed);
+  if (!parsed) {
+    return {
+      ok: false,
+      error: "Invalid repository. Enter owner/repo (e.g. my-org/team-evo-data) or a Git clone URL.",
+    };
+  }
+
+  if (createPrivate) {
+    if (!parsed.isSlug) {
+      return { ok: false, error: "Creating a private GitHub repo requires an owner/repo slug." };
+    }
+    let exists = false;
+    try {
+      await runCmd("gh", ["repo", "view", parsed.slug, "--json", "name"]);
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    if (!exists) {
+      await runCmd("gh", [
+        "repo",
+        "create",
+        parsed.slug,
+        "--private",
+        "--description",
+        "Private copilot-evo team experiences store",
+      ]);
+    }
+  }
+
+  const cloneDir = path.join(evoHome, "sync-repos", slugToDirName(parsed.target));
+  saveConfig(evoHome, { syncRepo: parsed.target, syncRepoPath: cloneDir });
+  await ensureSyncRepo(evoHome, { repo: parsed.target, repoPath: cloneDir });
+
+  const hasCommits = await hasGitHead(cloneDir);
+  if (!hasCommits) {
+    const expDir = path.join(cloneDir, "assets", "experiences");
+    writeJson(path.join(expDir, "team-knowledge.json"), []);
+    writeJson(path.join(expDir, "team-rules.json"), []);
+    writeJson(path.join(expDir, "team-fixes.json"), []);
+    const readmePath = path.join(cloneDir, "README.md");
+    if (!fs.existsSync(readmePath)) {
+      fs.writeFileSync(
+        readmePath,
+        `# ${parsed.slug || "copilot-evo-data"}\n\nPrivate experience store for [copilot-evo](https://github.com/JiaqiZhang-Dev/copilot-evo).\n`,
+        "utf8"
+      );
+    }
+    await runGit(cloneDir, ["add", "."]);
+    await runGit(cloneDir, ["commit", "-m", "chore(evo): initialize team experience store"]);
+    await runGit(cloneDir, ["push", "-u", "origin", "HEAD"]);
+  }
+
+  const pullRes = await syncRepoPull(evoHome, { repoPath: cloneDir });
+  let pushed = false;
+  if (pushExisting) {
+    const store = loadStore(evoHome);
+    const hasLocalTeam =
+      store.rules.some((r) => r.scope === "team") ||
+      store.fixes.some((f) => f.scope === "team") ||
+      store.knowledge.some((k) => k.scope === "team");
+    if (hasLocalTeam) {
+      const pushRes = await syncRepoPush(evoHome, { repoPath: cloneDir });
+      pushed = Boolean(pushRes?.pushed);
+    }
+  }
+
+  appendEvent(evoHome, { event: "configure_sync", repo: parsed.target, created: Boolean(createPrivate) });
+  return {
+    ok: true,
+    syncRepo: parsed.target,
+    syncRepoPath: cloneDir,
+    imported: pullRes.imported || 0,
+    updated: pullRes.updated || 0,
+    pushed,
+  };
+}
+
 export async function syncRepoPull(evoHome, { repoPath, repo } = {}) {
   const targetRepo = await ensureSyncRepo(evoHome, { repoPath, repo });
-  await runGit(targetRepo, ["pull", "--ff-only"]);
+  const hasCommits = await hasGitHead(targetRepo);
+  if (hasCommits) {
+    await runGit(targetRepo, ["pull", "--ff-only"]);
+  }
   const { rules, fixes, knowledge } = readTeamFilesFromRepo(targetRepo);
   const res = importBundle(evoHome, { bundleData: { rules, fixes, knowledge }, respectDeletedTeamIds: true });
   saveConfig(evoHome, { lastAutoPullAt: new Date().toISOString() });
@@ -1290,7 +1418,10 @@ function mergeTeamAssetsForPush(remoteList, localTeamList) {
 
 export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = {}) {
   const targetRepo = await ensureSyncRepo(evoHome, { repoPath, repo });
-  await runGit(targetRepo, ["pull", "--rebase", "--autostash"]);
+  const hasCommits = await hasGitHead(targetRepo);
+  if (hasCommits) {
+    await runGit(targetRepo, ["pull", "--rebase", "--autostash"]);
+  }
 
   const store = loadStore(evoHome);
   const localTeamRules = store.rules.filter((r) => r.scope === "team");
@@ -1385,7 +1516,7 @@ export async function syncRepoPush(evoHome, { repoPath, repo, commitMessage } = 
 
   await runGit(targetRepo, ["add", ...syncFiles]);
   await runGit(targetRepo, ["commit", "-m", commitMessage || "chore(evo): sync sanitized team experiences"]);
-  await runGit(targetRepo, ["push"]);
+  await runGit(targetRepo, hasCommits ? ["push"] : ["push", "-u", "origin", "HEAD"]);
   syncBackLocalDeltas(path.join(evoHome, "rules.json"), mergedRules);
   syncBackLocalDeltas(path.join(evoHome, "fixes.json"), mergedFixes);
   syncBackLocalDeltas(path.join(evoHome, "knowledge.json"), mergedKnowledge);

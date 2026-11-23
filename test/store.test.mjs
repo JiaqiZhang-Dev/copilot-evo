@@ -8,6 +8,7 @@ import {
   appendEvent,
   computeGdiBreakdown,
   computeGdiScore,
+  configureSyncRepo,
   detectAuthorName,
   detectSourceLabel,
   exportBundle,
@@ -677,5 +678,58 @@ test("runAssetValidation executes whitelisted command and updates outcome", asyn
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });
+  }
+});
+
+test("initStore defaults to local-only without bundling team experiences and configureSyncRepo connects/disconnects", async () => {
+  const home = makeTempDir();
+  const remoteBare = makeTempDir();
+  const seedClone = makeTempDir();
+  try {
+    execFileSync("git", ["init", "--bare", "-b", "main", remoteBare], { stdio: "ignore" });
+    execFileSync("git", ["clone", remoteBare, seedClone], { stdio: "ignore" });
+    execFileSync("git", ["-C", seedClone, "config", "user.name", "Test User"], { stdio: "ignore" });
+    execFileSync("git", ["-C", seedClone, "config", "user.email", "test@example.com"], { stdio: "ignore" });
+    fs.mkdirSync(path.join(seedClone, "assets", "experiences"), { recursive: true });
+    fs.writeFileSync(
+      path.join(seedClone, "assets", "experiences", "team-rules.json"),
+      JSON.stringify([
+        {
+          id: "exp-external-team-rule",
+          kind: "Rule",
+          title: "External team rule",
+          summary: "Pulled only from configured private team repo.",
+          signals: ["deploy"],
+          scope: "team",
+          successCount: 2,
+          failureCount: 0,
+        },
+      ], null, 2)
+    );
+    execFileSync("git", ["-C", seedClone, "add", "."], { stdio: "ignore" });
+    execFileSync("git", ["-C", seedClone, "commit", "-m", "Seed team repo"], { stdio: "ignore" });
+    execFileSync("git", ["-C", seedClone, "push", "-u", "origin", "main"], { stdio: "ignore" });
+
+    initStore({ evoHome: home });
+    const initialStore = loadStore(home);
+    assert.equal(initialStore.config.syncRepo, "");
+    assert.equal(initialStore.rules.filter((r) => r.scope === "team").length, 0);
+
+    const connectRes = await configureSyncRepo(home, { repo: remoteBare });
+    assert.equal(connectRes.ok, true);
+    assert.equal(connectRes.imported, 1);
+
+    const syncedStore = loadStore(home);
+    assert.ok(syncedStore.rules.some((r) => r.id === "exp-external-team-rule"));
+    assert.equal(syncedStore.config.syncRepo, remoteBare);
+
+    const disconnectRes = await configureSyncRepo(home, { repo: "" });
+    assert.equal(disconnectRes.ok, true);
+    assert.equal(disconnectRes.disconnected, true);
+    assert.equal(loadStore(home).config.syncRepo, "");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(remoteBare, { recursive: true, force: true });
+    fs.rmSync(seedClone, { recursive: true, force: true });
   }
 });

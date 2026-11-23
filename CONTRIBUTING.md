@@ -15,7 +15,7 @@ No external runtime dependencies are required outside Node.js (`>= 18.0.0`) and 
 ## Project Structure
 
 - `plugin.json` — Plugin manifest and version metadata.
-- `assets/experiences/` — Bundled `starter-rules.json` plus team-synced `team-knowledge.json`, `team-rules.json`, and `team-fixes.json`.
+- `assets/experiences/` — Bundled generic `starter-rules.json` (team experiences live in each team's own private Git repository).
 - `skills/copilot-evo/SKILL.md` — Agent skill instructions for proactive recall, atomic solidification, and sharing confirmation.
 - `com.github.copilot/commands/` — Slash commands (`/evo-list`, `/evo-canvas`, `/evo-status`).
 - `com.github.copilot/extensions/copilot-evo/` — Core store (`store.mjs`), sanitizer (`sanitize.mjs`), Copilot SDK hooks/tools (`extension.mjs`), loopback Canvas server (`canvas-server.mjs`), and browser UI (`canvas-ui/`).

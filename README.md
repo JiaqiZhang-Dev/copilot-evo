@@ -68,7 +68,7 @@ copilot plugin install JiaqiZhang-Dev/copilot-evo
 copilot plugin update copilot-evo
 ```
 
-Teammates need **Read** access on the shared sync repo to pull updates and **Write** access to share experiences or sync scores. Custom repo setup (`COPILOT_EVO_SYNC_REPO`) and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
+`copilot-evo` runs local-first out of the box with no shared team data bundled in the plugin repository. To share experiences across a team, click **Connect Team Repo** in `/evo-canvas` (or run `evo_sync_repo` with `action: "configure"`) to connect an existing private GitHub repo or create a dedicated private data repo such as `your-org/copilot-evo-data`. Teammates only need **Read**/**Write** access on that private data repo—never on the plugin repo itself. Details and offline `.evopack.json` bundles are covered in [Privacy &amp; Sync](docs/privacy-and-sync.md).
 
 ## Commands
 

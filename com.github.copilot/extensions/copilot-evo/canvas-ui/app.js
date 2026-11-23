@@ -1179,12 +1179,33 @@ function render() {
     ? ` · synced ${formatLocalTime(state.config.lastAutoPullAt).slice(11, 16)}`
     : "";
   const tel = el("telemetry-line");
+  const syncRepoSlug = state.config?.syncRepo || "";
   if (tel) {
     tel.textContent = `${knowledge.length} knowledge · ${rules.length} rules · ${fixes.length} fixes · ${state.counts?.teamAssets || 0} shared · ${totalReuses} hits${syncTime}`;
     tel.title = state.syncRepoPath
-      ? `Sync repo: ${state.syncRepoPath}`
-      : `Auto-clone repo: ${state.config?.syncRepo || "JiaqiZhang-Dev/copilot-evo"}`;
+      ? `Team data repo: ${syncRepoSlug || state.syncRepoPath} (${state.syncRepoPath})`
+      : syncRepoSlug
+        ? `Team data repo: ${syncRepoSlug}`
+        : "Local-only mode — click Connect Team Repo to share with a team";
   }
+
+  const repoBtn = el("btn-team-repo");
+  const repoLabelEl = el("team-repo-label");
+  const pullBtn = el("btn-pull");
+  const hasSyncConfigured = Boolean(syncRepoSlug || state.syncRepoPath);
+  if (repoBtn && repoLabelEl) {
+    repoBtn.classList.toggle("btn-repo-unset", !hasSyncConfigured);
+    const shortRepo = syncRepoSlug
+      ? syncRepoSlug.split("/").pop()
+      : state.syncRepoPath
+        ? state.syncRepoPath.split(/[\\/]/).pop()
+        : "Connect Team Repo";
+    repoLabelEl.textContent = shortRepo;
+    repoBtn.title = hasSyncConfigured
+      ? `Team repo: ${syncRepoSlug || state.syncRepoPath} (click to configure)`
+      : "Connect or create a private Git repository for team sharing";
+  }
+  pullBtn?.classList.toggle("hidden", !hasSyncConfigured);
 
   const contributorGroups = buildContributorStats(getAllAssets(), contribMode);
   const localCount = allAssets.filter((a) => !a.scope || a.scope === "local").length;
@@ -1519,6 +1540,8 @@ async function mutate(endpoint, body) {
     render();
   } else if (endpoint === "/api/sync/pull") {
     setLoadingOverlay(true, "Syncing team experiences...");
+  } else if (endpoint === "/api/sync/configure") {
+    setLoadingOverlay(true, body?.createPrivate ? "Creating private team repo..." : body?.repo ? "Connecting team repo..." : "Disconnecting...");
   } else if (endpoint === "/api/arena/validate") {
     setLoadingOverlay(true, "Running validation...");
   } else if (endpoint === "/api/assets/refine") {
@@ -1536,6 +1559,16 @@ async function mutate(endpoint, body) {
     const data = await res.json();
     if (!data.ok) {
       showBanner(data.error || "Operation failed.", true);
+    } else if (endpoint === "/api/sync/configure") {
+      el("repo-modal")?.classList.add("hidden");
+      if (data.disconnected) {
+        showToast("Disconnected team repo", "Switched back to local-only mode.");
+      } else {
+        showToast(
+          "Team repo connected!",
+          `${data.syncRepo} · ${data.imported || 0} pulled${data.pushed ? " · existing team items pushed" : ""}`
+        );
+      }
     } else if (endpoint === "/api/sync/pull") {
       showToast("Synced with team", `${data.imported || 0} new, ${data.updated || 0} updated experience(s).`);
     } else if (endpoint === "/api/assets/promote") {
@@ -1555,7 +1588,9 @@ async function mutate(endpoint, body) {
       } else {
         showToast(
           "Marked as team experience!",
-          `Thanks for contributing "${data.asset?.title || data.asset?.id}".`
+          state?.config?.syncRepo || state?.syncRepoPath
+            ? `Thanks for contributing "${data.asset?.title || data.asset?.id}".`
+            : "Connect a private Team Repo above to sync this with teammates."
         );
       }
     } else if (endpoint === "/api/assets/feedback") {
@@ -1660,6 +1695,41 @@ async function init() {
   });
 
   el("btn-pull")?.addEventListener("click", () => mutate("/api/sync/pull", {}));
+
+  const openRepoModal = () => {
+    const modal = el("repo-modal");
+    const input = el("repo-modal-input");
+    const disBtn = el("btn-repo-disconnect");
+    if (!modal) return;
+    if (input) input.value = state?.config?.syncRepo || "";
+    disBtn?.classList.toggle("hidden", !(state?.config?.syncRepo || state?.syncRepoPath));
+    modal.classList.remove("hidden");
+    input?.focus();
+  };
+  el("btn-team-repo")?.addEventListener("click", openRepoModal);
+  el("btn-repo-close")?.addEventListener("click", () => el("repo-modal")?.classList.add("hidden"));
+  el("repo-modal")?.addEventListener("click", (e) => {
+    if (e.target === el("repo-modal")) el("repo-modal")?.classList.add("hidden");
+  });
+  el("btn-repo-connect")?.addEventListener("click", () => {
+    const val = el("repo-modal-input")?.value?.trim();
+    if (!val) {
+      showBanner("Enter a repository like owner/copilot-evo-data.", true);
+      return;
+    }
+    mutate("/api/sync/configure", { repo: val, createPrivate: false });
+  });
+  el("btn-repo-create")?.addEventListener("click", () => {
+    const val = el("repo-modal-input")?.value?.trim();
+    if (!val) {
+      showBanner("Enter a new private repository name like owner/copilot-evo-data.", true);
+      return;
+    }
+    mutate("/api/sync/configure", { repo: val, createPrivate: true });
+  });
+  el("btn-repo-disconnect")?.addEventListener("click", () => {
+    mutate("/api/sync/configure", { repo: "" });
+  });
 
   const splitter = el("pane-splitter");
   const content = el("content");

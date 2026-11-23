@@ -6,6 +6,7 @@ import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   computeGdiBreakdown,
+  configureSyncRepo,
   countEvents,
   getAssetRelationships,
   loadStore,
@@ -219,6 +220,11 @@ export function createEvoCanvasServer({
         result = await runAssetValidation(evoHome, body.id, getWorkingDirectory());
       } else if (reqUrl.pathname === "/api/assets/delete") {
         result = manageAsset("delete", body.id, { evoHome });
+      } else if (reqUrl.pathname === "/api/sync/configure") {
+        result = await configureSyncRepo(evoHome, {
+          repo: body.repo ?? "",
+          createPrivate: Boolean(body.createPrivate),
+        });
       } else if (reqUrl.pathname === "/api/sync/pull") {
         result = await syncRepoPull(evoHome);
       } else if (reqUrl.pathname === "/api/sync/push") {
