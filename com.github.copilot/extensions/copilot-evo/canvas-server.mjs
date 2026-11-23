@@ -306,9 +306,10 @@ export function createEvoCanvasServer({
     }
     const entry = await ensureStarted();
     broadcastUpdate("open");
+    const s = loadStore(evoHome);
     return {
       title: "Copilot Evo",
-      status: `${loadStore(evoHome).rules.length} Rules · ${loadStore(evoHome).fixes.length} Fixes`,
+      status: `${s.knowledge.length} Knowledge · ${s.rules.length} Rules · ${s.fixes.length} Fixes`,
       url: `${entry.url}?open=${randomBytes(6).toString("hex")}`,
     };
   }
