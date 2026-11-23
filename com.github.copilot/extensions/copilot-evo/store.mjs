@@ -4,7 +4,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { fullLeakCheck, isValidationCommandAllowed, sanitizePayload } from "./sanitize.mjs";
+import { fullLeakCheck, isValidationCommandAllowed, normalizeEvidenceLink, sanitizePayload } from "./sanitize.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(__dirname, "..", "..", "..");
@@ -253,6 +253,10 @@ export function formatAssetPreview(asset) {
   if (asset.validation?.length) {
     lines.push(`Validation: ${asset.validation.join(", ")}`);
   }
+  if (asset.references?.length) {
+    lines.push("Evidence:");
+    asset.references.forEach((ref) => lines.push(`  - ${ref.label || ref.url}: ${ref.url}`));
+  }
   return lines.join("\n");
 }
 
@@ -303,6 +307,7 @@ export function computeGdiBreakdown(asset, allAssets = [], nowMs = Date.now()) {
   if (hasDetail) quality += 15;
   if (
     (Array.isArray(asset?.validation) && asset.validation.length > 0) ||
+    (Array.isArray(asset?.references) && asset.references.length > 0) ||
     (kind === "Knowledge" &&
       String(asset?.summary || "").trim().length >= 45 &&
       ((Array.isArray(asset?.strategy) && asset.strategy.length >= 1) ||
@@ -802,6 +807,21 @@ export function solidifyAsset(input, options = {}) {
     }
   }
 
+  const rawReferences = Array.isArray(input.references) ? input.references.filter(Boolean) : [];
+  const references = [];
+  for (const rawRef of rawReferences) {
+    const normalized = normalizeEvidenceLink(rawRef);
+    if (!normalized) {
+      return {
+        ok: false,
+        error: "Reference link rejected: only public https:// URLs without credentials or private/local hosts are allowed.",
+      };
+    }
+    if (!references.some((r) => r.url === normalized.url)) {
+      references.push(normalized);
+    }
+  }
+
   const resolvedRepoScope =
     input.repoScope === "current"
       ? detectRepoSlug(input.workingDirectory) || "*"
@@ -818,6 +838,7 @@ export function solidifyAsset(input, options = {}) {
     strategy: Array.isArray(input.strategy) ? input.strategy : [],
     solution: input.solution || "",
     validation,
+    ...(references.length ? { references } : {}),
     scope,
     repoScope: resolvedRepoScope,
     ...(input.ruleId ? { ruleId: slugify(input.ruleId) } : {}),

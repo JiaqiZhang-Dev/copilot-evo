@@ -585,15 +585,30 @@ test("solidifyAsset supports Rule/Fix with exp- prefix", () => {
         summary: "Server injects prompts/tenants/*.md as [skill] on each request, so tenant prompt edits require redeploying server.",
         signals: ["qa_bot", "tenant_prompts"],
         strategy: ["Redeploy both chat_agent and server when tenant prompts change."],
+        references: ["https://github.com/Azure/azure-sdk-tools/pull/17496"],
         scope: "local",
       },
       { evoHome: home, bundledDir }
     );
     assert.equal(kn.ok, true);
     assert.equal(kn.asset.type, "Knowledge");
+    assert.equal(kn.asset.references[0].label, "Azure/azure-sdk-tools#17496 (PR)");
     const knQuality = computeGdiBreakdown(kn.asset, loadStore(home).knowledge);
     assert.equal(knQuality.quality, 100);
     assert.ok(loadStore(home).knowledge.some((k) => k.id === "exp-knowledge-reclassify"));
+
+    const badLink = solidifyAsset(
+      {
+        kind: "Knowledge",
+        title: "Unsafe reference test",
+        summary: "Verify unsafe localhost links are rejected cleanly.",
+        signals: ["security", "links"],
+        references: ["http://127.0.0.1:8080/secret"],
+        scope: "local",
+      },
+      { evoHome: home, bundledDir }
+    );
+    assert.equal(badLink.ok, false);
 
     const movedToRule = solidifyAsset(
       {

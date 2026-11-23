@@ -40,7 +40,7 @@ Experiences are organized into three orthogonal categories stored in `knowledge.
 - **Scope (`scope`)**: `starter` (bundled read-only defaults), `local` (machine-local unshared entries), or `team` (sanitized entries shared via Git).
 - **Repository Scope (`repoScope`)**: `"*"` (`Cross-repo`) or `"owner/repo"` (normalized from `git remote.origin.url`). Repo-specific experiences receive a relevance boost in matching repositories and are filtered out of unrelated repositories.
 - **Provenance**: `sourceProject` (`owner/repo`, `local-git`, or `chat`), `author` (resolved from `COPILOT_EVO_AUTHOR`, local GitHub CLI login in `hosts.yml`, or `git config user.name`), and `updatedAt`.
-- **Lineage & Deduplication**: `ruleId` (links a `Fix` to the `Rule` it applied), `parentId` (refinement chain), `supersedes` (hides outdated entries from default recall), and pre-write `findSimilarAssets` similarity detection (warns and returns `similarCandidates` before creating near-duplicate entries without an explicit `id` or `allowDuplicate`).
+- **Lineage & Evidence**: `ruleId` (links a `Fix` to the `Rule` it applied), `parentId` (refinement chain), `supersedes` (hides outdated entries from default recall), `references` (sanitized `https://` PR, issue, commit, or docs links proving correctness), and pre-write `findSimilarAssets` similarity detection (warns and returns `similarCandidates` before creating near-duplicate entries without an explicit `id` or `allowDuplicate`).
 
 Each experience is automatically ranked by a composite `0–100` score across four weighted dimensions (`computeGdiBreakdown`):
 

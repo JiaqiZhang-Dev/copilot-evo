@@ -5,7 +5,6 @@ let activeFilter = "all";
 let activeKind = "all";
 let repoScopeFilter = ""; // "" | "cross" | "repo"
 let contribMode = "author";
-let contribScope = "all";
 let eventFilter = "all";
 let eventSessionFilter = "";
 let eventSearchQuery = "";
@@ -281,6 +280,7 @@ function buildScoreTooltips(item) {
     (kind === "Knowledge" && String(item.summary || "").trim().length >= 60);
   const hasVal =
     (Array.isArray(item.validation) && item.validation.length > 0) ||
+    (Array.isArray(item.references) && item.references.length > 0) ||
     (kind === "Knowledge" &&
       String(item.summary || "").trim().length >= 45 &&
       ((Array.isArray(item.strategy) && item.strategy.length >= 1) ||
@@ -294,9 +294,9 @@ function buildScoreTooltips(item) {
     kind === "Knowledge"
       ? `Rich summary or takeaway: ${hasSteps ? "+15" : "+0"}`
       : `>=2 Steps or Solution: ${hasSteps ? "+15" : "+0"}`,
-    kind === "Knowledge"
+    kind === "Knowledge" && !item.validation?.length && !item.references?.length
       ? `Summary >=45 + takeaway: ${hasVal ? "+15" : "+0"}`
-      : `Validation cmds: ${hasVal ? "+15" : "+0"}`,
+      : `Validation or evidence links: ${hasVal ? "+15" : "+0"}`,
   ].join("\n");
 
   const succ = Math.max(0, Number(item.successCount || 0));
@@ -353,6 +353,17 @@ function renderDetail(item) {
     : "";
   const validation = (item.validation || []).length
     ? `<div class="section-label">Validation Commands</div><p class="detail-box code-box">${escapeHtml(item.validation.join("\n"))}</p>`
+    : "";
+  const references = Array.isArray(item.references)
+    ? item.references.filter((r) => r?.url && /^https:\/\//i.test(r.url))
+    : [];
+  const evidenceHtml = references.length
+    ? `<div class="section-label">Evidence &amp; Links</div><div class="link-list">${references
+        .map(
+          (r) =>
+            `<a class="link-pill evidence-link" href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(r.url)}">${escapeHtml(r.label || r.url)} ↗</a>`
+        )
+        .join("")}</div>`
     : "";
 
   const isSharing = sharingId === item.id;
@@ -478,6 +489,7 @@ function renderDetail(item) {
     ${strategy}
     ${guardrail}
     ${validation}
+    ${evidenceHtml}
     <div class="section-label" title="${escapeHtml(scoreTips.totalTip)}">Score Breakdown · Tier ${escapeHtml(item.gdiBreakdown?.tier || "B")} · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Pass Rate</div>
     <div class="detail-breakdown">
       <div class="mini-dim" title="${escapeHtml(scoreTips.qualityTip)}">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.quality ?? 0)}"></progress></div>
@@ -962,12 +974,8 @@ function renderRelationshipsView(listPane, allAssets) {
   }
 }
 
-function buildContributorStats(assets, mode = "author", scopeFilter = "all") {
-  const scoped = assets.filter((item) => {
-    if (scopeFilter === "team") return item.scope === "team";
-    if (scopeFilter === "local") return !item.scope || item.scope === "local";
-    return item.scope !== "starter";
-  });
+function buildContributorStats(assets, mode = "author") {
+  const scoped = assets.filter((item) => item.scope === "team");
 
   const groups = new Map();
   for (const item of scoped) {
@@ -1168,7 +1176,7 @@ function render() {
       : `Auto-clone repo: ${state.config?.syncRepo || "JiaqiZhang-Dev/copilot-evo"}`;
   }
 
-  const contributorGroups = buildContributorStats(getAllAssets(), contribMode, contribScope);
+  const contributorGroups = buildContributorStats(getAllAssets(), contribMode);
   const localCount = allAssets.filter((a) => !a.scope || a.scope === "local").length;
   const teamCount = allAssets.filter((a) => a.scope === "team").length;
   const starterCount = allAssets.filter((a) => a.scope === "starter").length;
@@ -1250,7 +1258,6 @@ function render() {
   document.querySelectorAll(".chip[data-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.filter === activeFilter));
   document.querySelectorAll(".seg[data-kind]").forEach((btn) => btn.classList.toggle("active", btn.dataset.kind === activeKind));
   document.querySelectorAll(".seg[data-contrib-mode]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribMode === contribMode));
-  document.querySelectorAll(".chip[data-contrib-scope]").forEach((btn) => btn.classList.toggle("active", btn.dataset.contribScope === contribScope));
   document.querySelectorAll(".chip[data-event-filter]").forEach((btn) => btn.classList.toggle("active", btn.dataset.eventFilter === eventFilter));
   el("scope-filters")?.classList.toggle("hidden", activeTab !== "assets");
 
@@ -1602,14 +1609,6 @@ async function init() {
   document.querySelectorAll(".seg[data-contrib-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
       contribMode = btn.dataset.contribMode;
-      selectedContribKey = "";
-      render();
-    });
-  });
-
-  document.querySelectorAll(".chip[data-contrib-scope]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      contribScope = btn.dataset.contribScope;
       selectedContribKey = "";
       render();
     });

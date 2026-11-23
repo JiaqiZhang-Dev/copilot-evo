@@ -28,6 +28,7 @@ Every payload written to `events.jsonl`, promoted to `team`, exported to a bundl
 - **Pattern Redaction (`redactString`)**: Masks Bearer tokens, OpenAI/Anthropic keys, GitHub PATs (`ghp_`, `gho_`, `github_pat_`), AWS access keys, npm/Slack tokens, JWTs, Azure connection secrets, private key blocks, URL basic-auth credentials, user home paths (`/Users/<name>`, `/home/<name>`, `C:\Users\<name>`), email addresses (preserving `noreply@` / `@users.noreply.github.com`), and `.env*` file references.
 - **Active Leak Scanning (`fullLeakCheck`)**: Blocks `promote_team`, `exportBundle`, and `syncRepoPush` if any literal secret pattern, internal RFC-1918 IP address (`10.x`, `172.16-31.x`, `192.168.x`), or live secret environment variable value is detected. Non-secret toolchain variables (`npm_*`, `GIT_CONFIG_*`, `VSCODE_*`, `COPILOT_*`, `ELECTRON_*`) are excluded to prevent false positives, while secret-named or high-entropy opaque env values remain strictly guarded.
 - **Validation Command Whitelist (`isValidationCommandAllowed`)**: Permits only safe verification commands (`node`, `npm`, `npx`, `pytest`, `python`, `dotnet`, `cargo`, `go`) without shell chaining or command substitution (`&&`, `||`, `;`, `|`, `` ` ``, `$()`, redirects).
+- **Evidence URL Safety (`normalizeEvidenceLink`)**: Permits only public `https://` URLs without embedded credentials or local/private hosts (`localhost`, `127.0.0.1`, RFC-1918 IPs, `.local`) and strips sensitive query parameters (`token`, `pat`, `key`, `secret`, `sig`, `auth`).
 
 ## Team Sync & Access Control
 

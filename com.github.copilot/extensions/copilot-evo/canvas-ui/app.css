@@ -962,6 +962,9 @@ body {
 }
 
 .link-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--accent);
@@ -970,6 +973,7 @@ body {
   font-size: 11.5px;
   font-family: var(--font-mono, Consolas, monospace);
   box-shadow: var(--shadow-sm);
+  text-decoration: none;
   cursor: pointer;
 }
 

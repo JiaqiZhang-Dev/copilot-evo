@@ -167,3 +167,39 @@ export function isValidationCommandAllowed(command) {
   if (/[;&|><]/.test(unquoted)) return false;
   return /^(?:node|npm|npx|pytest|dotnet|cargo)\b|^go\s+test\b/.test(trimmed);
 }
+
+const SENSITIVE_QUERY_KEYS = /^(?:token|access_token|pat|key|api_key|secret|sig|signature|auth|code|password)$/i;
+const PRIVATE_HOST_RE = /^(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|0\.0\.0\.0|\[?::1\]?)$|\.(?:local|internal|corp|lan)$/i;
+
+function inferLinkLabel(parsed) {
+  const ghPr = parsed.pathname.match(/^\/([^/]+\/[^/]+)\/pull\/(\d+)/);
+  if (parsed.hostname === "github.com" && ghPr) return `${ghPr[1]}#${ghPr[2]} (PR)`;
+  const ghIssue = parsed.pathname.match(/^\/([^/]+\/[^/]+)\/issues\/(\d+)/);
+  if (parsed.hostname === "github.com" && ghIssue) return `${ghIssue[1]}#${ghIssue[2]}`;
+  const ghCommit = parsed.pathname.match(/^\/([^/]+\/[^/]+)\/commit\/([0-9a-f]{7,40})/i);
+  if (parsed.hostname === "github.com" && ghCommit) return `${ghCommit[1]}@${ghCommit[2].slice(0, 7)}`;
+  const pathPart = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname.replace(/\/$/, "") : "";
+  const full = `${parsed.hostname}${pathPart}`;
+  return full.length > 52 ? `${full.slice(0, 49)}...` : full;
+}
+
+export function normalizeEvidenceLink(raw) {
+  const rawUrl = typeof raw === "string" ? raw : raw && typeof raw === "object" ? raw.url : "";
+  const rawLabel = raw && typeof raw === "object" && typeof raw.label === "string" ? raw.label.trim() : "";
+  if (typeof rawUrl !== "string" || !rawUrl.trim()) return null;
+  let parsed;
+  try {
+    parsed = new URL(rawUrl.trim());
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  if (parsed.username || parsed.password) return null;
+  if (!parsed.hostname || PRIVATE_HOST_RE.test(parsed.hostname)) return null;
+  for (const key of Array.from(parsed.searchParams.keys())) {
+    if (SENSITIVE_QUERY_KEYS.test(key)) parsed.searchParams.delete(key);
+  }
+  const cleanUrl = parsed.toString();
+  const label = (rawLabel ? redactString(rawLabel) : inferLinkLabel(parsed)).slice(0, 80);
+  return { label, url: cleanUrl };
+}

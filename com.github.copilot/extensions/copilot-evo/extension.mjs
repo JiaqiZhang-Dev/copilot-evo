@@ -38,7 +38,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.11.1";
+const EXTENSION_VERSION = "0.12.0";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -164,7 +164,7 @@ function recordRecallEvent(matched, { trigger, signals = [], toolName = "" } = {
 const ACTIVE_PROTOCOL = [
   "[copilot-evo active protocol]",
   "1. Extension tools (`evo_solidify`, `evo_sync_repo`, `evo_search`, `evo_status`, `evo_manage_asset`) may be deferred; load them with `tool_search_tool` whenever needed.",
-  "2. Auto-discover & solidify atomically locally first (English only): Proactively call `evo_solidify` with `scope: \"local\"` whenever you uncover non-obvious domain/architecture/platform facts (`kind: \"Knowledge\"`), resolve a non-obvious error (`kind: \"Fix\"`), fix a user-reported mistake or rendering quirk (even when no tool errored), or when the user states/verifies reusable conventions or workflows (`kind: \"Rule\"`, even if also saved via `store_memory`). Skip trivial typos. Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise points/steps); split distinct concerns into separate `evo_solidify` calls. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
+  "2. Auto-discover & solidify atomically locally first (English only): Proactively call `evo_solidify` with `scope: \"local\"` whenever you uncover non-obvious domain/architecture/platform facts (`kind: \"Knowledge\"`), resolve a non-obvious error (`kind: \"Fix\"`), fix a user-reported mistake or rendering quirk (even when no tool errored), or when the user states/verifies reusable conventions or workflows (`kind: \"Rule\"`, even if also saved via `store_memory`). Skip trivial typos. Keep each Experience ATOMIC (one focused topic, 2-4 targeted signals, 1-3 concise points/steps); split distinct concerns into separate `evo_solidify` calls, and attach verified public `https://` `references` (PR, issue, commit, or official docs URLs) as evidence when available. Write ALL solidified fields (`title`, `summary`, `signals`, `strategy`, `solution`) in concise English.",
   "3. Preview & MUST ask via `ask_user` before sharing to team: Immediately after `evo_solidify` succeeds with `scope: \"local\"`, show the concise English preview (`id`, `title`, `summary`, `signals`, `strategy`/`solution`) AND, if `evo_solidify` did not already prompt via native UI (`sharedToTeam` is unset and `needsRefinement` is unset), call `ask_user` with choices `[\"Keep local\", \"Share with team\", \"Refine this experience\"]`. Only call `evo_manage_asset({ action: \"promote_team\", id })` and `evo_sync_repo({ action: \"push\" })` after explicit user confirmation.",
 ].join("\n");
 
@@ -562,6 +562,23 @@ const session = await joinSession({
           strategy: { type: "array", items: { type: "string" }, description: "Ordered actionable steps in English" },
           solution: { type: "string", description: "Concrete fix summary in English (especially for Fix experiences)" },
           validation: { type: "array", items: { type: "string" }, description: "Safe verification commands (node/npm/npx/pytest/dotnet/cargo/go test)" },
+          references: {
+            type: "array",
+            description: "Evidence or documentation URLs (https:// PR, issue, commit, or official docs links proving correctness)",
+            items: {
+              anyOf: [
+                { type: "string" },
+                {
+                  type: "object",
+                  properties: {
+                    label: { type: "string" },
+                    url: { type: "string" },
+                  },
+                  required: ["url"],
+                },
+              ],
+            },
+          },
           scope: { type: "string", enum: ["local", "team"], description: "local stays on this machine; team stages sanitized experience for private repo sync" },
           repoScope: { type: "string", description: "Repository applicability: '*' for all repos (default), 'current' for the active Git repo, or 'owner/repo'" },
           ruleId: { type: "string", description: "For Fixes: ID of the Rule this fix applied" },
