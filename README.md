@@ -41,8 +41,8 @@
     <th width="50%">With Copilot Evo</th>
   </tr>
   <tr>
-    <td valign="top">Every new session starts from zero—Copilot repeats the same build/deploy pitfalls, misses repo conventions, and loses hard-won debugging lessons when chat closes.</td>
-    <td valign="top">Non-obvious <code>Knowledge</code>, <code>Rules</code>, and verified <code>Fixes</code> are captured once, recalled automatically on turn 1 for matching repos/errors, and shared safely with your team.</td>
+    <td valign="top">Built-in Copilot memory stays personal and unstructured—hard-won debugging fixes and repo quirks stay siloed per developer, lack error-triggered recall or quality ranking, and aren't shared across the team.</td>
+    <td valign="top">Non-obvious <code>Knowledge</code>, <code>Rules</code>, and verified <code>Fixes</code> are structured atomically, ranked by quality and usage, recalled automatically on matching prompts or errors, and synced safely with your team.</td>
   </tr>
 </table>
 
