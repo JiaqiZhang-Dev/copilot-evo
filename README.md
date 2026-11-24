@@ -41,8 +41,8 @@
     <th width="50%">With Copilot Evo</th>
   </tr>
   <tr>
-    <td valign="top">Built-in Copilot memory stays personal and unstructured—hard-won debugging fixes and repo quirks stay siloed per developer, lack error-triggered recall or quality ranking, and aren't shared across the team.</td>
-    <td valign="top"><code>Knowledge</code>, <code>Rules</code>, and verified <code>Fixes</code> are structured atomically, ranked by quality and usage, recalled automatically on matching prompts or errors, and synced safely with your team.</td>
+    <td valign="top">Built-in Copilot memory stays personal and unstructured—hard-won debugging fixes and project details stay with one developer, lack error-based recall or quality ranking, and aren't shared across the team.</td>
+    <td valign="top"><code>Knowledge</code>, <code>Rules</code>, and verified <code>Fixes</code> are saved as clear single-topic entries, ranked by quality and usage, recalled automatically when matching prompts or errors happen, and synced safely with your team.</td>
   </tr>
 </table>
 
@@ -76,7 +76,7 @@ Click **Connect Team Repo** in the top-right corner, enter a private GitHub repo
   <tr>
     <td width="50%" valign="top">
       <strong>🧬 CoALA-Inspired Memory</strong><br />
-      Organizes experience into <code>Knowledge</code> (facts &amp; quirks), <code>Rule</code> (conventions &amp; workflows), and <code>Fix</code> (bug resolutions), inspired by <a href="https://arxiv.org/abs/2309.02427">CoALA</a>.
+      Organizes experience into <code>Knowledge</code> (facts &amp; behavior), <code>Rule</code> (conventions &amp; workflows), and <code>Fix</code> (bug fixes), inspired by <a href="https://arxiv.org/abs/2309.02427">CoALA</a>.
     </td>
     <td width="50%" valign="top">
       <strong>🎯 Repo-Aware Recall</strong><br />
@@ -154,8 +154,8 @@ flowchart LR
 ```
 
 1. **Recall**: Matches top `Knowledge`, `Rule`, and `Fix` experiences to your prompt, error signals, and active repo.
-2. **Solidify**: Captures each fact, convention, or verified fix atomically in English (`scope: "local"`).
-3. **Confirm**: Prompts natively to keep local, refine inline, or sanitize and share directly to your team's private repo.
+2. **Solidify**: Captures each fact, rule, or verified fix as a single focused entry in English (`scope: "local"`).
+3. **Confirm**: Asks before sharing so you can keep an entry local, refine it inline, or remove sensitive data and push to your team's private repo.
 4. **Evolve**: Tracks recalls, recoveries, and validation runs to continuously rank what works best (modeled after [Cognitive Architectures for Language Agents (CoALA)](https://arxiv.org/abs/2309.02427)).
 
 <details>
