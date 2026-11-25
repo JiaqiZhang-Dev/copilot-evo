@@ -1,6 +1,6 @@
 {
   "name": "copilot-evo",
-  "version": "0.14.8",
+  "version": "0.14.9",
   "private": true,
   "type": "module",
   "description": "Self-evolving Experience (Knowledge, Rules & Fixes) plugin for GitHub Copilot App and CLI",

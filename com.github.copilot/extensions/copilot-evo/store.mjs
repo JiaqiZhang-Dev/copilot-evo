@@ -643,6 +643,38 @@ export function shouldNudgePostToolUse(state) {
   return (state.turnActionTools || 0) >= 1;
 }
 
+export function isFollowUpEditTrajectory({
+  turnIndex = 0,
+  priorActionTurns = 0,
+  prompt = "",
+  targetKey = "",
+  priorActionTargets = null,
+} = {}) {
+  if (turnIndex <= 1 || priorActionTurns < 1) return false;
+  const trimmed = String(prompt || "").trim();
+  if (!trimmed || trimmed.length > 220) return false;
+  if (targetKey && priorActionTargets instanceof Set && priorActionTargets.has(targetKey)) {
+    return true;
+  }
+  // A short follow-up prompt after a prior completed edit turn that triggers a new edit
+  // signals a potential missed requirement or companion-file update.
+  return Boolean(targetKey) || trimmed.length <= 140;
+}
+
+export function shouldReflectOnAgentStop(state, stopHookActive = false) {
+  if (stopHookActive) return false;
+  if (!state || !state.turnIndex) return false;
+  if (state.solidifiedTurn === state.turnIndex) return false;
+  if (state.lastStopReflectionTurn === state.turnIndex) return false;
+  if ((state.turnActionTools || 0) < 1) return false;
+  return Boolean(
+    state.turnHadRecovery ||
+      state.turnHadCorrection ||
+      state.turnHadStrategyCue ||
+      state.turnHadFollowUpEdit
+  );
+}
+
 export function extractSignals(text, extraSignals = [], options = {}) {
   const signals = new Set(extraSignals.map((s) => String(s).toLowerCase()).filter(Boolean));
   if (options.includePlatform && process.platform === "win32") {

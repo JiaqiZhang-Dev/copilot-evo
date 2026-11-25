@@ -23,6 +23,7 @@ import {
   importBundle,
   initStore,
   isActionToolName,
+  isFollowUpEditTrajectory,
   isPrReviewCue,
   isTrivialToolFailure,
   loadStore,
@@ -36,6 +37,7 @@ import {
   selectAssets,
   setEventSessionContext,
   shouldNudgePostToolUse,
+  shouldReflectOnAgentStop,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -461,6 +463,29 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1 }), true);
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1, solidifiedTurn: 1 }), false);
     assert.equal(shouldNudgePostToolUse({ turnIndex: 1, turnActionTools: 1, lastNudgeTurn: 1 }), false);
+    assert.equal(
+      isFollowUpEditTrajectory({
+        turnIndex: 1,
+        priorActionTurns: 0,
+        prompt: "what about the evolution agent design doc?",
+        targetKey: "file:c:\\repo\\docs\\design.md",
+      }),
+      false
+    );
+    assert.equal(
+      isFollowUpEditTrajectory({
+        turnIndex: 3,
+        priorActionTurns: 1,
+        prompt: "what about the evolution agent design doc?",
+        targetKey: "file:c:\\repo\\docs\\design.md",
+        priorActionTargets: new Set(["file:c:\\repo\\src\\agent.ts"]),
+      }),
+      true
+    );
+    assert.equal(shouldReflectOnAgentStop({ turnIndex: 2, turnActionTools: 1, turnHadFollowUpEdit: true }, false), true);
+    assert.equal(shouldReflectOnAgentStop({ turnIndex: 2, turnActionTools: 1, turnHadFollowUpEdit: true }, true), false);
+    assert.equal(shouldReflectOnAgentStop({ turnIndex: 2, turnActionTools: 1, turnHadFollowUpEdit: true, solidifiedTurn: 2 }, false), false);
+    assert.equal(shouldReflectOnAgentStop({ turnIndex: 2, turnActionTools: 1 }, false), false);
     const beforeRecallSuccess = loadStore(home).fixes.find((f) => f.id === "exp-derived-fix").successCount;
     recordAssetRecalls(home, ["exp-derived-fix", "exp-base-strategy"]);
     const afterRecall = loadStore(home).fixes.find((f) => f.id === "exp-derived-fix");

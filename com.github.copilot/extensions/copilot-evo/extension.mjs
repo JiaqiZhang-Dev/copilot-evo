@@ -21,6 +21,7 @@ import {
   importBundle,
   initStore,
   isActionToolName,
+  isFollowUpEditTrajectory,
   isPrReviewCue,
   isTrivialToolFailure,
   loadStore,
@@ -31,6 +32,7 @@ import {
   selectAssets,
   setEventSessionContext,
   shouldNudgePostToolUse,
+  shouldReflectOnAgentStop,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -38,7 +40,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.14.8";
+const EXTENSION_VERSION = "0.14.9";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -114,14 +116,20 @@ const canvasServer = createEvoCanvasServer({
 const sessionState = {
   protocolInjected: false,
   turnIndex: 0,
+  lastPrompt: "",
+  priorActionTurns: 0,
+  priorActionTargets: new Set(),
+  turnTargets: new Set(),
   turnActionTools: 0,
   turnHadRecovery: false,
   turnHadCorrection: false,
   turnHadNegativeFeedback: false,
   turnHadStrategyCue: false,
+  turnHadFollowUpEdit: false,
   turnRecalledIds: [],
   solidifiedTurn: 0,
   lastNudgeTurn: 0,
+  lastStopReflectionTurn: 0,
   pendingFailure: null,
   pendingCorrection: null,
   activeAssets: [],
@@ -227,12 +235,21 @@ const session = await joinSession({
     },
 
     onUserPromptSubmitted: async (input) => {
+      if (sessionState.turnIndex > 0 && sessionState.turnActionTools > 0) {
+        sessionState.priorActionTurns++;
+        for (const key of sessionState.turnTargets) {
+          sessionState.priorActionTargets.add(key);
+        }
+      }
       sessionState.turnIndex++;
+      sessionState.lastPrompt = String(input.prompt || "").slice(0, 240);
+      sessionState.turnTargets = new Set();
       sessionState.turnActionTools = 0;
       sessionState.turnHadRecovery = false;
       sessionState.turnHadCorrection = false;
       sessionState.turnHadNegativeFeedback = hasNegativeFeedbackCue(input.prompt);
       sessionState.turnHadStrategyCue = hasStrategyCue(input.prompt);
+      sessionState.turnHadFollowUpEdit = false;
       sessionState.turnRecalledIds = [];
       if (input.workingDirectory) lastWorkingDirectory = input.workingDirectory;
       const currentRepo = detectRepoSlug(lastWorkingDirectory);
@@ -398,6 +415,7 @@ const session = await joinSession({
 
       const targetKey = extractToolTargetKey(toolName, input.toolArgs);
       if (targetKey) {
+        sessionState.turnTargets.add(targetKey);
         const prev = sessionState.recentToolTargets.get(targetKey);
         const now = Date.now();
         sessionState.recentToolTargets.set(targetKey, { turn: sessionState.turnIndex, ts: now });
@@ -413,6 +431,20 @@ const session = await joinSession({
             additionalContext: `[copilot-evo revision check] You just revised \`${targetKey}\` across user turns. If this fixed a non-obvious mistake, rendering quirk, or missing convention that could recur, proactively call \`evo_solidify\` in English with \`scope: "local"\` now without waiting to be asked.`,
           };
         }
+      }
+
+      if (
+        isAction &&
+        !sessionState.turnHadFollowUpEdit &&
+        isFollowUpEditTrajectory({
+          turnIndex: sessionState.turnIndex,
+          priorActionTurns: sessionState.priorActionTurns,
+          prompt: sessionState.lastPrompt,
+          targetKey,
+          priorActionTargets: sessionState.priorActionTargets,
+        })
+      ) {
+        sessionState.turnHadFollowUpEdit = true;
       }
 
       if (sessionState.pendingFailure) {
@@ -476,6 +508,20 @@ const session = await joinSession({
       );
       recordRecallEvent(matched, { trigger: "subagent", signals, toolName: input.agentName || "subagent" });
       return { additionalContext: formatAssetsContext(matched, { isReview }) };
+    },
+
+    onAgentStop: async (input) => {
+      if (!shouldReflectOnAgentStop(sessionState, Boolean(input?.stopHookActive))) return;
+      sessionState.lastStopReflectionTurn = sessionState.turnIndex;
+      const triggers = [];
+      if (sessionState.turnHadRecovery) triggers.push("error recovery");
+      if (sessionState.turnHadCorrection) triggers.push("cross-turn revision/correction");
+      if (sessionState.turnHadFollowUpEdit) triggers.push("follow-up edit after prior work");
+      if (sessionState.turnHadStrategyCue) triggers.push("user rule/convention cue");
+      return {
+        decision: "block",
+        reason: `[copilot-evo end-of-turn reflection] This turn involved ${triggers.join(", ")} without recording an experience. Briefly judge whether it revealed a reusable Rule, Knowledge, or verified Fix (for example: updating a companion doc when code changes, PR formatting conventions, or a non-obvious pitfall). If YES, call \`evo_solidify\` in English (\`scope: "local"\`), show the preview, and ask the user via \`ask_user\`. If it was purely a one-off task edit with no reusable takeaway, briefly note nothing to capture and finish.`,
+      };
     },
 
     onSessionEnd: async (input) => {
