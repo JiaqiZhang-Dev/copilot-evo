@@ -1770,7 +1770,7 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
   return { ok: true, pushed: true, repoPath: targetRepo };
 }
 
-export function isGraduationCandidate(
+export function getGraduationStatus(
   asset,
   {
     currentRepo = "",
@@ -1779,21 +1779,44 @@ export function isGraduationCandidate(
     minSuccess = 3,
     minRecalls = 5,
     minWinRate = 80,
+    minScore = 65,
   } = {}
 ) {
-  if (!asset?.id || asset.graduatedTo?.targetPath) return false;
-  const assetRepo = normalizeRepoSlug(asset.repoScope || "*");
-  if (assetRepo === "*") return false;
-  if (currentRepo && currentRepo !== "*") {
-    const normCurrent = normalizeRepoSlug(currentRepo);
-    if (assetRepo.toLowerCase() !== normCurrent.toLowerCase()) return false;
-  }
-  const succ = Math.max(0, Number(asset.successCount || 0));
-  const recalls = Math.max(0, Number(asset.recallCount || 0));
-  if (succ < minSuccess && recalls < minRecalls) return false;
-  const gdi = computeGdiBreakdown(asset, allAssets.length ? allAssets : [asset], nowMs);
-  if (gdi.winRate < minWinRate) return false;
-  return gdi.tier === "S" || gdi.tier === "A" || gdi.score >= 65;
+  const succ = Math.max(0, Number(asset?.successCount || 0));
+  const recalls = Math.max(0, Number(asset?.recallCount || 0));
+  const gdi = asset?.id
+    ? computeGdiBreakdown(asset, allAssets.length ? allAssets : [asset], nowMs)
+    : { score: 0, tier: "C", winRate: 100 };
+  const assetRepo = normalizeRepoSlug(asset?.repoScope || "*");
+  const repoScoped = Boolean(asset?.id) && assetRepo !== "*";
+  const repoMatches =
+    repoScoped &&
+    (!currentRepo || currentRepo === "*" || assetRepo.toLowerCase() === normalizeRepoSlug(currentRepo).toLowerCase());
+  const graduated = Boolean(asset?.graduatedTo?.targetPath);
+  const usageMet = succ >= minSuccess || recalls >= minRecalls;
+  const winRateMet = gdi.winRate >= minWinRate;
+  const scoreMet = gdi.tier === "S" || gdi.tier === "A" || gdi.score >= minScore;
+  return {
+    eligible: Boolean(asset?.id && !graduated && repoMatches && usageMet && winRateMet && scoreMet),
+    graduated,
+    repoScoped,
+    repoMatches,
+    usageMet,
+    winRateMet,
+    scoreMet,
+    metrics: {
+      successCount: succ,
+      recallCount: recalls,
+      winRate: gdi.winRate,
+      score: gdi.score,
+      tier: gdi.tier,
+    },
+    thresholds: { minSuccess, minRecalls, minWinRate, minScore },
+  };
+}
+
+export function isGraduationCandidate(asset, options = {}) {
+  return getGraduationStatus(asset, options).eligible;
 }
 
 export function findGraduationCandidates({

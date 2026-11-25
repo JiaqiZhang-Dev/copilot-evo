@@ -9,8 +9,8 @@ import {
   configureSyncRepo,
   countEvents,
   getAssetRelationships,
+  getGraduationStatus,
   graduateAsset,
-  isGraduationCandidate,
   loadStore,
   manageAsset,
   readRecentEvents,
@@ -91,13 +91,15 @@ export function createEvoCanvasServer({
     const nowMs = Date.now();
     const enrich = (item) => {
       const gdi = computeGdiBreakdown(item, allAssets, nowMs);
+      const graduationStatus = getGraduationStatus(item, { currentRepo, allAssets, nowMs });
       return {
         ...item,
         repoScope: item.repoScope || "*",
         gdiScore: gdi.score,
         gdiBreakdown: gdi,
         relationships: getAssetRelationships(item, allAssets),
-        graduationCandidate: isGraduationCandidate(item, { currentRepo, allAssets, nowMs }),
+        graduationCandidate: graduationStatus.eligible,
+        graduationStatus,
       };
     };
     const rules = store.rules.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);

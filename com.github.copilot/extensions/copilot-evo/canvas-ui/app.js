@@ -419,6 +419,30 @@ function renderDetail(item) {
 
   const scopeText = item.scope === "team" ? "Team" : item.scope === "starter" ? "Built-in" : "Local";
   const repoText = item.repoScope && item.repoScope !== "*" ? item.repoScope : "Cross-repo";
+  const gradStatus = item.graduationStatus;
+  let gradChecklistHtml = "";
+  if (isRepoScoped && !item.graduatedTo?.targetPath && gradStatus) {
+    const m = gradStatus.metrics || {};
+    const t = gradStatus.thresholds || { minSuccess: 3, minRecalls: 5, minWinRate: 80, minScore: 65 };
+    const pill = (ok, label) =>
+      `<span class="grad-check ${ok ? "is-ok" : ""}">${ok ? "✓" : "○"} ${escapeHtml(label)}</span>`;
+    const usageLabel = `Helpful ${m.successCount ?? 0}/${t.minSuccess} (or ${m.recallCount ?? 0}/${t.minRecalls} recalled)`;
+    const winLabel = `Pass ${m.winRate ?? 100}% (≥${t.minWinRate}%)`;
+    const scoreLabel = `Score ${m.score ?? 0} (≥${t.minScore})`;
+    const repoLabelCheck = gradStatus.repoMatches
+      ? `Repo: ${repoText}`
+      : `Repo mismatch (${repoText})`;
+    gradChecklistHtml = `
+      <div class="grad-status-box ${gradStatus.eligible ? "is-ready" : ""}">
+        <div class="grad-status-title">${gradStatus.eligible ? "Ready to graduate to .github/" : "Repo graduation criteria"}</div>
+        <div class="grad-checks">
+          ${pill(gradStatus.repoMatches, repoLabelCheck)}
+          ${pill(gradStatus.usageMet, usageLabel)}
+          ${pill(gradStatus.winRateMet, winLabel)}
+          ${pill(gradStatus.scoreMet, scoreLabel)}
+        </div>
+      </div>`;
+  }
   const refineHtml =
     item.scope !== "starter"
       ? `<div class="section-label">Refine with Copilot</div>
@@ -475,26 +499,23 @@ function renderDetail(item) {
     <div class="detail-head">
       <div class="detail-title-row">
         ${renderScoreRing(item.gdiScore, scoreTips.totalTip)}
-        <div>
+        <div class="detail-title-main">
           <h2 class="detail-title">${escapeHtml(item.title)}</h2>
           <div class="detail-meta-line">
             <span class="detail-meta-pill">${escapeHtml(itemKind)}</span>
-            <span>·</span>
-            <span title="${escapeHtml(scoreTips.totalTip)}">Score ${escapeHtml(String(item.gdiScore ?? "-"))}</span>
-            <span>·</span>
             <span>${item.successCount || 0} helpful</span>
-            ${recallCount ? `<span>·</span><span>${recallCount} recalled</span>` : ""}
-            <span>·</span>
+            ${recallCount ? `<span>${recallCount} recalled</span>` : ""}
+            <span title="${escapeHtml(scoreTips.reliabilityTip)}">${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% pass</span>
             <span>${escapeHtml(repoText)}</span>
-            <span>·</span>
             <span>${scopeText}</span>
           </div>
-          <div class="detail-id-sub">${escapeHtml(item.id)}</div>
+          <div class="detail-id-sub" title="${escapeHtml(item.id)}">${escapeHtml(item.id)}</div>
         </div>
       </div>
       <div class="actions">${promoteTeamBtn}${graduateBtn}${validateBtn}${copyBtn}${deleteControl}${closeBtn}</div>
     </div>
     ${item.graduatedTo?.targetPath ? `<p class="detail-box">Graduated to <code>${escapeHtml(item.graduatedTo.targetPath)}</code></p>` : ""}
+    ${gradChecklistHtml}
     ${refineHtml}
     ${noisyWarning}
     <div class="section-label">Trigger Signals</div>
@@ -506,13 +527,6 @@ function renderDetail(item) {
     ${guardrail}
     ${validation}
     ${evidenceHtml}
-    <div class="section-label" title="${escapeHtml(scoreTips.totalTip)}">Score Breakdown · Tier ${escapeHtml(item.gdiBreakdown?.tier || "B")} · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Pass Rate</div>
-    <div class="detail-breakdown">
-      <div class="mini-dim" title="${escapeHtml(scoreTips.qualityTip)}">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.quality ?? 0)}"></progress></div>
-      <div class="mini-dim" title="${escapeHtml(scoreTips.reliabilityTip)}">Reliability <strong>${item.gdiBreakdown?.reliability ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.reliability ?? 0)}"></progress></div>
-      <div class="mini-dim" title="${escapeHtml(scoreTips.lineageTip)}">Lineage <strong>${item.gdiBreakdown?.lineage ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.lineage ?? 0)}"></progress></div>
-      <div class="mini-dim" title="${escapeHtml(scoreTips.freshnessTip)}">Freshness <strong>${item.gdiBreakdown?.freshness ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.freshness ?? 0)}"></progress></div>
-    </div>
     ${usageHtml}
     ${lineageHtml}
     <div class="section-label">Provenance</div>
@@ -1412,8 +1426,8 @@ function render() {
     <div class="exp-header ${showShareCol ? "has-share" : ""}">
       <span class="col-rank">#</span>
       <span>Experience</span>
-      <span class="col-num">Score</span>
-      <span class="col-num">Used</span>
+      <span class="col-num" title="Overall experience score (0–100)">Score</span>
+      <span class="col-num" title="Verified helpful uses">Helpful</span>
       ${showShareCol ? `<span class="col-action" title="Share to Team"></span>` : ""}
     </div>
     ${items
