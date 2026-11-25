@@ -457,6 +457,7 @@ test("score rank, pin/vote feedback, and Rule/Fix lineage work together", () => 
     assert.equal(extractToolTargetKey("edit", { path: "C:\\repo\\README.md" }), "file:c:\\repo\\readme.md");
     assert.equal(extractToolTargetKey("reply_to_review_thread", { thread_id: "PRRT_123" }), "pr_thread:PRRT_123");
     assert.equal(extractToolTargetKey("powershell", { command: "gh api repos/o/r/pulls/comments/4610709428 -X PATCH" }), "gh_comment:4610709428");
+    assert.equal(extractToolTargetKey("powershell", { command: "gh pr edit 17679 --body-file -" }), "gh_pr_edit:17679");
     assert.equal(isActionToolName("view"), false);
     assert.equal(isActionToolName("edit"), true);
     assert.equal(isActionToolName("powershell", { command: "gh pr diff 17611" }), false);

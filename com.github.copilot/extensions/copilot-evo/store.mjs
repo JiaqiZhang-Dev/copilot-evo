@@ -601,6 +601,8 @@ export function extractToolTargetKey(toolName, toolArgs) {
   if (args.root_comment_id) return `pr_comment:${args.root_comment_id}`;
   const cmd = String(args.command || args.cmd || args.raw || "");
   if (cmd) {
+    const ghPrEditMatch = cmd.match(/\bgh\s+pr\s+edit(?:\s+(\d+))?/i);
+    if (ghPrEditMatch) return ghPrEditMatch[1] ? `gh_pr_edit:${ghPrEditMatch[1]}` : "gh_pr_edit";
     const ghCommentMatch = cmd.match(/(?:pulls\/comments\/|issues\/comments\/|gh\s+pr\s+comment[^\r\n]*?)(\d+)/i);
     if (ghCommentMatch) return `gh_comment:${ghCommentMatch[1]}`;
     if (/\bgh\s+api\b.*\bPATCH\b/i.test(cmd)) return "gh_api_patch";
