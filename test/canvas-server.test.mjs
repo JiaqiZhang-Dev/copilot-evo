@@ -140,6 +140,20 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     const invalidCfgBody = await invalidCfgRes.json();
     assert.equal(invalidCfgBody.ok, false);
 
+    const gradPreviewRes = await fetch(`${baseUrl}/api/assets/graduate-preview`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Evo-Token": canvasToken,
+      },
+      body: JSON.stringify({ id: "exp-local-promote", targetType: "copilot-instructions" }),
+    });
+    assert.equal(gradPreviewRes.status, 200);
+    const gradPreviewBody = await gradPreviewRes.json();
+    assert.equal(gradPreviewBody.ok, true);
+    assert.equal(gradPreviewBody.preview, true);
+    assert.equal(gradPreviewBody.targetPath, ".github/copilot-instructions.md");
+
     const disconnectCfgRes = await fetch(`${baseUrl}/api/sync/configure`, {
       method: "POST",
       headers: {

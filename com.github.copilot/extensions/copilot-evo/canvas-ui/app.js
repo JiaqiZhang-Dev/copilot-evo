@@ -373,6 +373,11 @@ function renderDetail(item) {
   const validateBtn = hasVal
     ? `<button class="btn" data-validate="${escapeHtml(item.id)}" type="button">Run Validation</button>`
     : "";
+  const isRepoScoped = Boolean(item.repoScope && item.repoScope !== "*");
+  const graduateBtn =
+    isRepoScoped && !item.graduatedTo?.targetPath
+      ? `<button class="btn ${item.graduationCandidate ? "btn-primary" : ""}" data-graduate="${escapeHtml(item.id)}" type="button" title="Graduate into .github/ instructions or skill">Graduate to Repo</button>`
+      : "";
   const promoteTeamBtn =
     item.scope === "local"
       ? `<button class="btn btn-primary" data-promote-team="${escapeHtml(item.id)}" type="button" ${isSharing ? "disabled" : ""} title="Sanitize and share with your team">${isSharing ? "Sharing..." : "Share with Team"}</button>`
@@ -487,8 +492,9 @@ function renderDetail(item) {
           <div class="detail-id-sub">${escapeHtml(item.id)}</div>
         </div>
       </div>
-      <div class="actions">${promoteTeamBtn}${validateBtn}${copyBtn}${deleteControl}${closeBtn}</div>
+      <div class="actions">${promoteTeamBtn}${graduateBtn}${validateBtn}${copyBtn}${deleteControl}${closeBtn}</div>
     </div>
+    ${item.graduatedTo?.targetPath ? `<p class="detail-box">Graduated to <code>${escapeHtml(item.graduatedTo.targetPath)}</code></p>` : ""}
     ${refineHtml}
     ${noisyWarning}
     <div class="section-label">Trigger Signals</div>
@@ -529,6 +535,7 @@ function renderDetail(item) {
     render();
   });
   pane.querySelector("[data-validate]")?.addEventListener("click", () => mutate("/api/arena/validate", { id: item.id }));
+  pane.querySelector("[data-graduate]")?.addEventListener("click", () => openGraduateModal(item.id));
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
   pane.querySelectorAll("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1478,6 +1485,7 @@ function render() {
               <span class="exp-title">${escapeHtml(item.title)}</span>
               <span class="row-kind ${kindCls}" title="${kindTooltip}">${itemKind}</span>
               <span class="row-scope" title="Repository scope">${repoLabel}</span>
+              ${item.graduatedTo?.targetPath ? `<span class="row-grad-done" title="Graduated to ${escapeHtml(item.graduatedTo.targetPath)}">Graduated</span>` : item.graduationCandidate ? `<span class="row-grad-ready" title="High-frequency repo experience ready to graduate">Graduate</span>` : ""}
             </div>
             <div class="exp-summary">${escapeHtml(item.summary)}</div>
             ${footHtml}
@@ -1551,6 +1559,57 @@ function setRepoModalBusy(busy, message = "") {
     loadingEl.classList.toggle("hidden", !busy);
     if (textEl && message) textEl.textContent = message;
   }
+}
+
+let graduatingId = "";
+
+async function refreshGraduatePreview() {
+  if (!graduatingId) return;
+  const errEl = el("grad-modal-error");
+  const preEl = el("grad-preview-code");
+  const typeEl = el("grad-target-type");
+  const pathEl = el("grad-target-path");
+  errEl?.classList.add("hidden");
+  try {
+    const res = await fetch("/api/assets/graduate-preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Evo-Token": canvasToken,
+      },
+      body: JSON.stringify({
+        id: graduatingId,
+        targetType: typeEl?.value || "",
+        targetPath: pathEl?.value?.trim() || "",
+      }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      if (errEl) {
+        errEl.textContent = data.error || "Failed to preview graduation.";
+        errEl.classList.remove("hidden");
+      }
+      if (preEl) preEl.textContent = "";
+      return;
+    }
+    if (typeEl && data.targetType) typeEl.value = data.targetType;
+    if (pathEl && data.targetPath) pathEl.value = data.targetPath;
+    if (preEl) preEl.textContent = data.snippet || data.content || "";
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  }
+}
+
+function openGraduateModal(id) {
+  graduatingId = id;
+  if (el("grad-target-type")) el("grad-target-type").value = "";
+  if (el("grad-target-path")) el("grad-target-path").value = "";
+  el("grad-modal-error")?.classList.add("hidden");
+  el("graduate-modal")?.classList.remove("hidden");
+  refreshGraduatePreview();
 }
 
 async function mutate(endpoint, body) {
@@ -1644,6 +1703,9 @@ async function mutate(endpoint, body) {
         const detail = failed?.output ? ` — ${failed.output.split(/\r?\n/)[0].slice(0, 140)}` : "";
         showBanner(`Validation FAILED for ${data.assetId}${failed ? ` (${failed.command})` : ""}${detail}`, true);
       }
+    } else if (endpoint === "/api/assets/graduate-apply") {
+      el("graduate-modal")?.classList.add("hidden");
+      showToast("Graduated to repository!", `Wrote ${data.targetPath || "file"} in ${state?.currentRepo || "repo"}.`);
     } else if (endpoint === "/api/assets/delete") {
       showBanner(`Deleted ${data.deletedId || "asset"}.`);
     }
@@ -1805,6 +1867,24 @@ async function init() {
     }
     el("repo-modal-error")?.classList.add("hidden");
     mutate("/api/sync/configure", { repo: val, createPrivate: false });
+  });
+
+  el("btn-grad-close")?.addEventListener("click", () => el("graduate-modal")?.classList.add("hidden"));
+  el("btn-grad-cancel")?.addEventListener("click", () => el("graduate-modal")?.classList.add("hidden"));
+  el("graduate-modal")?.addEventListener("click", (e) => {
+    if (e.target === el("graduate-modal")) el("graduate-modal")?.classList.add("hidden");
+  });
+  el("grad-target-type")?.addEventListener("change", () => {
+    if (el("grad-target-path")) el("grad-target-path").value = "";
+    refreshGraduatePreview();
+  });
+  el("btn-grad-apply")?.addEventListener("click", () => {
+    if (!graduatingId) return;
+    mutate("/api/assets/graduate-apply", {
+      id: graduatingId,
+      targetType: el("grad-target-type")?.value || "",
+      targetPath: el("grad-target-path")?.value?.trim() || "",
+    });
   });
   el("btn-repo-create")?.addEventListener("click", () => {
     const val = el("repo-modal-input")?.value?.trim();

@@ -9,6 +9,8 @@ import {
   configureSyncRepo,
   countEvents,
   getAssetRelationships,
+  graduateAsset,
+  isGraduationCandidate,
   loadStore,
   manageAsset,
   readRecentEvents,
@@ -85,6 +87,7 @@ export function createEvoCanvasServer({
     const store = loadStore(evoHome);
     const events = readRecentEvents(evoHome, 250);
     const allAssets = [...store.rules, ...store.fixes, ...store.knowledge];
+    const currentRepo = getCurrentRepo();
     const nowMs = Date.now();
     const enrich = (item) => {
       const gdi = computeGdiBreakdown(item, allAssets, nowMs);
@@ -94,6 +97,7 @@ export function createEvoCanvasServer({
         gdiScore: gdi.score,
         gdiBreakdown: gdi,
         relationships: getAssetRelationships(item, allAssets),
+        graduationCandidate: isGraduationCandidate(item, { currentRepo, allAssets, nowMs }),
       };
     };
     const rules = store.rules.map(enrich).sort((a, b) => b.gdiScore - a.gdiScore);
@@ -102,7 +106,7 @@ export function createEvoCanvasServer({
 
     return {
       evoHome,
-      currentRepo: getCurrentRepo(),
+      currentRepo,
       currentSession: getSessionInfo(),
       syncRepoPath: resolveSyncRepoPath(evoHome),
       config: store.config,
@@ -218,6 +222,20 @@ export function createEvoCanvasServer({
         }
       } else if (reqUrl.pathname === "/api/arena/validate") {
         result = await runAssetValidation(evoHome, body.id, getWorkingDirectory());
+      } else if (reqUrl.pathname === "/api/assets/graduate-preview") {
+        result = graduateAsset(evoHome, body.id, {
+          workingDirectory: getWorkingDirectory(),
+          targetType: body.targetType || "",
+          targetPath: body.targetPath || "",
+          write: false,
+        });
+      } else if (reqUrl.pathname === "/api/assets/graduate-apply") {
+        result = graduateAsset(evoHome, body.id, {
+          workingDirectory: getWorkingDirectory(),
+          targetType: body.targetType || "",
+          targetPath: body.targetPath || "",
+          write: true,
+        });
       } else if (reqUrl.pathname === "/api/assets/delete") {
         result = manageAsset("delete", body.id, { evoHome });
       } else if (reqUrl.pathname === "/api/sync/configure") {

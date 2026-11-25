@@ -12,8 +12,10 @@ import {
   exportBundle,
   extractSignals,
   extractToolTargetKey,
+  findGraduationCandidates,
   formatAssetPreview,
   getPendingScoreDeltaTotal,
+  graduateAsset,
   hasCorrectionOrPitfallCue,
   hasNegativeFeedbackCue,
   hasStrategyCue,
@@ -40,7 +42,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.14.9";
+const EXTENSION_VERSION = "0.15.0";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -231,6 +233,17 @@ const session = await joinSession({
       }
       const parts = [ACTIVE_PROTOCOL];
       if (matched.length) parts.push(formatAssetsContext(matched, { isReview }));
+      if (currentRepo) {
+        const candidates = findGraduationCandidates({ rules, fixes, knowledge, repo: currentRepo }).slice(0, 3);
+        if (candidates.length) {
+          const list = candidates
+            .map((c) => `${c.asset.id} -> ${c.recommendation.targetPath}`)
+            .join(", ");
+          parts.push(
+            `[copilot-evo graduation candidates] High-frequency repo experiences ready to graduate into .github/ (${list}). Offer to preview via \`evo_graduate\` when appropriate.`
+          );
+        }
+      }
       return { additionalContext: parts.join("\n\n") };
     },
 
@@ -780,6 +793,47 @@ const session = await joinSession({
           canvasServer.broadcastUpdate(args.action);
           if ((args.action === "upvote" || args.action === "downvote") && getPendingScoreDeltaTotal(evoHome) >= 3) {
             syncScoreDeltasOnly(evoHome).catch(() => {});
+          }
+        }
+        return JSON.stringify(res, null, 2);
+      },
+    },
+    {
+      name: "evo_graduate",
+      description: "Preview or apply graduation of a high-frequency repo-scoped Experience into .github/copilot-instructions.md, .github/instructions/*.instructions.md, or .github/skills/<name>/SKILL.md. Always preview first (apply: false) and confirm with the user via ask_user before writing (apply: true).",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Experience ID to graduate" },
+          targetType: {
+            type: "string",
+            enum: ["copilot-instructions", "instructions-file", "skill"],
+            description: "Optional target format override",
+          },
+          targetPath: {
+            type: "string",
+            description: "Optional repo-relative target file path",
+          },
+          apply: {
+            type: "boolean",
+            description: "Set true only after user confirmation to write the file and mark the experience graduated",
+          },
+        },
+        required: ["id"],
+      },
+      handler: async (args) => {
+        const res = graduateAsset(evoHome, args.id, {
+          workingDirectory: lastWorkingDirectory || process.cwd(),
+          targetType: args.targetType || "",
+          targetPath: args.targetPath || "",
+          write: Boolean(args.apply),
+        });
+        if (res?.ok && res.graduated) {
+          canvasServer.broadcastUpdate("graduate");
+          try {
+            await session.log(`Graduated ${args.id} -> ${res.targetPath}`);
+          } catch {
+            // Ignore log errors outside active UI timeline.
           }
         }
         return JSON.stringify(res, null, 2);

@@ -701,6 +701,7 @@ export function selectAssets({
   isReview = false,
   isFailure = false,
   includeSuperseded = false,
+  includeGraduated = false,
   rules = [],
   fixes = [],
   knowledge = [],
@@ -728,6 +729,15 @@ export function selectAssets({
     const assetRepo = normalizeRepoSlug(asset.repoScope || "*");
     if (assetRepo !== "*" && normalizedRepo && assetRepo.toLowerCase() !== normalizedRepo.toLowerCase()) continue;
     if (assetRepo !== "*" && !normalizedRepo && !terms.length && sigSet.size > 0) continue;
+    if (
+      !includeGraduated &&
+      normalizedRepo &&
+      asset.graduatedTo?.targetPath &&
+      normalizeRepoSlug(asset.graduatedTo.repo || assetRepo).toLowerCase() === normalizedRepo.toLowerCase() &&
+      !terms.includes(asset.id.toLowerCase())
+    ) {
+      continue;
+    }
 
     let relevance = 0;
     const assetSignals = (asset.signals || []).map((s) => String(s).toLowerCase());
@@ -1758,6 +1768,312 @@ export async function syncScoreDeltasOnly(evoHome, { repoPath } = {}) {
   clearLocalDeltas(path.join(evoHome, "knowledge.json"), kMerge.nextRemote);
   appendEvent(evoHome, { event: "sync_scores", reason: "auto_delta_push" });
   return { ok: true, pushed: true, repoPath: targetRepo };
+}
+
+export function isGraduationCandidate(
+  asset,
+  {
+    currentRepo = "",
+    allAssets = [],
+    nowMs = Date.now(),
+    minSuccess = 3,
+    minRecalls = 5,
+    minWinRate = 80,
+  } = {}
+) {
+  if (!asset?.id || asset.graduatedTo?.targetPath) return false;
+  const assetRepo = normalizeRepoSlug(asset.repoScope || "*");
+  if (assetRepo === "*") return false;
+  if (currentRepo && currentRepo !== "*") {
+    const normCurrent = normalizeRepoSlug(currentRepo);
+    if (assetRepo.toLowerCase() !== normCurrent.toLowerCase()) return false;
+  }
+  const succ = Math.max(0, Number(asset.successCount || 0));
+  const recalls = Math.max(0, Number(asset.recallCount || 0));
+  if (succ < minSuccess && recalls < minRecalls) return false;
+  const gdi = computeGdiBreakdown(asset, allAssets.length ? allAssets : [asset], nowMs);
+  if (gdi.winRate < minWinRate) return false;
+  return gdi.tier === "S" || gdi.tier === "A" || gdi.score >= 65;
+}
+
+export function findGraduationCandidates({
+  rules = [],
+  fixes = [],
+  knowledge = [],
+  repo = "",
+  nowMs = Date.now(),
+  minSuccess = 3,
+  minRecalls = 5,
+  minWinRate = 80,
+} = {}) {
+  const allAssets = [...rules, ...fixes, ...knowledge];
+  return allAssets
+    .filter((asset) =>
+      isGraduationCandidate(asset, { currentRepo: repo, allAssets, nowMs, minSuccess, minRecalls, minWinRate })
+    )
+    .map((asset) => ({
+      asset,
+      gdiScore: computeGdiScore(asset, allAssets, nowMs),
+      recommendation: recommendGraduationTarget(asset),
+    }))
+    .sort((a, b) => b.gdiScore - a.gdiScore);
+}
+
+export function recommendGraduationTarget(asset) {
+  const type = normalizeExperienceType(asset?.type);
+  const rawId = String(asset?.id || asset?.title || "experience")
+    .replace(/^exp-/, "")
+    .replace(/-[a-z0-9]{8}$/i, "");
+  const skillName = slugify(rawId || asset?.title || "experience", 48);
+  const stepsCount = Array.isArray(asset?.strategy) ? asset.strategy.length : 0;
+  const hasValidation = Array.isArray(asset?.validation) && asset.validation.length > 0;
+  if (type === "Fix" || stepsCount >= 3 || hasValidation) {
+    return {
+      targetType: "skill",
+      targetPath: `.github/skills/${skillName}/SKILL.md`,
+      skillName,
+    };
+  }
+  return {
+    targetType: "copilot-instructions",
+    targetPath: ".github/copilot-instructions.md",
+    skillName,
+  };
+}
+
+export function renderGraduationArtifact(
+  asset,
+  { targetType = "", targetPath = "", skillName = "", existingContent = "" } = {}
+) {
+  if (!asset?.id) {
+    return { ok: false, error: "Experience is required." };
+  }
+  const leak = fullLeakCheck(asset);
+  if (leak.found) {
+    return {
+      ok: false,
+      error: "Graduation blocked: sensitive content detected in experience.",
+      leaks: leak.leaks,
+    };
+  }
+  const rec = recommendGraduationTarget(asset);
+  const resolvedType = targetType || rec.targetType;
+  const resolvedSkill = slugify(skillName || rec.skillName, 48);
+  const resolvedPath =
+    String(targetPath || "").trim() ||
+    (resolvedType === "skill"
+      ? `.github/skills/${resolvedSkill}/SKILL.md`
+      : resolvedType === "instructions-file"
+        ? `.github/instructions/${resolvedSkill}.instructions.md`
+        : ".github/copilot-instructions.md");
+
+  const marker = `<!-- copilot-evo: ${asset.id} -->`;
+  const kindLabel = normalizeExperienceType(asset.type);
+  const steps = Array.isArray(asset.strategy) ? asset.strategy : [];
+  const validation = Array.isArray(asset.validation) ? asset.validation : [];
+
+  if (resolvedType === "skill") {
+    const descText = String(asset.summary || asset.title || "").replace(/\s+/g, " ").replace(/"/g, "'").trim();
+    const lines = [
+      "---",
+      `name: ${resolvedSkill}`,
+      `description: "${descText.slice(0, 240)}"`,
+      "---",
+      "",
+      `# ${asset.title}`,
+      "",
+      asset.summary,
+    ];
+    if (asset.solution) {
+      lines.push("", "## Solution", "", asset.solution);
+    }
+    if (steps.length) {
+      lines.push("", `## ${kindLabel === "Knowledge" ? "Key Takeaways" : "Steps"}`, "");
+      steps.forEach((step, idx) => lines.push(`${idx + 1}. ${step}`));
+    }
+    if (validation.length) {
+      lines.push("", "## Validation", "", ...validation.map((cmd) => `- \`${cmd}\``));
+    }
+    lines.push("", marker, "");
+    const content = lines.join("\n");
+    return {
+      ok: true,
+      targetType: resolvedType,
+      targetPath: resolvedPath,
+      skillName: resolvedSkill,
+      alreadyPresent: existingContent.includes(marker),
+      snippet: content,
+      content,
+    };
+  }
+
+  const snippetLines = [
+    `### ${asset.title}`,
+    marker,
+    "",
+    asset.summary,
+  ];
+  if (asset.solution) {
+    snippetLines.push("", `- **Fix:** ${asset.solution}`);
+  }
+  if (steps.length) {
+    snippetLines.push(...steps.map((s) => `- ${s}`));
+  }
+  if (validation.length) {
+    snippetLines.push(`- **Verify:** ${validation.map((v) => `\`${v}\``).join(", ")}`);
+  }
+  const snippet = snippetLines.join("\n");
+
+  const alreadyPresent =
+    Boolean(existingContent) &&
+    (existingContent.includes(marker) || existingContent.includes(`### ${asset.title}`));
+  if (alreadyPresent) {
+    return {
+      ok: true,
+      targetType: resolvedType,
+      targetPath: resolvedPath,
+      alreadyPresent: true,
+      snippet,
+      content: existingContent,
+    };
+  }
+
+  let content;
+  if (!existingContent.trim()) {
+    const header =
+      resolvedType === "instructions-file"
+        ? `---\napplyTo: "**"\n---\n\n## Repository Conventions\n\n`
+        : `## Repository Conventions\n\n`;
+    content = `${header}${snippet}\n`;
+  } else {
+    content = `${existingContent.trimEnd()}\n\n${snippet}\n`;
+  }
+
+  return {
+    ok: true,
+    targetType: resolvedType,
+    targetPath: resolvedPath,
+    alreadyPresent: false,
+    snippet,
+    content,
+  };
+}
+
+function normalizeRepoRelativePath(targetPath) {
+  const rel = String(targetPath || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!rel || rel.includes("..") || path.isAbsolute(rel)) return "";
+  return rel;
+}
+
+export function graduateAsset(
+  evoHome,
+  assetId,
+  { workingDirectory = process.cwd(), targetType = "", targetPath = "", skillName = "", write = false } = {}
+) {
+  if (!assetId) return { ok: false, error: "Experience ID is required." };
+  const store = loadStore(evoHome);
+  const sources = [
+    { file: "rules.json", list: store.rules },
+    { file: "fixes.json", list: store.fixes },
+    { file: "knowledge.json", list: store.knowledge },
+  ];
+  let matchedSource = null;
+  let matchedIdx = -1;
+  for (const src of sources) {
+    const idx = src.list.findIndex((item) => item.id === assetId);
+    if (idx !== -1) {
+      matchedSource = src;
+      matchedIdx = idx;
+      break;
+    }
+  }
+  if (!matchedSource) {
+    return { ok: false, error: `Experience not found: ${assetId}` };
+  }
+  const asset = matchedSource.list[matchedIdx];
+  const rootDir = path.resolve(workingDirectory || process.cwd());
+  if (!fs.existsSync(rootDir)) {
+    return { ok: false, error: `Working directory does not exist: ${rootDir}` };
+  }
+
+  const rec = recommendGraduationTarget(asset);
+  const resolvedType = targetType || rec.targetType;
+  const rawRel = targetPath || (resolvedType === rec.targetType ? rec.targetPath : "");
+  const safeRel = rawRel ? normalizeRepoRelativePath(rawRel) : "";
+  if (rawRel && !safeRel) {
+    return { ok: false, error: "Target path must be a relative path inside the repository." };
+  }
+
+  const provisional = renderGraduationArtifact(asset, {
+    targetType: resolvedType,
+    targetPath: safeRel,
+    skillName,
+  });
+  if (!provisional.ok) return provisional;
+
+  const finalRel = normalizeRepoRelativePath(provisional.targetPath);
+  const fullPath = path.resolve(rootDir, finalRel);
+  if (!fullPath.startsWith(rootDir + path.sep) && fullPath !== rootDir) {
+    return { ok: false, error: "Target path escapes repository root." };
+  }
+  const existingContent = fs.existsSync(fullPath) ? fs.readFileSync(fullPath, "utf8") : "";
+  const rendered = renderGraduationArtifact(asset, {
+    targetType: resolvedType,
+    targetPath: finalRel,
+    skillName,
+    existingContent,
+  });
+  if (!rendered.ok) return rendered;
+
+  if (!write) {
+    return {
+      ok: true,
+      preview: true,
+      assetId: asset.id,
+      targetType: rendered.targetType,
+      targetPath: finalRel,
+      fullPath,
+      alreadyPresent: rendered.alreadyPresent,
+      snippet: rendered.snippet,
+      content: rendered.content,
+    };
+  }
+
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+  fs.writeFileSync(fullPath, rendered.content, "utf8");
+
+  const repoSlug = detectRepoSlug(rootDir) || asset.repoScope || "*";
+  const updatedAsset = {
+    ...asset,
+    graduatedTo: {
+      targetType: rendered.targetType,
+      targetPath: finalRel,
+      repo: repoSlug,
+      graduatedAt: new Date().toISOString(),
+    },
+    updatedAt: new Date().toISOString(),
+  };
+  const nextList = [...matchedSource.list];
+  nextList[matchedIdx] = updatedAsset;
+  writeJson(path.join(evoHome, matchedSource.file), nextList);
+
+  appendEvent(evoHome, {
+    event: "graduate",
+    assetId: asset.id,
+    assetType: asset.type,
+    targetType: rendered.targetType,
+    targetPath: finalRel,
+  });
+
+  return {
+    ok: true,
+    graduated: true,
+    asset: updatedAsset,
+    targetType: rendered.targetType,
+    targetPath: finalRel,
+    fullPath,
+    alreadyPresent: rendered.alreadyPresent,
+  };
 }
 
 function splitArgs(command) {

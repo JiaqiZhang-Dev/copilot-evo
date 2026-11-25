@@ -14,9 +14,11 @@ import {
   exportBundle,
   extractSignals,
   extractToolTargetKey,
+  findGraduationCandidates,
   findSimilarAssets,
   getAssetRelationships,
   getPendingScoreDeltaTotal,
+  graduateAsset,
   hasCorrectionOrPitfallCue,
   hasNegativeFeedbackCue,
   hasStrategyCue,
@@ -765,5 +767,95 @@ test("initStore defaults to local-only without bundling team experiences and con
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(remoteBare, { recursive: true, force: true });
     fs.rmSync(seedClone, { recursive: true, force: true });
+  }
+});
+
+test("findGraduationCandidates and graduateAsset write .github/ artifacts and suppress redundant recall", () => {
+  const home = makeTempDir();
+  const bundledDir = makeTempDir();
+  const repoDir = makeTempDir();
+  try {
+    execFileSync("git", ["init", repoDir], { stdio: "ignore" });
+    execFileSync("git", ["-C", repoDir, "remote", "add", "origin", "https://github.com/Azure/typespec-azure.git"], {
+      stdio: "ignore",
+    });
+
+    solidifyAsset(
+      {
+        kind: "Rule",
+        id: "exp-repo-rule-grad",
+        title: "Use workspace pnpm filter",
+        summary: "Run package tests with pnpm --filter instead of root test.",
+        signals: ["pnpm", "test_failure"],
+        strategy: ["Run pnpm --filter <pkg> test."],
+        repoScope: "Azure/typespec-azure",
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+    solidifyAsset(
+      {
+        kind: "Fix",
+        id: "exp-repo-fix-grad",
+        title: "Regenerate scenario suites after emitter edit",
+        summary: "Scenario wrapper test files must be regenerated when emitter markdown scenarios change.",
+        signals: ["typespec-go", "vitest"],
+        strategy: ["Edit scenario markdown.", "Run gen:scenario-suites.", "Run vitest."],
+        validation: ["npm test"],
+        repoScope: "Azure/typespec-azure",
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+
+    recordAssetOutcome(home, ["exp-repo-rule-grad", "exp-repo-fix-grad"], "success", "verified");
+    recordAssetOutcome(home, ["exp-repo-rule-grad", "exp-repo-fix-grad"], "success", "verified");
+
+    const store = loadStore(home);
+    const candidates = findGraduationCandidates({
+      rules: store.rules,
+      fixes: store.fixes,
+      knowledge: store.knowledge,
+      repo: "Azure/typespec-azure",
+    });
+    assert.equal(candidates.length, 2);
+    assert.equal(
+      candidates.find((c) => c.asset.id === "exp-repo-rule-grad").recommendation.targetPath,
+      ".github/copilot-instructions.md"
+    );
+    assert.equal(
+      candidates.find((c) => c.asset.id === "exp-repo-fix-grad").recommendation.targetType,
+      "skill"
+    );
+
+    const preview = graduateAsset(home, "exp-repo-rule-grad", { workingDirectory: repoDir, write: false });
+    assert.equal(preview.ok, true);
+    assert.equal(preview.preview, true);
+    assert.equal(fs.existsSync(path.join(repoDir, ".github", "copilot-instructions.md")), false);
+
+    const appliedRule = graduateAsset(home, "exp-repo-rule-grad", { workingDirectory: repoDir, write: true });
+    assert.equal(appliedRule.ok, true);
+    assert.equal(appliedRule.graduated, true);
+    const instrText = fs.readFileSync(path.join(repoDir, ".github", "copilot-instructions.md"), "utf8");
+    assert.match(instrText, /Use workspace pnpm filter/);
+    assert.match(instrText, /copilot-evo: exp-repo-rule-grad/);
+
+    const appliedSkill = graduateAsset(home, "exp-repo-fix-grad", { workingDirectory: repoDir, write: true });
+    assert.equal(appliedSkill.ok, true);
+    assert.ok(fs.existsSync(path.join(repoDir, ".github", "skills", "repo-fix-grad", "SKILL.md")));
+
+    const afterStore = loadStore(home);
+    const recalled = selectAssets({
+      signals: ["pnpm", "test_failure"],
+      repo: "Azure/typespec-azure",
+      rules: afterStore.rules,
+      fixes: afterStore.fixes,
+      limit: 5,
+    });
+    assert.equal(recalled.some((a) => a.id === "exp-repo-rule-grad"), false);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(bundledDir, { recursive: true, force: true });
+    fs.rmSync(repoDir, { recursive: true, force: true });
   }
 });
