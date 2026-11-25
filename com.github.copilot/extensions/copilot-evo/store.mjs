@@ -1991,7 +1991,15 @@ function normalizeRepoRelativePath(targetPath) {
 export function graduateAsset(
   evoHome,
   assetId,
-  { workingDirectory = process.cwd(), targetType = "", targetPath = "", skillName = "", write = false } = {}
+  {
+    workingDirectory = process.cwd(),
+    targetType = "",
+    targetPath = "",
+    skillName = "",
+    prUrl = "",
+    markOnly = false,
+    write = false,
+  } = {}
 ) {
   if (!assetId) return { ok: false, error: "Experience ID is required." };
   const store = loadStore(evoHome);
@@ -2062,16 +2070,20 @@ export function graduateAsset(
     };
   }
 
-  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-  fs.writeFileSync(fullPath, rendered.content, "utf8");
+  if (!markOnly) {
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, rendered.content, "utf8");
+  }
 
   const repoSlug = detectRepoSlug(rootDir) || asset.repoScope || "*";
+  const safePrUrl = prUrl ? normalizeEvidenceLink(prUrl)?.url || "" : "";
   const updatedAsset = {
     ...asset,
     graduatedTo: {
       targetType: rendered.targetType,
       targetPath: finalRel,
       repo: repoSlug,
+      ...(safePrUrl ? { prUrl: safePrUrl } : {}),
       graduatedAt: new Date().toISOString(),
     },
     updatedAt: new Date().toISOString(),

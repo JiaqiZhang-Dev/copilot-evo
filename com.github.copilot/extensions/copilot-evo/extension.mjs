@@ -114,6 +114,35 @@ const canvasServer = createEvoCanvasServer({
     ].join("\n");
     await activeSession.send({ prompt });
   },
+  onGraduateRequest: async ({ asset }) => {
+    if (!activeSession) throw new Error("Active session unavailable.");
+    const prompt = [
+      `[copilot-evo graduate request] Please graduate experience \`${asset.id}\` (${asset.type}, repoScope: ${asset.repoScope || "*"}) into this repository's \`.github/\` configuration and draft a PR:`,
+      "",
+      "Experience JSON:",
+      JSON.stringify(
+        {
+          id: asset.id,
+          kind: asset.type,
+          title: asset.title,
+          summary: asset.summary,
+          signals: asset.signals,
+          strategy: asset.strategy,
+          solution: asset.solution,
+          validation: asset.validation,
+          repoScope: asset.repoScope || "*",
+        },
+        null,
+        2
+      ),
+      "",
+      "Instructions:",
+      "1. Inspect existing `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`, and `.github/skills/*/SKILL.md` in the current repo first. Decide whether to merge cleanly into an existing skill/instructions file or create a new structured skill (`SKILL.md`) / instructions file.",
+      "2. Propose the target file path and structured content to the user, and confirm via `ask_user` whether to open a PR (`gh pr create` on a new branch), write locally only, or cancel.",
+      `3. After creating the PR or writing the file, call \`evo_graduate({ id: "${asset.id}", targetType, targetPath, prUrl, apply: true, markOnly: true })\` to mark it graduated and suppress redundant dynamic recall.`,
+    ].join("\n");
+    await activeSession.send({ prompt });
+  },
 });
 const sessionState = {
   protocolInjected: false,
@@ -800,7 +829,7 @@ const session = await joinSession({
     },
     {
       name: "evo_graduate",
-      description: "Preview or apply graduation of a high-frequency repo-scoped Experience into .github/copilot-instructions.md, .github/instructions/*.instructions.md, or .github/skills/<name>/SKILL.md. Always preview first (apply: false) and confirm with the user via ask_user before writing (apply: true).",
+      description: "Preview, apply, or record graduation of a high-frequency repo-scoped Experience into .github/copilot-instructions.md, .github/instructions/*.instructions.md, or .github/skills/<name>/SKILL.md. Set markOnly: true when Copilot has already merged/written the file or opened a PR.",
       parameters: {
         type: "object",
         properties: {
@@ -814,9 +843,17 @@ const session = await joinSession({
             type: "string",
             description: "Optional repo-relative target file path",
           },
+          prUrl: {
+            type: "string",
+            description: "Optional https:// PR URL if a graduation PR was created",
+          },
+          markOnly: {
+            type: "boolean",
+            description: "When true with apply: true, record graduatedTo without overwriting targetPath",
+          },
           apply: {
             type: "boolean",
-            description: "Set true only after user confirmation to write the file and mark the experience graduated",
+            description: "Set true only after user confirmation to record graduation (and write file unless markOnly is true)",
           },
         },
         required: ["id"],
@@ -826,6 +863,8 @@ const session = await joinSession({
           workingDirectory: lastWorkingDirectory || process.cwd(),
           targetType: args.targetType || "",
           targetPath: args.targetPath || "",
+          prUrl: args.prUrl || "",
+          markOnly: Boolean(args.markOnly),
           write: Boolean(args.apply),
         });
         if (res?.ok && res.graduated) {

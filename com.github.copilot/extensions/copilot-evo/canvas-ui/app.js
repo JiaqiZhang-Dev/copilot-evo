@@ -514,7 +514,7 @@ function renderDetail(item) {
       </div>
       <div class="actions">${promoteTeamBtn}${graduateBtn}${validateBtn}${copyBtn}${deleteControl}${closeBtn}</div>
     </div>
-    ${item.graduatedTo?.targetPath ? `<p class="detail-box">Graduated to <code>${escapeHtml(item.graduatedTo.targetPath)}</code></p>` : ""}
+    ${item.graduatedTo?.targetPath ? `<p class="detail-box">Graduated to <code>${escapeHtml(item.graduatedTo.targetPath)}</code>${item.graduatedTo.prUrl ? ` · <a class="evidence-link" href="${escapeHtml(item.graduatedTo.prUrl)}" target="_blank" rel="noopener noreferrer">PR ↗</a>` : ""}</p>` : ""}
     ${gradChecklistHtml}
     ${refineHtml}
     ${noisyWarning}
@@ -527,6 +527,13 @@ function renderDetail(item) {
     ${guardrail}
     ${validation}
     ${evidenceHtml}
+    <div class="section-label" title="${escapeHtml(scoreTips.totalTip)}">Score Breakdown · ${escapeHtml(String(item.gdiBreakdown?.winRate ?? 100))}% Pass Rate</div>
+    <div class="detail-breakdown">
+      <div class="mini-dim" title="${escapeHtml(scoreTips.qualityTip)}">Quality <strong>${item.gdiBreakdown?.quality ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.quality ?? 0)}"></progress></div>
+      <div class="mini-dim" title="${escapeHtml(scoreTips.reliabilityTip)}">Reliability <strong>${item.gdiBreakdown?.reliability ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.reliability ?? 0)}"></progress></div>
+      <div class="mini-dim" title="${escapeHtml(scoreTips.lineageTip)}">Lineage <strong>${item.gdiBreakdown?.lineage ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.lineage ?? 0)}"></progress></div>
+      <div class="mini-dim" title="${escapeHtml(scoreTips.freshnessTip)}">Freshness <strong>${item.gdiBreakdown?.freshness ?? 0}</strong><progress class="score-bar" max="100" value="${Number(item.gdiBreakdown?.freshness ?? 0)}"></progress></div>
+    </div>
     ${usageHtml}
     ${lineageHtml}
     <div class="section-label">Provenance</div>
@@ -549,7 +556,7 @@ function renderDetail(item) {
     render();
   });
   pane.querySelector("[data-validate]")?.addEventListener("click", () => mutate("/api/arena/validate", { id: item.id }));
-  pane.querySelector("[data-graduate]")?.addEventListener("click", () => openGraduateModal(item.id));
+  pane.querySelector("[data-graduate]")?.addEventListener("click", () => mutate("/api/assets/graduate-request", { id: item.id }));
   pane.querySelector("[data-promote-team]")?.addEventListener("click", () => mutate("/api/assets/promote-team", { id: item.id }));
   pane.querySelectorAll("[data-jump]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1575,57 +1582,6 @@ function setRepoModalBusy(busy, message = "") {
   }
 }
 
-let graduatingId = "";
-
-async function refreshGraduatePreview() {
-  if (!graduatingId) return;
-  const errEl = el("grad-modal-error");
-  const preEl = el("grad-preview-code");
-  const typeEl = el("grad-target-type");
-  const pathEl = el("grad-target-path");
-  errEl?.classList.add("hidden");
-  try {
-    const res = await fetch("/api/assets/graduate-preview", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Evo-Token": canvasToken,
-      },
-      body: JSON.stringify({
-        id: graduatingId,
-        targetType: typeEl?.value || "",
-        targetPath: pathEl?.value?.trim() || "",
-      }),
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      if (errEl) {
-        errEl.textContent = data.error || "Failed to preview graduation.";
-        errEl.classList.remove("hidden");
-      }
-      if (preEl) preEl.textContent = "";
-      return;
-    }
-    if (typeEl && data.targetType) typeEl.value = data.targetType;
-    if (pathEl && data.targetPath) pathEl.value = data.targetPath;
-    if (preEl) preEl.textContent = data.snippet || data.content || "";
-  } catch (err) {
-    if (errEl) {
-      errEl.textContent = err.message;
-      errEl.classList.remove("hidden");
-    }
-  }
-}
-
-function openGraduateModal(id) {
-  graduatingId = id;
-  if (el("grad-target-type")) el("grad-target-type").value = "";
-  if (el("grad-target-path")) el("grad-target-path").value = "";
-  el("grad-modal-error")?.classList.add("hidden");
-  el("graduate-modal")?.classList.remove("hidden");
-  refreshGraduatePreview();
-}
-
 async function mutate(endpoint, body) {
   showBanner("");
   const buttons = [el("btn-pull")].filter(Boolean);
@@ -1649,6 +1605,8 @@ async function mutate(endpoint, body) {
     setLoadingOverlay(true, "Running validation...");
   } else if (endpoint === "/api/assets/refine") {
     setLoadingOverlay(true, "Sending feedback to Copilot...");
+  } else if (endpoint === "/api/assets/graduate-request") {
+    setLoadingOverlay(true, "Sending to Copilot...");
   }
   try {
     const res = await fetch(endpoint, {
@@ -1709,6 +1667,8 @@ async function mutate(endpoint, body) {
     } else if (endpoint === "/api/assets/refine") {
       showToast("Sent to Copilot", "Refining this experience in chat...");
       if (el("refine-input")) el("refine-input").value = "";
+    } else if (endpoint === "/api/assets/graduate-request") {
+      showToast("Sent to Copilot", "Drafting .github/ instructions/skill PR in chat...");
     } else if (endpoint === "/api/arena/validate") {
       if (data.passed) {
         showBanner(`Validation PASSED for ${data.assetId}.`);
@@ -1881,24 +1841,6 @@ async function init() {
     }
     el("repo-modal-error")?.classList.add("hidden");
     mutate("/api/sync/configure", { repo: val, createPrivate: false });
-  });
-
-  el("btn-grad-close")?.addEventListener("click", () => el("graduate-modal")?.classList.add("hidden"));
-  el("btn-grad-cancel")?.addEventListener("click", () => el("graduate-modal")?.classList.add("hidden"));
-  el("graduate-modal")?.addEventListener("click", (e) => {
-    if (e.target === el("graduate-modal")) el("graduate-modal")?.classList.add("hidden");
-  });
-  el("grad-target-type")?.addEventListener("change", () => {
-    if (el("grad-target-path")) el("grad-target-path").value = "";
-    refreshGraduatePreview();
-  });
-  el("btn-grad-apply")?.addEventListener("click", () => {
-    if (!graduatingId) return;
-    mutate("/api/assets/graduate-apply", {
-      id: graduatingId,
-      targetType: el("grad-target-type")?.value || "",
-      targetPath: el("grad-target-path")?.value?.trim() || "",
-    });
   });
   el("btn-repo-create")?.addEventListener("click", () => {
     const val = el("repo-modal-input")?.value?.trim();

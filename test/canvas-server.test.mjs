@@ -9,10 +9,14 @@ import { initStore, solidifyAsset } from "../com.github.copilot/extensions/copil
 test("evo canvas server serves UI, state snapshot, and enforces token on mutations", async () => {
   const evoHome = fs.mkdtempSync(path.join(os.tmpdir(), "copilot-evo-canvas-"));
   const refineCalls = [];
+  const graduateCalls = [];
   const server = createEvoCanvasServer({
     evoHome,
     onRefineRequest: async (payload) => {
       refineCalls.push(payload);
+    },
+    onGraduateRequest: async (payload) => {
+      graduateCalls.push(payload);
     },
   });
 
@@ -153,6 +157,18 @@ test("evo canvas server serves UI, state snapshot, and enforces token on mutatio
     assert.equal(gradPreviewBody.ok, true);
     assert.equal(gradPreviewBody.preview, true);
     assert.equal(gradPreviewBody.targetPath, ".github/copilot-instructions.md");
+
+    const gradReqRes = await fetch(`${baseUrl}/api/assets/graduate-request`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Evo-Token": canvasToken,
+      },
+      body: JSON.stringify({ id: "exp-local-promote" }),
+    });
+    assert.equal(gradReqRes.status, 200);
+    assert.equal(graduateCalls.length, 1);
+    assert.equal(graduateCalls[0].asset.id, "exp-local-promote");
 
     const disconnectCfgRes = await fetch(`${baseUrl}/api/sync/configure`, {
       method: "POST",

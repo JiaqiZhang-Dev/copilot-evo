@@ -73,6 +73,7 @@ export function createEvoCanvasServer({
   getWorkingDirectory = () => process.cwd(),
   getSessionInfo = () => ({}),
   onRefineRequest = null,
+  onGraduateRequest = null,
 }) {
   const canvasToken = randomBytes(32).toString("hex");
   const sseClients = new Set();
@@ -224,6 +225,17 @@ export function createEvoCanvasServer({
         }
       } else if (reqUrl.pathname === "/api/arena/validate") {
         result = await runAssetValidation(evoHome, body.id, getWorkingDirectory());
+      } else if (reqUrl.pathname === "/api/assets/graduate-request") {
+        const store = loadStore(evoHome);
+        const asset = [...store.rules, ...store.fixes, ...store.knowledge].find((a) => a.id === body.id);
+        if (!asset) {
+          result = { ok: false, error: `Experience not found: ${body.id}` };
+        } else if (typeof onGraduateRequest !== "function") {
+          result = { ok: false, error: "Copilot session bridge is unavailable." };
+        } else {
+          await onGraduateRequest({ asset });
+          result = { ok: true, id: asset.id };
+        }
       } else if (reqUrl.pathname === "/api/assets/graduate-preview") {
         result = graduateAsset(evoHome, body.id, {
           workingDirectory: getWorkingDirectory(),
