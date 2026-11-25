@@ -34,7 +34,6 @@ import {
   selectAssets,
   setEventSessionContext,
   shouldNudgePostToolUse,
-  shouldReflectOnAgentStop,
   solidifyAsset,
   syncRepoPull,
   syncRepoPush,
@@ -342,6 +341,10 @@ const session = await joinSession({
         parts.push(
           "[copilot-evo rule signal] This prompt states a reusable rule, pitfall, or workflow preference. Load `evo_solidify` via `tool_search_tool` if needed, call `evo_solidify` in English with `scope: \"local\"`, show the preview, and ask the user before promoting to `team` or syncing."
         );
+      } else if (sessionState.priorActionTurns >= 1 && sessionState.lastPrompt.trim().length > 0 && sessionState.lastPrompt.trim().length <= 160) {
+        parts.push(
+          "[copilot-evo follow-up signal] The user sent a short follow-up after an earlier edit turn. If this points out a missed companion file (e.g., design doc, changelog, tests) or formatting/workflow rule that should always accompany such changes, call `evo_solidify` in English with `scope: \"local\"` once completed."
+        );
       }
       if (!parts.length) return;
       return { additionalContext: parts.join("\n\n") };
@@ -487,6 +490,10 @@ const session = await joinSession({
         })
       ) {
         sessionState.turnHadFollowUpEdit = true;
+        sessionState.lastNudgeTurn = sessionState.turnIndex;
+        return {
+          additionalContext: `[copilot-evo follow-up omission check] You just completed \`${toolName}\` on a follow-up turn after earlier edits. If this addressed a forgotten companion file (e.g. design doc, tests, PR summary convention) or reusable workflow rule, proactively call \`evo_solidify\` in English (\`scope: "local"\`) before finishing.`,
+        };
       }
 
       if (sessionState.pendingFailure) {
@@ -550,20 +557,6 @@ const session = await joinSession({
       );
       recordRecallEvent(matched, { trigger: "subagent", signals, toolName: input.agentName || "subagent" });
       return { additionalContext: formatAssetsContext(matched, { isReview }) };
-    },
-
-    onAgentStop: async (input) => {
-      if (!shouldReflectOnAgentStop(sessionState, Boolean(input?.stopHookActive))) return;
-      sessionState.lastStopReflectionTurn = sessionState.turnIndex;
-      const triggers = [];
-      if (sessionState.turnHadRecovery) triggers.push("error recovery");
-      if (sessionState.turnHadCorrection) triggers.push("cross-turn revision/correction");
-      if (sessionState.turnHadFollowUpEdit) triggers.push("follow-up edit after prior work");
-      if (sessionState.turnHadStrategyCue) triggers.push("user rule/convention cue");
-      return {
-        decision: "block",
-        reason: `[copilot-evo end-of-turn reflection] This turn involved ${triggers.join(", ")} without recording an experience. Briefly judge whether it revealed a reusable Rule, Knowledge, or verified Fix (for example: updating a companion doc when code changes, PR formatting conventions, or a non-obvious pitfall). If YES, call \`evo_solidify\` in English (\`scope: "local"\`), show the preview, and ask the user via \`ask_user\`. If it was purely a one-off task edit with no reusable takeaway, briefly note nothing to capture and finish.`,
-      };
     },
 
     onSessionEnd: async (input) => {
