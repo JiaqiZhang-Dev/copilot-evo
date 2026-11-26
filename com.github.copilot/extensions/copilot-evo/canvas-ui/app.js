@@ -4,6 +4,7 @@ let activeTab = "assets";
 let activeFilter = "all";
 let activeKind = "all";
 let repoScopeFilter = ""; // "" | "cross" | "repo"
+let sortBy = "score"; // "score" | "helpful" | "recalled" | "recent" | "graduation"
 let contribMode = "author";
 let eventFilter = "all";
 let eventSessionFilter = "";
@@ -81,6 +82,19 @@ function normalizeKind(type) {
 function getAllAssets() {
   if (!state) return [];
   return [...(state.knowledge || []), ...(state.rules || []), ...(state.fixes || [])].sort((a, b) => {
+    if (sortBy === "helpful") {
+      const diff = (b.successCount || 0) - (a.successCount || 0);
+      if (diff !== 0) return diff;
+    } else if (sortBy === "recalled") {
+      const diff = (b.recallCount || 0) - (a.recallCount || 0);
+      if (diff !== 0) return diff;
+    } else if (sortBy === "recent") {
+      const diff = String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+      if (diff !== 0) return diff;
+    } else if (sortBy === "graduation") {
+      const gradDiff = Number(Boolean(b.graduationCandidate)) - Number(Boolean(a.graduationCandidate));
+      if (gradDiff !== 0) return gradDiff;
+    }
     const scoreDiff = (b.gdiScore || 0) - (a.gdiScore || 0);
     if (scoreDiff !== 0) return scoreDiff;
     const reuseDiff = (b.successCount || 0) - (a.successCount || 0);
@@ -1773,6 +1787,11 @@ async function init() {
 
   el("chip-repo-only")?.addEventListener("click", () => {
     repoScopeFilter = repoScopeFilter === "repo" ? "" : "repo";
+    render();
+  });
+
+  el("sort-select")?.addEventListener("change", (e) => {
+    sortBy = e.target.value || "score";
     render();
   });
 

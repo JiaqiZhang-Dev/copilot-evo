@@ -508,6 +508,17 @@ body {
   margin-left: auto;
 }
 
+.sort-select {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
 .chip-repo.active,
 .chip-scope.active {
   border-color: rgba(9, 105, 218, 0.35);
