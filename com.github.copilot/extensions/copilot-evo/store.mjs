@@ -696,6 +696,75 @@ function normalizeAssetKind(raw) {
   return normalizeExperienceType(raw);
 }
 
+const SEARCH_STOP_WORDS = new Set([
+  "the", "and", "for", "with", "this", "that", "from", "into", "your", "have",
+  "should", "what", "when", "where", "which", "about", "there", "their", "then",
+  "than", "also", "just", "only", "some", "make", "need", "does", "not", "are",
+  "was", "were", "can", "will", "how", "why",
+]);
+
+const SYNONYM_GROUPS = [
+  ["pr", "pull", "pull_request", "merge_request"],
+  ["description", "summary", "body", "overview"],
+  ["doc", "docs", "documentation", "readme", "markdown"],
+  ["test", "tests", "testing", "spec", "unit", "vitest", "pytest", "jest"],
+  ["deploy", "deployment", "redeploy", "release", "publish", "pipeline"],
+  ["bump", "version", "changelog", "tag"],
+  ["review", "audit", "check", "lint"],
+  ["error", "fail", "failure", "crash", "bug", "exception", "broken"],
+  ["fix", "patch", "resolve", "workaround", "solution"],
+  ["comment", "reply", "thread", "sha", "commit"],
+  ["config", "settings", "env", "environment"],
+];
+
+const SYNONYM_MAP = (() => {
+  const map = new Map();
+  for (const group of SYNONYM_GROUPS) {
+    for (const word of group) {
+      if (!map.has(word)) map.set(word, new Set());
+      for (const peer of group) {
+        if (peer !== word) map.get(word).add(peer);
+      }
+    }
+  }
+  return map;
+})();
+
+function tokenizeForSearch(text) {
+  const raw = String(text || "").toLowerCase();
+  const matches = raw.match(/[a-z0-9_]+/g) || [];
+  const tokens = [];
+  for (const tok of matches) {
+    if (tok.length >= 2 && !SEARCH_STOP_WORDS.has(tok)) {
+      tokens.push(tok);
+    }
+    if (tok.includes("_")) {
+      for (const part of tok.split("_")) {
+        if (part.length >= 2 && !SEARCH_STOP_WORDS.has(part)) {
+          tokens.push(part);
+        }
+      }
+    }
+  }
+  return tokens;
+}
+
+function expandQueryTerms(query) {
+  const rawLower = String(query || "").toLowerCase();
+  const baseTokens = tokenizeForSearch(rawLower);
+  const weights = new Map();
+  for (const tok of baseTokens) {
+    weights.set(tok, 1.0);
+    const peers = SYNONYM_MAP.get(tok);
+    if (peers) {
+      for (const peer of peers) {
+        if (!weights.has(peer)) weights.set(peer, 0.55);
+      }
+    }
+  }
+  return { rawTerms: rawLower.split(/\s+/).filter((t) => t.length >= 2), weights };
+}
+
 export function selectAssets({
   signals = [],
   query = "",
@@ -712,10 +781,7 @@ export function selectAssets({
   limit = 3,
 }) {
   const sigSet = new Set(signals.map((s) => String(s).toLowerCase()));
-  const terms = String(query)
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length >= 2);
+  const { rawTerms, weights: queryWeights } = expandQueryTerms(query);
   const all = [...rules, ...fixes, ...knowledge];
   const supersededIds = new Set(all.map((a) => a.supersedes).filter(Boolean));
   const normalizedRepo = repo && repo !== "*" ? normalizeRepoSlug(repo) : "";
@@ -723,22 +789,50 @@ export function selectAssets({
   const reviewContext = Boolean(isReview || sigSet.has("pr_review"));
   const nowMs = Date.now();
 
+  const docTokenMap = new Map();
+  const docFreq = new Map();
+  let totalLen = 0;
+  for (const asset of all) {
+    const assetSignals = (asset.signals || []).map((s) => String(s).toLowerCase());
+    const text = [
+      asset.id || "",
+      asset.title || "",
+      asset.title || "",
+      asset.summary || "",
+      asset.solution || "",
+      ...(Array.isArray(asset.strategy) ? asset.strategy : []),
+      ...assetSignals,
+    ].join(" ");
+    const tokens = tokenizeForSearch(text);
+    const tf = new Map();
+    for (const t of tokens) tf.set(t, (tf.get(t) || 0) + 1);
+    docTokenMap.set(asset.id, { tf, len: tokens.length || 1 });
+    totalLen += tokens.length || 1;
+    for (const uniq of tf.keys()) {
+      docFreq.set(uniq, (docFreq.get(uniq) || 0) + 1);
+    }
+  }
+  const avgDocLen = all.length ? totalLen / all.length : 1;
+  const corpusSize = Math.max(1, all.length);
+  const k1 = 1.2;
+  const b = 0.75;
+
   const scored = [];
   for (const asset of all) {
     const assetType = normalizeExperienceType(asset.type);
     if (scope && asset.scope !== scope) continue;
     if (normalizedKind && assetType !== normalizedKind) continue;
-    if (!includeSuperseded && supersededIds.has(asset.id) && !terms.includes(asset.id.toLowerCase())) continue;
+    if (!includeSuperseded && supersededIds.has(asset.id) && !rawTerms.includes(asset.id.toLowerCase())) continue;
 
     const assetRepo = normalizeRepoSlug(asset.repoScope || "*");
     if (assetRepo !== "*" && normalizedRepo && assetRepo.toLowerCase() !== normalizedRepo.toLowerCase()) continue;
-    if (assetRepo !== "*" && !normalizedRepo && !terms.length && sigSet.size > 0) continue;
+    if (assetRepo !== "*" && !normalizedRepo && !rawTerms.length && sigSet.size > 0) continue;
     if (
       !includeGraduated &&
       normalizedRepo &&
       asset.graduatedTo?.targetPath &&
       normalizeRepoSlug(asset.graduatedTo.repo || assetRepo).toLowerCase() === normalizedRepo.toLowerCase() &&
-      !terms.includes(asset.id.toLowerCase())
+      !rawTerms.includes(asset.id.toLowerCase())
     ) {
       continue;
     }
@@ -748,14 +842,28 @@ export function selectAssets({
     for (const sig of assetSignals) {
       if (sigSet.has(sig)) relevance += 3;
     }
-    const haystack = `${asset.id || ""} ${asset.title || ""} ${asset.summary || ""} ${assetSignals.join(" ")}`.toLowerCase();
-    for (const term of terms) {
-      if (haystack.includes(term)) relevance += 2;
+
+    const docInfo = docTokenMap.get(asset.id);
+    if (docInfo && queryWeights.size > 0) {
+      let bm25 = 0;
+      for (const [term, weight] of queryWeights.entries()) {
+        const tf = docInfo.tf.get(term) || 0;
+        if (!tf) continue;
+        const df = docFreq.get(term) || 0;
+        const idf = Math.log(1 + (corpusSize - df + 0.5) / (df + 0.5));
+        const denom = tf + k1 * (1 - b + b * (docInfo.len / avgDocLen));
+        bm25 += weight * idf * ((tf * (k1 + 1)) / denom);
+      }
+      relevance += bm25 * 2.2;
+    }
+
+    if (rawTerms.includes(String(asset.id || "").toLowerCase())) {
+      relevance += 4;
     }
     if (reviewContext && normalizedRepo && assetRepo.toLowerCase() === normalizedRepo.toLowerCase()) {
       relevance = Math.max(relevance, 2);
     }
-    if (sigSet.size === 0 && terms.length === 0) {
+    if (sigSet.size === 0 && rawTerms.length === 0) {
       relevance = 1;
     }
     if (relevance > 0) {

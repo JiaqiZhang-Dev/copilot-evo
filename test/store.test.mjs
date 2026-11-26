@@ -146,6 +146,26 @@ test("extractSignals and selectAssets rank matching experience highest", () => {
     const { rules, fixes } = loadStore(home);
     const ranked = selectAssets({ signals, query: "npm E401", rules, fixes, limit: 2 });
     assert.equal(ranked[0].id, "exp-npm-e401-azure");
+
+    solidifyAsset(
+      {
+        kind: "Rule",
+        id: "exp-pr-summary-style",
+        title: "Structure PR descriptions with grouped Key Points",
+        summary: "Write scannable PR descriptions using Key Points and result tables.",
+        signals: ["pull_request", "pr_description"],
+        scope: "team",
+      },
+      { evoHome: home }
+    );
+    const { rules: rulesWithPr, fixes: fixesWithPr } = loadStore(home);
+    const synMatch = selectAssets({
+      query: "draft a clean pull request summary",
+      rules: rulesWithPr,
+      fixes: fixesWithPr,
+      limit: 2,
+    });
+    assert.equal(synMatch[0].id, "exp-pr-summary-style");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
