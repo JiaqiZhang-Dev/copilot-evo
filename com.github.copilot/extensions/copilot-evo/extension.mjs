@@ -10,6 +10,7 @@ import {
   detectRepoSlug,
   detectSourceLabel,
   exportBundle,
+  extractPathsFromText,
   extractSignals,
   extractToolTargetKey,
   findGraduationCandidates,
@@ -41,7 +42,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.15.1";
+const EXTENSION_VERSION = "0.15.2";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -166,6 +167,8 @@ const sessionState = {
   recentFailureFingerprints: new Map(),
   recentToolTargets: new Map(),
   recentRecallAt: new Map(),
+  recentPromptInjectedAt: new Map(),
+  recentPaths: new Set(),
   lastSolidifyAt: 0,
   recentFailures: [],
   recoveries: 0,
@@ -175,6 +178,39 @@ const sessionState = {
 };
 
 const RECALL_LOG_COOLDOWN_MS = 5 * 60 * 1000;
+const PROMPT_INJECT_COOLDOWN_TURNS = 5;
+const PROMPT_INJECT_COOLDOWN_MS = 10 * 60 * 1000;
+
+function getPromptCooldownIds() {
+  const now = Date.now();
+  const excluded = new Set();
+  for (const [id, info] of sessionState.recentPromptInjectedAt.entries()) {
+    if (
+      sessionState.turnIndex - info.turn < PROMPT_INJECT_COOLDOWN_TURNS &&
+      now - info.ts < PROMPT_INJECT_COOLDOWN_MS
+    ) {
+      excluded.add(id);
+    }
+  }
+  return excluded;
+}
+
+function markPromptInjected(matched) {
+  const now = Date.now();
+  for (const asset of matched) {
+    sessionState.recentPromptInjectedAt.set(asset.id, { turn: sessionState.turnIndex, ts: now });
+  }
+}
+
+function trackActivePaths(text) {
+  for (const p of extractPathsFromText(text)) {
+    sessionState.recentPaths.add(p);
+    if (sessionState.recentPaths.size > 25) {
+      const oldest = sessionState.recentPaths.values().next().value;
+      sessionState.recentPaths.delete(oldest);
+    }
+  }
+}
 
 function recordRecallEvent(matched, { trigger, signals = [], toolName = "" } = {}) {
   if (!Array.isArray(matched) || !matched.length) return;
@@ -297,13 +333,17 @@ const session = await joinSession({
       const { rules, fixes, knowledge, config } = loadStore(evoHome);
       const failureSignals = sessionState.recentFailures.flatMap((f) => f.signals);
       const isReview = isPrReviewCue(input.prompt);
+      trackActivePaths(input.prompt);
+      const activePaths = Array.from(sessionState.recentPaths);
       const signals = extractSignals(input.prompt, failureSignals, { includePlatform: false });
       const matched =
-        signals.length || hasStrategyCue(input.prompt) || (isReview && currentRepo)
+        signals.length || hasStrategyCue(input.prompt) || (isReview && currentRepo) || activePaths.length
           ? selectAssets({
               signals,
               query: input.prompt,
               repo: currentRepo,
+              activePaths,
+              excludeIds: isReview ? [] : getPromptCooldownIds(),
               isReview,
               rules,
               fixes,
@@ -334,6 +374,7 @@ const session = await joinSession({
       if (matched.length) {
         sessionState.activeAssets = matched.map((a) => a.id);
         sessionState.turnRecalledIds = Array.from(new Set([...sessionState.turnRecalledIds, ...sessionState.activeAssets]));
+        markPromptInjected(matched);
         recordRecallEvent(matched, { trigger: "prompt", signals });
         parts.push(formatAssetsContext(matched, { isReview }));
       }
@@ -353,6 +394,7 @@ const session = await joinSession({
     onPreToolUse: async (input) => {
       const { rules, fixes, knowledge, config } = loadStore(evoHome);
       const argsText = typeof input.toolArgs === "string" ? input.toolArgs : JSON.stringify(input.toolArgs || "");
+      trackActivePaths(argsText);
       for (const rule of rules) {
         const g = rule.guardrail;
         if (!g?.pattern) continue;
@@ -623,6 +665,7 @@ const session = await joinSession({
           scope: args.scope || "",
           kind: args.kind || "",
           repo,
+          isSearch: true,
           rules,
           fixes,
           knowledge,
@@ -675,6 +718,11 @@ const session = await joinSession({
           },
           scope: { type: "string", enum: ["local", "team"], description: "local stays on this machine; team stages sanitized experience for private repo sync" },
           repoScope: { type: "string", description: "Repository applicability: '*' for all repos (default), 'current' for the active Git repo, or 'owner/repo'" },
+          pathPatterns: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional repo-relative glob patterns (e.g. ['tools/sdk-ai-bots/**', '*.tsp']) to restrict auto-recall to matching file paths",
+          },
           ruleId: { type: "string", description: "For Fixes: ID of the Rule this fix applied" },
           parentId: { type: "string", description: "Optional ID of an earlier Rule or Fix this experience refines" },
           supersedes: { type: "string", description: "Optional ID of an outdated experience replaced by this one" },

@@ -765,14 +765,73 @@ function expandQueryTerms(query) {
   return { rawTerms: rawLower.split(/\s+/).filter((t) => t.length >= 2), weights };
 }
 
+function globToRegExp(pattern) {
+  const normalized = String(pattern || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+  if (!normalized) return null;
+  let regexStr = "^";
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    if (ch === "*") {
+      if (normalized[i + 1] === "*") {
+        regexStr += ".*";
+        i++;
+        if (normalized[i + 1] === "/") i++;
+      } else {
+        regexStr += "[^/]*";
+      }
+    } else if (ch === "?") {
+      regexStr += "[^/]";
+    } else if (/[.+^${}()|[\]\\]/.test(ch)) {
+      regexStr += `\\${ch}`;
+    } else {
+      regexStr += ch;
+    }
+  }
+  regexStr += "$";
+  return new RegExp(regexStr, "i");
+}
+
+export function extractPathsFromText(text) {
+  if (typeof text !== "string" || !text.trim()) return [];
+  const matches = text.match(/(?:[A-Za-z0-9_.-]+[\\/])+[A-Za-z0-9_.-]+(?:\.[A-Za-z0-9_-]+)?/g) || [];
+  return Array.from(
+    new Set(
+      matches
+        .map((m) => m.replace(/\\/g, "/").replace(/^\.\//, ""))
+        .filter((m) => !/^https?:\/\//i.test(m))
+    )
+  );
+}
+
+function matchesAnyPathPattern(pathPatterns, activePaths) {
+  if (!Array.isArray(pathPatterns) || !pathPatterns.length) return null;
+  if (!Array.isArray(activePaths) || !activePaths.length) return null;
+  for (const rawPat of pathPatterns) {
+    const re = globToRegExp(rawPat);
+    if (!re) continue;
+    for (const rawPath of activePaths) {
+      const cleanPath = String(rawPath || "").replace(/\\/g, "/").replace(/^file:/i, "").replace(/^\.\//, "");
+      const relMatch = cleanPath.replace(/^[A-Za-z]:\/[^/]+\/[^/]+\//, "");
+      if (re.test(cleanPath) || re.test(relMatch)) return true;
+    }
+  }
+  return false;
+}
+
 export function selectAssets({
   signals = [],
   query = "",
   scope = "",
   kind = "",
   repo = "",
+  activePaths = [],
+  excludeIds = [],
   isReview = false,
   isFailure = false,
+  isSearch = false,
   includeSuperseded = false,
   includeGraduated = false,
   rules = [],
@@ -781,6 +840,7 @@ export function selectAssets({
   limit = 3,
 }) {
   const sigSet = new Set(signals.map((s) => String(s).toLowerCase()));
+  const excludeSet = excludeIds instanceof Set ? excludeIds : new Set(excludeIds || []);
   const { rawTerms, weights: queryWeights } = expandQueryTerms(query);
   const all = [...rules, ...fixes, ...knowledge];
   const supersededIds = new Set(all.map((a) => a.supersedes).filter(Boolean));
@@ -822,7 +882,18 @@ export function selectAssets({
     const assetType = normalizeExperienceType(asset.type);
     if (scope && asset.scope !== scope) continue;
     if (normalizedKind && assetType !== normalizedKind) continue;
+    if (!isSearch && excludeSet.has(asset.id)) continue;
     if (!includeSuperseded && supersededIds.has(asset.id) && !rawTerms.includes(asset.id.toLowerCase())) continue;
+    // Mute high-recall, low-utility items from automatic injection unless pinned or explicitly searched.
+    if (
+      !isSearch &&
+      !isFailure &&
+      !asset.pinned &&
+      Number(asset.recallCount || 0) >= 10 &&
+      Number(asset.successCount || 0) <= 1
+    ) {
+      continue;
+    }
 
     const assetRepo = normalizeRepoSlug(asset.repoScope || "*");
     if (assetRepo !== "*" && normalizedRepo && assetRepo.toLowerCase() !== normalizedRepo.toLowerCase()) continue;
@@ -836,6 +907,9 @@ export function selectAssets({
     ) {
       continue;
     }
+
+    const pathMatch = matchesAnyPathPattern(asset.pathPatterns, activePaths);
+    if (pathMatch === false && !isSearch) continue;
 
     let relevance = 0;
     const assetSignals = (asset.signals || []).map((s) => String(s).toLowerCase());
@@ -868,11 +942,12 @@ export function selectAssets({
     }
     if (relevance > 0) {
       const repoBoost = assetRepo !== "*" && normalizedRepo && assetRepo.toLowerCase() === normalizedRepo.toLowerCase() ? 1.5 : 0;
+      const pathBoost = pathMatch === true ? 2.5 : 0;
       const contextBoost =
         (isFailure && (assetType === "Fix" || assetType === "Knowledge") ? 0.75 : 0) +
         (reviewContext && (assetType === "Rule" || assetType === "Knowledge") ? 0.75 : 0);
       const gdiScore = computeGdiScore(asset, all, nowMs);
-      scored.push({ asset, score: relevance + repoBoost + contextBoost + gdiScore * 0.05, gdiScore });
+      scored.push({ asset, score: relevance + repoBoost + pathBoost + contextBoost + gdiScore * 0.05, gdiScore });
     }
   }
 
@@ -1009,6 +1084,13 @@ export function solidifyAsset(input, options = {}) {
 
   const author = (input.author || detectAuthorName(input.workingDirectory) || "").trim();
 
+  const pathPatterns = Array.isArray(input.pathPatterns)
+    ? input.pathPatterns
+        .map((p) => String(p || "").trim().replace(/\\/g, "/"))
+        .filter(Boolean)
+        .slice(0, 8)
+    : [];
+
   const rawAsset = {
     id,
     type: kind,
@@ -1019,6 +1101,7 @@ export function solidifyAsset(input, options = {}) {
     solution: input.solution || "",
     validation,
     ...(references.length ? { references } : {}),
+    ...(pathPatterns.length ? { pathPatterns } : {}),
     scope,
     repoScope: resolvedRepoScope,
     ...(input.ruleId ? { ruleId: slugify(input.ruleId) } : {}),

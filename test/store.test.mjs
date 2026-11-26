@@ -12,6 +12,7 @@ import {
   detectAuthorName,
   detectSourceLabel,
   exportBundle,
+  extractPathsFromText,
   extractSignals,
   extractToolTargetKey,
   findGraduationCandidates,
@@ -876,6 +877,63 @@ test("findGraduationCandidates and graduateAsset write .github/ artifacts and su
       limit: 5,
     });
     assert.equal(recalled.some((a) => a.id === "exp-repo-rule-grad"), false);
+
+    // Path-pattern matching, cooldown exclusion, and low-ROI auto-muting.
+    solidifyAsset(
+      {
+        kind: "Rule",
+        id: "exp-path-scoped-rule",
+        title: "Bump chatbot version on bot changes",
+        summary: "Update _version.py when editing sdk-ai-bots.",
+        signals: ["chatbot"],
+        pathPatterns: ["tools/sdk-ai-bots/**"],
+        scope: "team",
+      },
+      { evoHome: home, bundledDir }
+    );
+    const extracted = extractPathsFromText("Check tools/sdk-ai-bots/azure-sdk-qa-bot-agent/main.py");
+    assert.deepEqual(extracted, ["tools/sdk-ai-bots/azure-sdk-qa-bot-agent/main.py"]);
+    const sPath = loadStore(home);
+    assert.equal(
+      selectAssets({ signals: ["chatbot"], activePaths: ["tools/other/index.ts"], rules: sPath.rules, fixes: sPath.fixes }).some(
+        (a) => a.id === "exp-path-scoped-rule"
+      ),
+      false
+    );
+    assert.equal(
+      selectAssets({
+        signals: ["chatbot"],
+        activePaths: ["tools/sdk-ai-bots/azure-sdk-qa-bot-agent/main.py"],
+        rules: sPath.rules,
+        fixes: sPath.fixes,
+      }).some((a) => a.id === "exp-path-scoped-rule"),
+      true
+    );
+    assert.equal(
+      selectAssets({
+        signals: ["chatbot"],
+        excludeIds: ["exp-path-scoped-rule"],
+        rules: sPath.rules,
+        fixes: sPath.fixes,
+      }).some((a) => a.id === "exp-path-scoped-rule"),
+      false
+    );
+
+    // Low-ROI auto-muting (recallCount >= 10 and successCount <= 1).
+    for (let i = 0; i < 10; i++) recordAssetRecalls(home, ["exp-path-scoped-rule"]);
+    const sMuted = loadStore(home);
+    assert.equal(
+      selectAssets({ signals: ["chatbot"], rules: sMuted.rules, fixes: sMuted.fixes }).some(
+        (a) => a.id === "exp-path-scoped-rule"
+      ),
+      false
+    );
+    assert.equal(
+      selectAssets({ signals: ["chatbot"], isSearch: true, rules: sMuted.rules, fixes: sMuted.fixes }).some(
+        (a) => a.id === "exp-path-scoped-rule"
+      ),
+      true
+    );
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });
