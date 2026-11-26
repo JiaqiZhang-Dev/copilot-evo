@@ -424,22 +424,26 @@ function renderDetail(item) {
   if (isRepoScoped && !item.graduatedTo?.targetPath && gradStatus) {
     const m = gradStatus.metrics || {};
     const t = gradStatus.thresholds || { minSuccess: 3, minRecalls: 5, minWinRate: 80, minScore: 65 };
-    const pill = (ok, label) =>
-      `<span class="grad-check ${ok ? "is-ok" : ""}">${ok ? "✓" : "○"} ${escapeHtml(label)}</span>`;
+    const pill = (ok, label, tip = "") =>
+      `<span class="grad-check ${ok ? "is-ok" : ""}"${tip ? ` title="${escapeHtml(tip)}"` : ""}>${ok ? "✓" : "○"} ${escapeHtml(label)}</span>`;
     const usageLabel = `Helpful ${m.successCount ?? 0}/${t.minSuccess} (or ${m.recallCount ?? 0}/${t.minRecalls} recalled)`;
     const winLabel = `Pass ${m.winRate ?? 100}% (≥${t.minWinRate}%)`;
     const scoreLabel = `Score ${m.score ?? 0} (≥${t.minScore})`;
+    const currentRepoName = state?.currentRepo || "chat";
     const repoLabelCheck = gradStatus.repoMatches
       ? `Repo: ${repoText}`
-      : `Repo mismatch (${repoText})`;
+      : `Needs ${repoText} session (now: ${currentRepoName})`;
+    const repoTip = gradStatus.repoMatches
+      ? `Matches the current repository (${repoText}).`
+      : `This experience belongs to ${repoText}, while this session is in ${currentRepoName}. Open a session in ${repoText} to graduate it.`;
     gradChecklistHtml = `
       <div class="grad-status-box ${gradStatus.eligible ? "is-ready" : ""}">
         <div class="grad-status-title">${gradStatus.eligible ? "Ready to graduate to .github/" : "Repo graduation criteria"}</div>
         <div class="grad-checks">
-          ${pill(gradStatus.repoMatches, repoLabelCheck)}
-          ${pill(gradStatus.usageMet, usageLabel)}
-          ${pill(gradStatus.winRateMet, winLabel)}
-          ${pill(gradStatus.scoreMet, scoreLabel)}
+          ${pill(gradStatus.repoMatches, repoLabelCheck, repoTip)}
+          ${pill(gradStatus.usageMet, usageLabel, `Requires at least ${t.minSuccess} helpful uses or ${t.minRecalls} recalls.`)}
+          ${pill(gradStatus.winRateMet, winLabel, `Requires at least ${t.minWinRate}% pass rate.`)}
+          ${pill(gradStatus.scoreMet, scoreLabel, `Requires an overall score of at least ${t.minScore}.`)}
         </div>
       </div>`;
   }
