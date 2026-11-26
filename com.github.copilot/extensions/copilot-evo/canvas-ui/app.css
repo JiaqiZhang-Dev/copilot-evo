@@ -598,7 +598,7 @@ body {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 22px 1fr 50px 42px;
+  grid-template-columns: 22px 1fr 48px 48px 54px;
   align-items: center;
   gap: 10px;
   padding: 5px 10px 6px;
@@ -618,7 +618,7 @@ body {
 
 .exp-header.has-share,
 .exp-row.has-share {
-  grid-template-columns: 22px 1fr 50px 42px 34px;
+  grid-template-columns: 22px 1fr 48px 48px 54px 34px;
 }
 
 .col-action {
@@ -634,7 +634,7 @@ body {
 
 .exp-row {
   display: grid;
-  grid-template-columns: 22px 1fr 50px 42px;
+  grid-template-columns: 22px 1fr 48px 48px 54px;
   align-items: center;
   gap: 10px;
   padding: 10px 10px;

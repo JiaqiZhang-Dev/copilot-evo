@@ -1453,6 +1453,7 @@ function render() {
       <span>Experience</span>
       <span class="col-num" title="Overall experience score (0–100)">Score</span>
       <span class="col-num" title="Verified helpful uses">Helpful</span>
+      <span class="col-num" title="Times recalled into sessions">Recalled</span>
       ${showShareCol ? `<span class="col-action" title="Share to Team"></span>` : ""}
     </div>
     ${items
@@ -1479,6 +1480,7 @@ function render() {
               ? "Knowledge: domain, architecture, or platform behavior"
               : "Rule: reusable guideline or workflow";
         const uses = item.successCount || 0;
+        const recalls = item.recallCount || 0;
         const scoreVal = item.gdiScore !== undefined ? Number(item.gdiScore).toFixed(1) : "-";
         const trophySvg = `<svg class="trophy-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-label="Rank #1"><path d="M5 2.5h6v3.2a3 3 0 0 1-6 0V2.5Z" fill="#0969da" fill-opacity="0.18" stroke="#0969da" stroke-width="1.3"/><path d="M5 3.5H3.2a.7.7 0 0 0-.7.7v.8A2 2 0 0 0 4.5 7H5M11 3.5h1.8a.7.7 0 0 1 .7.7v.8a2 2 0 0 1-2 2H11" stroke="#0969da" stroke-width="1.2" stroke-linecap="round"/><path d="M8 8.7v2.8M5.8 13.5h4.4" stroke="#0969da" stroke-width="1.3" stroke-linecap="round"/></svg>`;
         const rankCell =
@@ -1530,7 +1532,8 @@ function render() {
             ${footHtml}
           </div>
           <span class="exp-score col-num" title="${escapeHtml(buildScoreTooltips(item).totalTip)}">${scoreVal}</span>
-          <span class="exp-reuses col-num" title="Helpful uses: ${uses}${item.recallCount ? ` · Recalled: ${item.recallCount}` : ""}">${uses}</span>
+          <span class="exp-reuses col-num" title="Helpful uses: ${uses}">${uses}</span>
+          <span class="exp-reuses col-num" title="Recalled into sessions: ${recalls}">${recalls}</span>
           ${shareCell}
         </div>`;
       })
