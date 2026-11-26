@@ -541,6 +541,8 @@ const SIGNAL_PATTERNS = [
   ["type_error", /\b(?:TypeError|ReferenceError|TS\d{4})\b/i],
   ["share", /\b(?:share|sync|export|publish|team|push)\b/i],
   ["secret_leak", /\b(?:secret|token|password|api[_-]?key|redact|privacy)\b/i],
+  ["pull_request", /\b(?:pull\s+request|create\s+(?:a\s+)?pr|draft\s+(?:a\s+)?pr|open\s+(?:a\s+)?pr|gh\s+pr\s+(?:create|edit)|pr\s+description|pr\s+body|pr\s+summary)\b/i],
+  ["pr_description", /\b(?:pr\s+description|pr\s+body|pr\s+summary|pull\s+request\s+description)\b/i],
   ["pr_review", /\b(?:pr\s*#?\d+|pull\s+request|code[\s-]?review|review\s+(?:this|the|a)?\s*(?:pr|diff|changes|branch|code)|reviewing\s+pr)\b|审查\s*PR|代码审查/i],
 ];
 

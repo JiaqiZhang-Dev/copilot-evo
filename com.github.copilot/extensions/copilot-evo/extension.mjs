@@ -351,7 +351,7 @@ const session = await joinSession({
     },
 
     onPreToolUse: async (input) => {
-      const { rules, config } = loadStore(evoHome);
+      const { rules, fixes, knowledge, config } = loadStore(evoHome);
       const argsText = typeof input.toolArgs === "string" ? input.toolArgs : JSON.stringify(input.toolArgs || "");
       for (const rule of rules) {
         const g = rule.guardrail;
@@ -368,6 +368,29 @@ const session = await joinSession({
         return {
           additionalContext: `[copilot-evo guardrail ${rule.id}] ${g.reason || rule.summary}`,
         };
+      }
+
+      const toolName = String(input.toolName || "");
+      const isPrAction =
+        /pull_request/i.test(toolName) ||
+        (/^(?:powershell|bash|shell)$/i.test(toolName) && /\bgh\s+pr\s+(?:create|edit)\b/i.test(argsText));
+      if (isPrAction) {
+        const prSignals = ["pull_request", "pr_description"];
+        const matched = selectAssets({
+          signals: prSignals,
+          query: "pull request description",
+          repo: detectRepoSlug(lastWorkingDirectory),
+          rules,
+          fixes,
+          knowledge,
+          limit: 3,
+        }).filter((a) => !sessionState.turnRecalledIds.includes(a.id));
+        if (matched.length) {
+          sessionState.activeAssets = Array.from(new Set([...sessionState.activeAssets, ...matched.map((a) => a.id)]));
+          sessionState.turnRecalledIds = Array.from(new Set([...sessionState.turnRecalledIds, ...matched.map((a) => a.id)]));
+          recordRecallEvent(matched, { trigger: "pre_tool_use", signals: prSignals, toolName });
+          return { additionalContext: formatAssetsContext(matched) };
+        }
       }
     },
 

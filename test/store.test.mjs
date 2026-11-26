@@ -381,6 +381,8 @@ test("repoScope filters repo-specific assets and boosts exact repo matches", () 
     assert.equal(isPrReviewCue("review PR #17611"), true);
     const reviewSignals = extractSignals("review PR #17611", [], { includePlatform: false });
     assert.ok(reviewSignals.includes("pr_review"));
+    assert.ok(extractSignals("create pull request with a clear pr description", [], { includePlatform: false }).includes("pull_request"));
+    assert.ok(extractSignals("update pr description", [], { includePlatform: false }).includes("pr_description"));
     const reviewMatched = selectAssets({
       signals: reviewSignals,
       query: "review PR #17611",
