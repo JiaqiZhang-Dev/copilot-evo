@@ -1452,8 +1452,7 @@ function render() {
       <span class="col-rank">#</span>
       <span>Experience</span>
       <span class="col-num" title="Overall experience score (0–100)">Score</span>
-      <span class="col-num" title="Verified helpful uses">Helpful</span>
-      <span class="col-num" title="Times recalled into sessions">Recalled</span>
+      <span class="col-num" title="Helpful uses / Times recalled">Help / Rec</span>
       ${showShareCol ? `<span class="col-action" title="Share to Team"></span>` : ""}
     </div>
     ${items
@@ -1532,8 +1531,7 @@ function render() {
             ${footHtml}
           </div>
           <span class="exp-score col-num" title="${escapeHtml(buildScoreTooltips(item).totalTip)}">${scoreVal}</span>
-          <span class="exp-reuses col-num" title="Helpful uses: ${uses}">${uses}</span>
-          <span class="exp-reuses col-num" title="Recalled into sessions: ${recalls}">${recalls}</span>
+          <span class="exp-reuses col-num" title="Helpful: ${uses} · Recalled: ${recalls}">${uses} / ${recalls}</span>
           ${shareCell}
         </div>`;
       })
