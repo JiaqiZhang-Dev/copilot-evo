@@ -2,6 +2,15 @@
 
 All notable changes to `copilot-evo` are documented in this file.
 
+## [0.15.3] - 2026-11-27
+
+### Added
+- **Uncaptured turn detection on `session.idle`**: Automatically queues turns that involve cross-turn revisions, error recoveries, follow-up edits, or workflow cues without calling `evo_solidify` into a non-intrusive Canvas banner (`Extract with Copilot` / `Dismiss`), with no noisy chat prompts.
+- **Refinement-aware revision check**: Cross-turn re-edit hooks now surface active recalled experience IDs so Copilot can refine an existing rule in place or save a new local rule.
+
+### Fixed
+- **PR & Markdown doc recall**: Extract `pull_request` / `pr_description` / `documentation` / `markdown` signals, recall relevant rules in `onPreToolUse` when creating PRs or editing `.md` files, and avoid auto-muting unvoted experiences.
+
 ## [0.15.2] - 2026-11-26
 
 ### Added

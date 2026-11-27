@@ -226,6 +226,51 @@ export function readRecentEvents(evoHome, limit = 50) {
   return events;
 }
 
+const MAX_PENDING_CAPTURES = 10;
+
+export function loadPendingCaptures(evoHome) {
+  const list = readJsonSafe(path.join(evoHome, "pending-captures.json"), []);
+  return Array.isArray(list) ? list : [];
+}
+
+export function addPendingCapture(evoHome, capture) {
+  if (!capture || !capture.prompt) return null;
+  const filePath = path.join(evoHome, "pending-captures.json");
+  const list = loadPendingCaptures(evoHome);
+  const id = String(capture.id || `cap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`);
+  const clean = sanitizePayload({
+    id,
+    ts: new Date().toISOString(),
+    sessionId: String(capture.sessionId || "").slice(0, 64),
+    sessionName: String(capture.sessionName || "").slice(0, 60),
+    repo: String(capture.repo || "").slice(0, 120),
+    turnIndex: Number(capture.turnIndex || 0),
+    reason: String(capture.reason || "revision").slice(0, 60),
+    prompt: String(capture.prompt || "").slice(0, 280),
+    assistantSummary: String(capture.assistantSummary || "").slice(0, 280),
+    targets: Array.isArray(capture.targets) ? capture.targets.slice(0, 5) : [],
+    recalledIds: Array.isArray(capture.recalledIds) ? capture.recalledIds.slice(0, 5) : [],
+  });
+  const deduped = list.filter(
+    (item) => !(item.sessionId && item.sessionId === clean.sessionId && item.turnIndex === clean.turnIndex)
+  );
+  const next = [clean, ...deduped].slice(0, MAX_PENDING_CAPTURES);
+  writeJson(filePath, next);
+  return clean;
+}
+
+export function removePendingCapture(evoHome, captureId) {
+  if (!captureId) return { ok: false, error: "Capture ID is required." };
+  const filePath = path.join(evoHome, "pending-captures.json");
+  const list = loadPendingCaptures(evoHome);
+  const next = list.filter((item) => item.id !== captureId);
+  if (next.length === list.length) {
+    return { ok: false, error: `Pending capture not found: ${captureId}` };
+  }
+  writeJson(filePath, next);
+  return { ok: true, removedId: captureId };
+}
+
 export function formatAssetPreview(asset) {
   if (!asset) return "";
   const kindLabel = normalizeExperienceType(asset.type);

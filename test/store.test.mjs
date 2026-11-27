@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
+  addPendingCapture,
   appendEvent,
   computeGdiBreakdown,
   computeGdiScore,
@@ -29,6 +30,7 @@ import {
   isFollowUpEditTrajectory,
   isPrReviewCue,
   isTrivialToolFailure,
+  loadPendingCaptures,
   loadStore,
   manageAsset,
   maybeAutoPull,
@@ -36,6 +38,7 @@ import {
   readRecentEvents,
   recordAssetOutcome,
   recordAssetRecalls,
+  removePendingCapture,
   runAssetValidation,
   selectAssets,
   setEventSessionContext,
@@ -952,6 +955,19 @@ test("findGraduationCandidates and graduateAsset write .github/ artifacts and su
       ),
       true
     );
+
+    const cap = addPendingCapture(home, {
+      sessionId: "sess-1",
+      turnIndex: 2,
+      reason: "cross-turn revision",
+      prompt: "why do we add such details in comments?",
+      targets: ["file:utils/content_sanitization.py"],
+      recalledIds: ["exp-path-scoped-rule"],
+    });
+    assert.ok(cap?.id);
+    assert.equal(loadPendingCaptures(home).length, 1);
+    assert.equal(removePendingCapture(home, cap.id).ok, true);
+    assert.equal(loadPendingCaptures(home).length, 0);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
     fs.rmSync(bundledDir, { recursive: true, force: true });

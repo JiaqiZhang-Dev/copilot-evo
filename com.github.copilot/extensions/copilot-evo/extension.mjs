@@ -4,6 +4,7 @@ import { CanvasError, createCanvas, joinSession } from "@github/copilot-sdk/exte
 import { createEvoCanvasServer } from "./canvas-server.mjs";
 import { sanitizePayload } from "./sanitize.mjs";
 import {
+  addPendingCapture,
   appendEvent,
   configureSyncRepo,
   countEvents,
@@ -31,6 +32,7 @@ import {
   manageAsset,
   maybeAutoPull,
   recordAssetRecalls,
+  removePendingCapture,
   resolveSyncRepoPath,
   selectAssets,
   setEventSessionContext,
@@ -42,7 +44,7 @@ import {
 } from "./store.mjs";
 
 const evoHome = initStore();
-const EXTENSION_VERSION = "0.15.2";
+const EXTENSION_VERSION = "0.15.3";
 let lastWorkingDirectory = process.cwd();
 let activeSession = null;
 
@@ -143,11 +145,30 @@ const canvasServer = createEvoCanvasServer({
     ].join("\n");
     await activeSession.send({ prompt });
   },
+  onExtractCaptureRequest: async ({ capture }) => {
+    if (!activeSession) throw new Error("Active session unavailable.");
+    const recalledNote = capture.recalledIds?.length
+      ? `Recalled experiences in context: ${capture.recalledIds.join(", ")}. If one already covers this area but missed a nuance, refine it in place with \`evo_solidify({ id, ... })\`; otherwise create a new local Rule or Fix.`
+      : "Call `evo_solidify` in English (`scope: \"local\"`) if this reveals a reusable Rule, Knowledge, or verified Fix.";
+    const prompt = [
+      "[copilot-evo extract capture] Review this recent turn that involved a revision or recovery without recording an experience:",
+      `- Reason: ${capture.reason}`,
+      `- User prompt: ${capture.prompt}`,
+      ...(capture.targets?.length ? [`- Touched targets: ${capture.targets.join(", ")}`] : []),
+      ...(capture.assistantSummary ? [`- Result: ${capture.assistantSummary}`] : []),
+      "",
+      recalledNote,
+      "If it was purely a one-off task edit with no reusable takeaway, briefly say so and skip saving.",
+    ].join("\n");
+    await activeSession.send({ prompt });
+  },
 });
 const sessionState = {
   protocolInjected: false,
   turnIndex: 0,
   lastPrompt: "",
+  lastAssistantSummary: "",
+  lastIdleCaptureTurn: 0,
   priorActionTurns: 0,
   priorActionTargets: new Set(),
   turnTargets: new Set(),
@@ -320,6 +341,7 @@ const session = await joinSession({
       }
       sessionState.turnIndex++;
       sessionState.lastPrompt = String(input.prompt || "").slice(0, 240);
+      sessionState.lastAssistantSummary = "";
       sessionState.turnTargets = new Set();
       sessionState.turnActionTools = 0;
       sessionState.turnHadRecovery = false;
@@ -560,8 +582,11 @@ const session = await joinSession({
         ) {
           sessionState.turnHadCorrection = true;
           sessionState.lastNudgeTurn = sessionState.turnIndex;
+          const activeHint = sessionState.activeAssets.length
+            ? ` If an existing recalled experience (${sessionState.activeAssets.join(", ")}) missed this nuance, refine it in place via \`evo_solidify({ id, ... })\`; otherwise record a new local Rule or Fix.`
+            : " Proactively call `evo_solidify` in English with `scope: \"local\"` if this reflects a reusable preference, style rule, or pitfall.";
           return {
-            additionalContext: `[copilot-evo revision check] You just revised \`${targetKey}\` across user turns. If this fixed a non-obvious mistake, rendering quirk, or missing convention that could recur, proactively call \`evo_solidify\` in English with \`scope: "local"\` now without waiting to be asked.`,
+            additionalContext: `[copilot-evo revision check] The user's follow-up caused you to revise \`${targetKey}\` across turns.${activeHint}`,
           };
         }
       }
@@ -1064,3 +1089,39 @@ const session = await joinSession({
 });
 
 activeSession = session;
+
+session.on("assistant.message", (event) => {
+  const text = String(event?.data?.content || "").trim();
+  if (text) {
+    sessionState.lastAssistantSummary = text.replace(/\s+/g, " ").slice(0, 260);
+  }
+});
+
+session.on("session.idle", () => {
+  if (!sessionState.turnIndex || sessionState.solidifiedTurn === sessionState.turnIndex) return;
+  if (sessionState.lastIdleCaptureTurn === sessionState.turnIndex) return;
+  if ((sessionState.turnActionTools || 0) < 1) return;
+  if (!sessionState.lastPrompt || sessionState.lastPrompt.startsWith("[copilot-evo")) return;
+
+  const reasons = [];
+  if (sessionState.turnHadCorrection) reasons.push("cross-turn revision");
+  if (sessionState.turnHadRecovery) reasons.push("error recovery");
+  if (sessionState.turnHadFollowUpEdit) reasons.push("follow-up edit");
+  if (sessionState.turnHadStrategyCue) reasons.push("workflow rule cue");
+  if (!reasons.length) return;
+
+  sessionState.lastIdleCaptureTurn = sessionState.turnIndex;
+  const meta = getActiveSessionMeta();
+  const added = addPendingCapture(evoHome, {
+    ...meta,
+    turnIndex: sessionState.turnIndex,
+    reason: reasons.join(" + "),
+    prompt: sessionState.lastPrompt,
+    assistantSummary: sessionState.lastAssistantSummary,
+    targets: Array.from(sessionState.turnTargets),
+    recalledIds: sessionState.activeAssets,
+  });
+  if (added) {
+    canvasServer.broadcastUpdate("pending_capture");
+  }
+});

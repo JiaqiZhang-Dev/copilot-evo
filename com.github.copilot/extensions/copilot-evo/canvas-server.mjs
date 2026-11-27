@@ -11,9 +11,11 @@ import {
   getAssetRelationships,
   getGraduationStatus,
   graduateAsset,
+  loadPendingCaptures,
   loadStore,
   manageAsset,
   readRecentEvents,
+  removePendingCapture,
   resolveSyncRepoPath,
   runAssetValidation,
   syncRepoPull,
@@ -74,6 +76,7 @@ export function createEvoCanvasServer({
   getSessionInfo = () => ({}),
   onRefineRequest = null,
   onGraduateRequest = null,
+  onExtractCaptureRequest = null,
 }) {
   const canvasToken = randomBytes(32).toString("hex");
   const sseClients = new Set();
@@ -117,6 +120,7 @@ export function createEvoCanvasServer({
       fixes,
       knowledge,
       events,
+      pendingCaptures: loadPendingCaptures(evoHome),
       counts: {
         knowledge: store.knowledge.length,
         rules: store.rules.length,
@@ -236,6 +240,19 @@ export function createEvoCanvasServer({
           await onGraduateRequest({ asset });
           result = { ok: true, id: asset.id };
         }
+      } else if (reqUrl.pathname === "/api/captures/extract") {
+        const capture = loadPendingCaptures(evoHome).find((c) => c.id === body.id);
+        if (!capture) {
+          result = { ok: false, error: `Pending capture not found: ${body.id}` };
+        } else if (typeof onExtractCaptureRequest !== "function") {
+          result = { ok: false, error: "Copilot session bridge is unavailable." };
+        } else {
+          await onExtractCaptureRequest({ capture });
+          removePendingCapture(evoHome, capture.id);
+          result = { ok: true, id: capture.id };
+        }
+      } else if (reqUrl.pathname === "/api/captures/dismiss") {
+        result = removePendingCapture(evoHome, body.id);
       } else if (reqUrl.pathname === "/api/assets/graduate-preview") {
         result = graduateAsset(evoHome, body.id, {
           workingDirectory: getWorkingDirectory(),

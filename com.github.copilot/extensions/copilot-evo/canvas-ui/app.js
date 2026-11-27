@@ -1435,19 +1435,41 @@ function render() {
     return;
   }
 
+  const pendingCaptures = Array.isArray(state?.pendingCaptures) ? state.pendingCaptures : [];
+  const pendingCaptureHtml = pendingCaptures.length
+    ? `<div class="pending-capture-banner">
+         <div class="pending-capture-head">
+           <span class="pending-capture-title">Uncaptured turn detected (${pendingCaptures.length})</span>
+           <span class="pending-capture-reason">${escapeHtml(pendingCaptures[0].reason || "revision")}</span>
+         </div>
+         <div class="pending-capture-prompt" title="${escapeHtml(pendingCaptures[0].prompt)}">${escapeHtml(pendingCaptures[0].prompt)}</div>
+         <div class="pending-capture-actions">
+           <button class="btn btn-primary" data-extract-capture="${escapeHtml(pendingCaptures[0].id)}" type="button">Extract with Copilot</button>
+           <button class="btn" data-dismiss-capture="${escapeHtml(pendingCaptures[0].id)}" type="button">Dismiss</button>
+         </div>
+       </div>`
+    : "";
+
   const items = itemsForTab;
   if (!items.length) {
     const emptyMsg =
       activeTab === "local"
         ? "No local experiences right now. Copilot automatically captures reusable rules and verified fixes here."
         : "No experiences match the current filters.";
-    listPane.innerHTML = `<div class="empty">${emptyMsg}</div>`;
+    listPane.innerHTML = `${pendingCaptureHtml}<div class="empty">${emptyMsg}</div>`;
+    listPane.querySelector("[data-extract-capture]")?.addEventListener("click", (e) => {
+      mutate("/api/captures/extract", { id: e.currentTarget.dataset.extractCapture });
+    });
+    listPane.querySelector("[data-dismiss-capture]")?.addEventListener("click", (e) => {
+      mutate("/api/captures/dismiss", { id: e.currentTarget.dataset.dismissCapture });
+    });
     renderDetail(null);
     return;
   }
 
   const showShareCol = activeTab === "local";
   listPane.innerHTML = `
+    ${pendingCaptureHtml}
     <div class="exp-header ${showShareCol ? "has-share" : ""}">
       <span class="col-rank">#</span>
       <span>Experience</span>
@@ -1536,6 +1558,13 @@ function render() {
         </div>`;
       })
       .join("")}`;
+
+  listPane.querySelector("[data-extract-capture]")?.addEventListener("click", (e) => {
+    mutate("/api/captures/extract", { id: e.currentTarget.dataset.extractCapture });
+  });
+  listPane.querySelector("[data-dismiss-capture]")?.addEventListener("click", (e) => {
+    mutate("/api/captures/dismiss", { id: e.currentTarget.dataset.dismissCapture });
+  });
 
   listPane.querySelectorAll("[data-quick-share]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
@@ -1626,6 +1655,8 @@ async function mutate(endpoint, body) {
     setLoadingOverlay(true, "Sending feedback to Copilot...");
   } else if (endpoint === "/api/assets/graduate-request") {
     setLoadingOverlay(true, "Sending to Copilot...");
+  } else if (endpoint === "/api/captures/extract") {
+    setLoadingOverlay(true, "Sending turn to Copilot...");
   }
   try {
     const res = await fetch(endpoint, {
@@ -1688,6 +1719,10 @@ async function mutate(endpoint, body) {
       if (el("refine-input")) el("refine-input").value = "";
     } else if (endpoint === "/api/assets/graduate-request") {
       showToast("Sent to Copilot", "Drafting .github/ instructions/skill PR in chat...");
+    } else if (endpoint === "/api/captures/extract") {
+      showToast("Sent to Copilot", "Evaluating turn for a reusable experience in chat...");
+    } else if (endpoint === "/api/captures/dismiss") {
+      showBanner("Dismissed pending capture.");
     } else if (endpoint === "/api/arena/validate") {
       if (data.passed) {
         showBanner(`Validation PASSED for ${data.assetId}.`);
