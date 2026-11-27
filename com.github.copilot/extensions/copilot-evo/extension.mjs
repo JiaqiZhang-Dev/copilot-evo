@@ -434,6 +434,29 @@ const session = await joinSession({
           return { additionalContext: formatAssetsContext(matched) };
         }
       }
+
+      const isDocEdit =
+        /^(?:edit|create|apply_patch)$/i.test(toolName) &&
+        /\.(?:md|mdx)(?:["'\s,}]|$)/i.test(argsText);
+      if (isDocEdit) {
+        const docSignals = ["documentation", "markdown", "docs_style"];
+        const matched = selectAssets({
+          signals: docSignals,
+          query: "markdown documentation",
+          repo: detectRepoSlug(lastWorkingDirectory),
+          activePaths: Array.from(sessionState.recentPaths),
+          rules,
+          fixes,
+          knowledge,
+          limit: 3,
+        }).filter((a) => !sessionState.turnRecalledIds.includes(a.id));
+        if (matched.length) {
+          sessionState.activeAssets = Array.from(new Set([...sessionState.activeAssets, ...matched.map((a) => a.id)]));
+          sessionState.turnRecalledIds = Array.from(new Set([...sessionState.turnRecalledIds, ...matched.map((a) => a.id)]));
+          recordRecallEvent(matched, { trigger: "pre_tool_use", signals: docSignals, toolName });
+          return { additionalContext: formatAssetsContext(matched) };
+        }
+      }
     },
 
     onPostToolUseFailure: async (input) => {
