@@ -541,7 +541,7 @@ const SIGNAL_PATTERNS = [
   ["type_error", /\b(?:TypeError|ReferenceError|TS\d{4})\b/i],
   ["share", /\b(?:share|sync|export|publish|team|push)\b/i],
   ["secret_leak", /\b(?:secret|token|password|api[_-]?key|redact|privacy)\b/i],
-  ["pull_request", /\b(?:pull\s+request|create\s+(?:a\s+)?pr|draft\s+(?:a\s+)?pr|open\s+(?:a\s+)?pr|gh\s+pr\s+(?:create|edit)|pr\s+description|pr\s+body|pr\s+summary)\b/i],
+  ["pull_request", /\b(?:pull\s+request|create\s+(?:a\s+)?pr|draft\s+(?:a\s+)?pr|open\s+(?:a\s+)?pr|gh\s+pr\s+(?:create|edit)|pr\s+description|pr\s+body|pr\s+summary)\b|(?:draft|create|open|提|创建|发|改).*?\bpr\b|拉取请求/i],
   ["pr_description", /\b(?:pr\s+description|pr\s+body|pr\s+summary|pull\s+request\s+description)\b/i],
   ["documentation", /\b(?:docs?|documentation|readme|markdown|changelog)\b|\.(?:md|mdx)\b/i],
   ["markdown", /\bmarkdown\b|\.(?:md|mdx)\b/i],
@@ -886,13 +886,13 @@ export function selectAssets({
     if (normalizedKind && assetType !== normalizedKind) continue;
     if (!isSearch && excludeSet.has(asset.id)) continue;
     if (!includeSuperseded && supersededIds.has(asset.id) && !rawTerms.includes(asset.id.toLowerCase())) continue;
-    // Mute high-recall, low-utility items from automatic injection unless pinned or explicitly searched.
+    // Mute only when downvoted/failing or recalled extensively with zero helpfulness.
     if (
       !isSearch &&
       !isFailure &&
       !asset.pinned &&
-      Number(asset.recallCount || 0) >= 10 &&
-      Number(asset.successCount || 0) <= 1
+      ((Number(asset.failureCount || 0) > 0 && Number(asset.failureCount || 0) >= Number(asset.successCount || 0)) ||
+        (Number(asset.recallCount || 0) >= 25 && Number(asset.successCount || 0) === 0))
     ) {
       continue;
     }

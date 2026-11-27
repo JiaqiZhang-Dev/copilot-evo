@@ -921,13 +921,29 @@ test("findGraduationCandidates and graduateAsset write .github/ artifacts and su
       false
     );
 
-    // Low-ROI auto-muting (recallCount >= 10 and successCount <= 1).
-    for (let i = 0; i < 10; i++) recordAssetRecalls(home, ["exp-path-scoped-rule"]);
+    // Newly created rule (successCount === 1, failureCount === 0) must NOT be muted even at 17 recalls.
+    for (let i = 0; i < 17; i++) recordAssetRecalls(home, ["exp-path-scoped-rule"]);
+    const sNotMuted = loadStore(home);
+    assert.equal(
+      selectAssets({
+        signals: ["chatbot"],
+        activePaths: ["tools/sdk-ai-bots/azure-sdk-qa-bot-agent/main.py"],
+        rules: sNotMuted.rules,
+        fixes: sNotMuted.fixes,
+      }).some((a) => a.id === "exp-path-scoped-rule"),
+      true
+    );
+
+    // Downvoted low-ROI auto-muting (failureCount >= successCount).
+    recordAssetOutcome(home, ["exp-path-scoped-rule"], "failure", "misleading");
     const sMuted = loadStore(home);
     assert.equal(
-      selectAssets({ signals: ["chatbot"], rules: sMuted.rules, fixes: sMuted.fixes }).some(
-        (a) => a.id === "exp-path-scoped-rule"
-      ),
+      selectAssets({
+        signals: ["chatbot"],
+        activePaths: ["tools/sdk-ai-bots/azure-sdk-qa-bot-agent/main.py"],
+        rules: sMuted.rules,
+        fixes: sMuted.fixes,
+      }).some((a) => a.id === "exp-path-scoped-rule"),
       false
     );
     assert.equal(
