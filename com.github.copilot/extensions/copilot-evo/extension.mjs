@@ -608,6 +608,12 @@ const session = await joinSession({
         const recalledNote = sessionState.turnRecalledIds.length
           ? ` Also upvote only the recalled experiences (${sessionState.turnRecalledIds.join(", ")}) that genuinely helped, or flag any noisy/miscategorized item via \`ask_user\` before updating/deleting.`
           : "";
+        if (sessionState.turnHadStrategyCue) {
+          return {
+            additionalContext:
+              `[copilot-evo rule capture pending] The user stated a reusable workflow or action rule in this turn (\`${sessionState.lastPrompt}\`), and \`evo_solidify\` has not been called yet. Load \`evo_solidify\` via \`tool_search_tool\` (if needed) and call \`evo_solidify\` in English (\`scope: "local"\`) before finishing.${recalledNote}`,
+          };
+        }
         return {
           additionalContext:
             `[copilot-evo semantic check] An action or edit completed in this turn. If this work uncovered genuinely reusable Knowledge, Rule, or verified Fix (skip routine edits and one-off typos), proactively call \`evo_solidify\` atomically in English (\`scope: "local"\`).${recalledNote}`,
